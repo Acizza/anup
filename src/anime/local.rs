@@ -6,13 +6,13 @@ use ::std::path::Path;
 use self::regex::Regex;
 
 #[derive(Debug)]
-pub struct Anime {
+pub struct LocalAnime {
     pub name: String,
     pub episode_paths: HashMap<u32, String>,
 }
 
-impl Anime {
-    pub fn new(path: &Path) -> Anime {
+impl LocalAnime {
+    pub fn new(path: &Path) -> LocalAnime {
         // TODO: Replace with custom solution (?)
         lazy_static! {
             static ref RE: Regex = Regex::new(r"(?:\[.+?\](?:\s+|_+)?)?(?P<name>.+?)(?:\s+|_+)-(?:\s+|_+)(?P<episode>\d+)").unwrap();
@@ -31,7 +31,7 @@ impl Anime {
             episodes.insert(caps["episode"].parse().unwrap(), entry.path().to_str().unwrap().to_string());
         }
 
-        Anime {
+        LocalAnime {
             name: anime_name,
             episode_paths: episodes,
         }

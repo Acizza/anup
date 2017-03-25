@@ -4,9 +4,16 @@ extern crate lazy_static;
 mod anime;
 
 use std::env;
-use anime::Anime;
+use anime::local::LocalAnime;
+use anime::mal::AnimeInfo;
 
 fn main() {
     let path = env::current_dir().unwrap();
-    println!("{:?}", Anime::new(&path));
+
+    let mut args = env::args().skip(1);
+    let username = args.next().unwrap();
+    let password = args.next().unwrap();
+
+    println!("{:?}", LocalAnime::new(&path));
+    println!("{:?}", AnimeInfo::request("Full Metal", username, password));
 }
