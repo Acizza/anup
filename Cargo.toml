@@ -1,0 +1,6 @@
+[package]
+name = "anitrack"
+version = "0.1.0"
+authors = ["Acizza <jonathanmce@gmail.com>"]
+
+[dependencies]
