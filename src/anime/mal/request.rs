@@ -1,17 +1,18 @@
 extern crate hyper;
 extern crate hyper_native_tls;
 
-use std::io::Read;
 use self::hyper::Url;
-use self::hyper::client::Client;
+use self::hyper::client::{Client, Response};
 use self::hyper::header::{Authorization, Basic};
 use self::hyper::net::HttpsConnector;
 use self::hyper_native_tls::NativeTlsClient;
 
 const BASE_URL: &'static str = "https://myanimelist.net";
 
-enum RequestType {
-    Search(String),
+pub type Name = String;
+
+pub enum RequestType {
+    Search(Name),
 }
 
 fn get_url(req_type: &RequestType) -> String {
@@ -26,7 +27,7 @@ fn get_url(req_type: &RequestType) -> String {
     }
 }
 
-fn perform_request(req_type: RequestType, username: String, password: String) -> String {
+pub fn execute(req_type: RequestType, username: String, password: String) -> Response {
     let url = get_url(&req_type);
 
     // TODO: Isolate?
@@ -34,10 +35,7 @@ fn perform_request(req_type: RequestType, username: String, password: String) ->
     let connector = HttpsConnector::new(ssl);
     let client = Client::with_connector(connector);
 
-    let mut body = String::new();
-
-    let mut res = client
-        .get(&url)
+    client.get(&url)
         .header(Authorization(
             Basic {
                 username: username,
@@ -45,33 +43,5 @@ fn perform_request(req_type: RequestType, username: String, password: String) ->
             }
         ))
         .send()
-        .unwrap();
-
-    res.read_to_string(&mut body).unwrap();
-    body
-}
-
-#[derive(Debug)]
-pub struct AnimeInfo {
-    pub id:             u32,
-    pub name:           String,
-    pub episodes:       u32,
-    pub episode_length: u32,
-}
-
-impl AnimeInfo {
-    pub fn request(name: &str, username: String, password: String) -> AnimeInfo {
-        println!("{:?}", perform_request(
-            RequestType::Search(name.into()),
-            username,
-            password)
-        );
-
-        AnimeInfo {
-            id: 0,
-            name: "".into(),
-            episodes: 0,
-            episode_length: 0,
-        }
-    }
+        .unwrap()
 }
