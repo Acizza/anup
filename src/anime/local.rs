@@ -5,6 +5,20 @@ use ::std::fs;
 use ::std::path::Path;
 use self::regex::Regex;
 
+error_chain! {
+    foreign_links {
+        Io(::std::io::Error);
+        ConvertInt(::std::num::ParseIntError);
+    }
+
+    errors {
+        NoneFound {
+            description("anime not found")
+            display("anime not found")
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct LocalAnime {
     pub name: String,
@@ -12,7 +26,7 @@ pub struct LocalAnime {
 }
 
 impl LocalAnime {
-    pub fn new(path: &Path) -> LocalAnime {
+    pub fn new(path: &Path) -> Result<LocalAnime> {
         // TODO: Replace with custom solution (?)
         lazy_static! {
             static ref RE: Regex = Regex::new(r"(?:\[.+?\](?:\s+|_+)?)?(?P<name>.+?)(?:\s+|_+)-(?:\s+|_+)(?P<episode>\d+)").unwrap();
@@ -21,19 +35,19 @@ impl LocalAnime {
         let mut anime_name = String::new();
         let mut episodes = HashMap::new();
 
-        for entry in fs::read_dir(path).unwrap() {
-            let entry = entry.unwrap();
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
             let name = entry.file_name();
 
-            let caps = RE.captures(name.to_str().unwrap()).unwrap();
+            let caps = RE.captures(name.to_str().unwrap()).ok_or(ErrorKind::NoneFound)?;
             anime_name = caps["name"].to_string();
 
-            episodes.insert(caps["episode"].parse().unwrap(), entry.path().to_str().unwrap().to_string());
+            episodes.insert(caps["episode"].parse()?, entry.path().to_str().unwrap().to_string());
         }
 
-        LocalAnime {
+        Ok(LocalAnime {
             name: anime_name,
             episode_paths: episodes,
-        }
+        })
     }
 }
