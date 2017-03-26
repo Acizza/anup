@@ -69,7 +69,7 @@ impl AnimeInfo {
         Ok(entries)
     }
 
-    pub fn get_watched_episodes(&self, username: String) -> Result<u32> {
+    pub fn request_watched(&self, username: String) -> Result<u32> {
         let req = request::execute(AnimeList(username.clone()), username, None)?;
         let doc = Document::new_from_xml_stream(req)
                     .map_err(|_| ErrorKind::DocumentError)?;

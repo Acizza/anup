@@ -26,7 +26,7 @@ pub struct LocalAnime {
 }
 
 impl LocalAnime {
-    pub fn new(path: &Path) -> Result<LocalAnime> {
+    pub fn find(path: &Path) -> Result<LocalAnime> {
         // TODO: Replace with custom solution (?)
         lazy_static! {
             static ref RE: Regex = Regex::new(r"(?:\[.+?\](?:\s+|_+)?)?(?P<name>.+?)(?:\s+|_+)-(?:\s+|_+)(?P<episode>\d+)").unwrap();
