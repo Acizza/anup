@@ -4,7 +4,7 @@ extern crate hyper;
 mod request;
 
 use self::hyper::status::StatusCode;
-use self::request::RequestType::Search;
+use self::request::RequestType::*;
 use self::rquery::Document;
 
 error_chain! {
@@ -43,7 +43,7 @@ pub struct AnimeInfo {
 
 impl AnimeInfo {
     pub fn request(name: &str, username: String, password: String) -> Result<Vec<AnimeInfo>> {
-        let req = match request::execute(Search(name.into()), username, password) {
+        let req = match request::execute(Search(name.into()), username, Some(password)) {
             Ok(req) => req,
             Err(request::Error(request::ErrorKind::BadStatus(StatusCode::NoContent), _)) => {
                 bail!(ErrorKind::NotFound)
@@ -67,5 +67,30 @@ impl AnimeInfo {
         }
 
         Ok(entries)
+    }
+
+    pub fn get_watched_episodes(&self, username: String) -> Result<u32> {
+        let req = request::execute(AnimeList(username.clone()), username, None)?;
+        let doc = Document::new_from_xml_stream(req)
+                    .map_err(|_| ErrorKind::DocumentError)?;
+
+        for entry in doc.select_all("anime").map_err(|_| ErrorKind::ParseError)? {
+            let id = entry.select("series_animedb_id")
+                          .map_err(|_| ErrorKind::ParseError)?
+                          .text()
+                          .parse::<u32>()?;
+
+            if id == self.id {
+                let watched = entry
+                    .select("my_watched_episodes")
+                    .map_err(|_| ErrorKind::ParseError)?
+                    .text()
+                    .parse()?;
+                
+                return Ok(watched)
+            }
+        }
+
+        Ok(0)
     }
 }

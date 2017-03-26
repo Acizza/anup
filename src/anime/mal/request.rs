@@ -34,6 +34,7 @@ pub type Name = String;
 
 pub enum RequestType {
     Search(Name),
+    AnimeList(Name),
 }
 
 fn get_url(req_type: &RequestType) -> Result<String> {
@@ -46,10 +47,20 @@ fn get_url(req_type: &RequestType) -> Result<String> {
 
             Ok(url.into_string())
         },
+        RequestType::AnimeList(ref name) => {
+            url.set_path("/malappinfo.php");
+
+            url.query_pairs_mut()
+                .append_pair("u", name)
+                .append_pair("status", "all")
+                .append_pair("type", "anime");
+
+            Ok(url.into_string())
+        },
     }
 }
 
-pub fn execute(req_type: RequestType, username: String, password: String) -> Result<Response> {
+pub fn execute(req_type: RequestType, username: String, password: Option<String>) -> Result<Response> {
     let url = get_url(&req_type)?;
 
     // TODO: Isolate?
@@ -57,18 +68,26 @@ pub fn execute(req_type: RequestType, username: String, password: String) -> Res
     let connector = HttpsConnector::new(ssl);
     let client = Client::with_connector(connector);
 
-    let res = client
-        .get(&url)
-        .header(Authorization(
-            Basic {
-                username: username,
-                password: Some(password),
-            }
-        ))
-        .send()?;
+    let request = {
+        let mut req = client.get(&url);
 
-    match res.status {
-        StatusCode::Ok           => Ok(res),
+        match password {
+            Some(password) => {
+                req = req.header(Authorization(
+                    Basic {
+                        username: username,
+                        password: Some(password),
+                    }
+                ));
+            },
+            None => (),
+        }
+
+        req.send()?
+    };
+
+    match request.status {
+        StatusCode::Ok           => Ok(request),
         StatusCode::Unauthorized => bail!(ErrorKind::InvalidPassword),
         other                    => bail!(ErrorKind::BadStatus(other)),
     }
