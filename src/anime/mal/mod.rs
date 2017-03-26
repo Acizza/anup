@@ -3,7 +3,8 @@ extern crate hyper;
 
 mod request;
 
-use self::request::RequestType;
+use self::hyper::status::StatusCode;
+use self::request::RequestType::Search;
 use self::rquery::Document;
 
 error_chain! {
@@ -25,6 +26,11 @@ error_chain! {
             description("XML parse error")
             display("failed to parse XML data")
         }
+
+        NotFound {
+            description("specified anime not found")
+            display("unable to find information for specified anime")
+        }
     }
 }
 
@@ -37,7 +43,14 @@ pub struct AnimeInfo {
 
 impl AnimeInfo {
     pub fn request(name: &str, username: String, password: String) -> Result<Vec<AnimeInfo>> {
-        let req = request::execute(RequestType::Search(name.into()), username, password)?;
+        let req = match request::execute(Search(name.into()), username, password) {
+            Ok(req) => req,
+            Err(request::Error(request::ErrorKind::BadStatus(StatusCode::NoContent), _)) => {
+                bail!(ErrorKind::NotFound)
+            },
+            Err(e) => bail!(e),
+        };
+
         let doc = Document::new_from_xml_stream(req)
                     .map_err(|_| ErrorKind::DocumentError)?;
 
