@@ -1,14 +1,15 @@
 #[macro_use] extern crate lazy_static;
 #[macro_use] extern crate error_chain;
 #[macro_use] extern crate clap;
+extern crate mal;
 
 mod anime;
 
 use std::env;
 use std::io;
 use std::path::PathBuf;
-use anime::local::LocalAnime;
-use anime::mal::AnimeInfo;
+use anime::LocalAnime;
+use mal::AnimeInfo;
 
 fn main() {
     let args = clap_app!(anitrack =>
