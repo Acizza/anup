@@ -9,7 +9,6 @@ use std::env;
 use std::io;
 use std::path::PathBuf;
 use anime::LocalAnime;
-use mal::AnimeInfo;
 
 fn main() {
     let args = clap_app!(anitrack =>
@@ -33,7 +32,7 @@ fn main() {
         let password = args.value_of("password").unwrap();
 
         let local = LocalAnime::find(&path).unwrap();
-        let found = AnimeInfo::request(&local.name, username.into(), password.into()).unwrap();
+        let found = mal::find(&local.name, username.into(), password.into()).unwrap();
 
         if found.len() > 0 {
             let selected = if found.len() > 1 {
