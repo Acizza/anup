@@ -3,6 +3,7 @@ extern crate rquery;
 extern crate hyper;
 
 mod request;
+pub mod list;
 
 use self::hyper::status::StatusCode;
 use self::request::RequestType::*;
@@ -68,30 +69,5 @@ impl AnimeInfo {
         }
 
         Ok(entries)
-    }
-
-    pub fn request_watched(&self, username: String) -> Result<u32> {
-        let req = request::execute(AnimeList(username.clone()), username, None)?;
-        let doc = Document::new_from_xml_stream(req)
-                    .map_err(|_| ErrorKind::DocumentError)?;
-
-        for entry in doc.select_all("anime").map_err(|_| ErrorKind::ParseError)? {
-            let id = entry.select("series_animedb_id")
-                          .map_err(|_| ErrorKind::ParseError)?
-                          .text()
-                          .parse::<u32>()?;
-
-            if id == self.id {
-                let watched = entry
-                    .select("my_watched_episodes")
-                    .map_err(|_| ErrorKind::ParseError)?
-                    .text()
-                    .parse()?;
-                
-                return Ok(watched)
-            }
-        }
-
-        Ok(0)
     }
 }
