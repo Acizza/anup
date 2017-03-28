@@ -5,11 +5,8 @@ extern crate hyper;
 mod request;
 pub mod list;
 
-use self::hyper::Url;
 use self::hyper::status::StatusCode;
 use self::rquery::Document;
-
-pub const BASE_URL: &'static str = "https://myanimelist.net";
 
 error_chain! {
     links {
@@ -34,51 +31,6 @@ error_chain! {
         NotFound {
             description("specified anime not found")
             display("unable to find information for specified anime")
-        }
-    }
-}
-
-pub type Name     = String;
-pub type Username = String;
-pub type ID       = u32;
-
-#[derive(Debug)]
-pub enum RequestType {
-    Find(Name),
-    GetList(Username),
-    Add(ID),
-    Update(ID),
-}
-
-impl RequestType {
-    fn get_url(&self) -> String {
-        let mut url = Url::parse(BASE_URL).unwrap();
-        use RequestType::*;
-
-        match *self {
-            Find(ref name) => {
-                url.set_path("/api/anime/search.xml");
-                url.query_pairs_mut().append_pair("q", &name);
-                url.into_string()
-            },
-            GetList(ref name) => {
-                url.set_path("/malappinfo.php");
-
-                url.query_pairs_mut()
-                    .append_pair("u", name)
-                    .append_pair("status", "all")
-                    .append_pair("type", "anime");
-
-                url.into_string()
-            },
-            Add(id) => {
-                url.set_path(&format!("/api/animelist/add/{}.xml", id));
-                url.into_string()
-            },
-            Update(id) => {
-                url.set_path(&format!("/api/animelist/update/{}.xml", id));
-                url.into_string()
-            },
         }
     }
 }
@@ -115,7 +67,7 @@ pub struct SearchInfo {
 }
 
 pub fn find(name: &str, username: String, password: String) -> Result<Vec<SearchInfo>> {
-    use RequestType::Find;
+    use request::RequestType::Find;
     
     let req = match request::get(Find(name.into()), username, Some(password)) {
         Ok(req) => req,

@@ -2,8 +2,9 @@ extern crate xml;
 
 use std::io::Write;
 use request;
+use request::RequestType;
+use request::RequestType::*;
 use rquery::Document;
-use super::RequestType::*;
 use super::Status;
 use self::xml::writer::{EmitterConfig, XmlEvent};
 
@@ -107,19 +108,16 @@ fn generate_anime_entry<W: Write>(dest: W, entries: &[(&str, String)]) -> Result
     Ok(())
 }
 
-pub fn add(id: u32, watched: u32, username: String, password: String) -> Result<()> {
+fn exec_change(req_type: RequestType, tags: &[(&str, String)], username: String, password: String)
+    -> Result<()> {
+        
     let mut xml = Vec::new();
+    generate_anime_entry(&mut xml, tags)?;
 
-    let tags = vec![
-        ("episode", watched.to_string()),
-        ("status", (Status::Watching as i32).to_string()),
-    ];
-
-    generate_anime_entry(&mut xml, tags.as_slice())?;
     let body = String::from_utf8(xml)?;
 
     request::post(
-        Add(id),
+        req_type,
         &body,
         username,
         password
@@ -128,24 +126,33 @@ pub fn add(id: u32, watched: u32, username: String, password: String) -> Result<
     Ok(())
 }
 
-pub fn update(id: u32, status: Status, watched: u32, username: String, password: String)
-    -> Result<()> {
+pub type ID      = u32;
+pub type Watched = u32;
 
-    let mut xml = Vec::new();
-    let tags = vec![
-        ("episode", watched.to_string()),
-        ("status", (status as i32).to_string()),
-    ];
+pub enum Action {
+    Add(ID, Watched),
+    Update(ID, Watched, Status),
+}
 
-    generate_anime_entry(&mut xml, tags.as_slice())?;
-    let body = String::from_utf8(xml)?;
+pub fn modify(action: Action, username: String, password: String) -> Result<()> {
+    let (req_type, tags) = match action {
+        Action::Add(id, watched) => {
+            let tags = vec![
+                ("episode", watched.to_string()),
+                ("status", (Status::Watching as i32).to_string()),
+            ];
 
-    request::post(
-        Update(id),
-        &body,
-        username,
-        password,
-    )?;
+            (Add(id), tags)
+        },
+        Action::Update(id, watched, status) => {
+            let tags = vec![
+                ("episode", watched.to_string()),
+                ("status", (status as i32).to_string()),
+            ];
 
-    Ok(())
+            (Update(id), tags)
+        },
+    };
+
+    exec_change(req_type, tags.as_slice(), username, password)
 }
