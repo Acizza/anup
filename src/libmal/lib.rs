@@ -92,14 +92,29 @@ pub enum Status {
     PlanToWatch = 6,
 }
 
+impl Status {
+    pub fn parse(id: u32) -> Option<Status> {
+        use Status::*;
+
+        match id {
+            1 => Some(Watching),
+            2 => Some(Completed),
+            3 => Some(OnHold),
+            4 => Some(Dropped),
+            6 => Some(PlanToWatch),
+            _ => None
+        }
+    }
+}
+
 #[derive(Debug)]
-pub struct AnimeInfo {
+pub struct SearchInfo {
     pub id:       u32,
     pub name:     String,
     pub episodes: u32,
 }
 
-pub fn find(name: &str, username: String, password: String) -> Result<Vec<AnimeInfo>> {
+pub fn find(name: &str, username: String, password: String) -> Result<Vec<SearchInfo>> {
     use RequestType::Find;
     
     let req = match request::get(Find(name.into()), username, Some(password)) {
@@ -118,7 +133,7 @@ pub fn find(name: &str, username: String, password: String) -> Result<Vec<AnimeI
     for entry in doc.select_all("entry").map_err(|_| ErrorKind::ParseError)? {
         let select = |n| entry.select(n).map_err(|_| ErrorKind::ParseError);
         
-        entries.push(AnimeInfo {
+        entries.push(SearchInfo {
             id:       select("id")?.text().parse()?,
             name:     select("title")?.text().clone(),
             episodes: select("episodes")?.text().parse()?,

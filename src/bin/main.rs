@@ -48,7 +48,10 @@ fn main() {
                 &found[0]
             };
 
-            let watched = mal::list::get_watched_episodes(selected.id, username.into()).unwrap();
+            let entries = mal::list::get_entries(username.into()).unwrap();
+            println!("{:?}", entries);
+
+            let watched = entries.iter().find(|e| e.id == selected.id).unwrap().watched;
             println!("watched episodes of [{}]: {}", selected.name, watched);
         }
     }

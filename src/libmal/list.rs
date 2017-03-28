@@ -36,29 +36,60 @@ error_chain! {
     }
 }
 
-pub fn get_watched_episodes(id: u32, username: String) -> Result<u32> {
+#[derive(Debug)]
+pub struct Entry {
+    pub id:      u32,
+    pub name:    String,
+    pub watched: u32,
+    pub status:  Status,
+}
+
+// TODO: Convert to iterator
+pub fn get_entries(username: String) -> Result<Vec<Entry>> {
     let req = request::get(GetList(username.clone()), username, None)?;
     let doc = Document::new_from_xml_stream(req)
                 .map_err(|_| ErrorKind::DocumentError)?;
 
-    for entry in doc.select_all("anime").map_err(|_| ErrorKind::ParseError)? {
-        let entry_id = entry.select("series_animedb_id")
-                        .map_err(|_| ErrorKind::ParseError)?
-                        .text()
-                        .parse::<u32>()?;
+    let mut entries = Vec::new();
 
-        if entry_id == id {
-            let watched = entry
-                .select("my_watched_episodes")
+    for entry in doc.select_all("anime").map_err(|_| ErrorKind::ParseError)? {
+        let id = entry
+            .select("series_animedb_id")
+            .map_err(|_| ErrorKind::ParseError)?
+            .text()
+            .parse::<u32>()?;
+
+        let name = entry
+            .select("series_title")
+            .map_err(|_| ErrorKind::ParseError)?
+            .text()
+            .to_string();
+
+        let watched = entry
+            .select("my_watched_episodes")
+            .map_err(|_| ErrorKind::ParseError)?
+            .text()
+            .parse()?;
+
+        let status = {
+            let status_id = entry
+                .select("my_status")
                 .map_err(|_| ErrorKind::ParseError)?
                 .text()
                 .parse()?;
-            
-            return Ok(watched)
-        }
+
+            Status::parse(status_id).ok_or(ErrorKind::ParseError)?
+        };
+
+        entries.push(Entry {
+            id:      id,
+            name:    name,
+            watched: watched,
+            status:  status,
+        });
     }
 
-    Ok(0)
+    Ok(entries)
 }
 
 fn generate_anime_entry<W: Write>(dest: W, entries: &[(&str, String)]) -> Result<()> {
