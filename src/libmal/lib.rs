@@ -47,6 +47,7 @@ pub enum RequestType {
     Find(Name),
     GetList(Username),
     Add(ID),
+    Update(ID),
 }
 
 impl RequestType {
@@ -72,6 +73,10 @@ impl RequestType {
             },
             Add(id) => {
                 url.set_path(&format!("/api/animelist/add/{}.xml", id));
+                url.into_string()
+            },
+            Update(id) => {
+                url.set_path(&format!("/api/animelist/update/{}.xml", id));
                 url.into_string()
             },
         }

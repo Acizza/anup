@@ -90,8 +90,30 @@ pub fn add(id: u32, watched: u32, username: String, password: String) -> Result<
     request::post(
         Add(id),
         &body,
-        username.clone(),
-        password.clone()
+        username,
+        password
+    )?;
+
+    Ok(())
+}
+
+pub fn update(id: u32, status: Status, watched: u32, username: String, password: String)
+    -> Result<()> {
+
+    let mut xml = Vec::new();
+    let tags = vec![
+        ("episode", watched.to_string()),
+        ("status", (status as i32).to_string()),
+    ];
+
+    generate_anime_entry(&mut xml, tags.as_slice())?;
+    let body = String::from_utf8(xml)?;
+
+    request::post(
+        Update(id),
+        &body,
+        username,
+        password,
     )?;
 
     Ok(())

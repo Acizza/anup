@@ -73,7 +73,8 @@ pub fn post(req_type: RequestType, body: &str, username: String, password: Strin
     let client    = Client::with_connector(connector);
 
     let body = match req_type {
-        RequestType::Add(_) => format!("data={}", body),
+        RequestType::Add(_) |
+        RequestType::Update(_) => format!("data={}", body),
         RequestType::Find(_) |
         RequestType::GetList(_) => body.into(),
     };
