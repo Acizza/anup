@@ -5,7 +5,7 @@ use std::io::Write;
 use request;
 use request::RequestType;
 use rquery::Document;
-use super::{Anime, Auth, Status};
+use super::{AnimeInfo, Auth, Status};
 use self::chrono::Local;
 use self::chrono::date::Date;
 use self::xml::writer::{EmitterConfig, XmlEvent};
@@ -39,9 +39,9 @@ error_chain! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Entry {
-    pub info:    Anime,
+    pub info:    AnimeInfo,
     pub watched: u32,
     pub status:  Status,
 }
@@ -91,7 +91,7 @@ pub fn get_entries(username: String) -> Result<Vec<Entry>> {
         };
 
         entries.push(Entry {
-            info: Anime {
+            info: AnimeInfo {
                 id:       id,
                 name:     name,
                 episodes: episodes,
@@ -110,6 +110,7 @@ pub enum Tag {
     Status(Status),
     StartDate(Date<Local>),
     FinishDate(Date<Local>),
+    Score(u8),
     Rewatching(bool),
 }
 
@@ -122,6 +123,7 @@ impl Tag {
             Status(status)   => ("status", (status as i32).to_string()),
             StartDate(date)  => ("date_start", date.format("%m%d%Y").to_string()),
             FinishDate(date) => ("date_finish", date.format("%m%d%Y").to_string()),
+            Score(score)     => ("score", score.to_string()),
             Rewatching(val)  => ("enable_rewatching", (val as u8).to_string()),
         }
     }

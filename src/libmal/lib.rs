@@ -27,11 +27,6 @@ error_chain! {
             description("XML parse error")
             display("failed to parse XML data")
         }
-
-        NotFound {
-            description("specified anime not found")
-            display("unable to find information for specified anime")
-        }
     }
 }
 
@@ -74,20 +69,20 @@ impl Status {
     }
 }
 
-#[derive(Debug)]
-pub struct Anime {
+#[derive(Debug, Clone)]
+pub struct AnimeInfo {
     pub id:       u32,
     pub name:     String,
     pub episodes: u32,
 }
 
-pub fn find(name: &str, auth: &Auth) -> Result<Vec<Anime>> {
+pub fn find(name: &str, auth: &Auth) -> Result<Vec<AnimeInfo>> {
     use request::RequestType::Find;
     
     let req = match request::get(Find(name.into()), Some(&auth)) {
         Ok(req) => req,
         Err(request::Error(request::ErrorKind::BadStatus(StatusCode::NoContent), _)) => {
-            bail!(ErrorKind::NotFound)
+            return Ok(Vec::new())
         },
         Err(e) => bail!(e),
     };
@@ -100,7 +95,7 @@ pub fn find(name: &str, auth: &Auth) -> Result<Vec<Anime>> {
     for entry in doc.select_all("entry").map_err(|_| ErrorKind::ParseError)? {
         let select = |n| entry.select(n).map_err(|_| ErrorKind::ParseError);
         
-        entries.push(Anime {
+        entries.push(AnimeInfo {
             id:       select("id")?.text().parse()?,
             name:     select("title")?.text().clone(),
             episodes: select("episodes")?.text().parse()?,
