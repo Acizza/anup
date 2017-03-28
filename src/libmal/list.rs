@@ -1,11 +1,13 @@
 extern crate xml;
+extern crate chrono;
 
 use std::io::Write;
 use request;
 use request::RequestType;
-use request::RequestType::*;
 use rquery::Document;
-use super::{Auth, Status};
+use super::{Anime, Auth, Status};
+use self::chrono::Local;
+use self::chrono::date::Date;
 use self::xml::writer::{EmitterConfig, XmlEvent};
 
 error_chain! {
@@ -39,15 +41,14 @@ error_chain! {
 
 #[derive(Debug)]
 pub struct Entry {
-    pub id:      u32,
-    pub name:    String,
+    pub info:    Anime,
     pub watched: u32,
     pub status:  Status,
 }
 
 // TODO: Convert to iterator
 pub fn get_entries(username: String) -> Result<Vec<Entry>> {
-    let req = request::get(GetList(username), None)?;
+    let req = request::get(RequestType::GetList(username), None)?;
 
     let doc = Document::new_from_xml_stream(req)
                 .map_err(|_| ErrorKind::DocumentError)?;
@@ -67,6 +68,12 @@ pub fn get_entries(username: String) -> Result<Vec<Entry>> {
             .text()
             .to_string();
 
+        let episodes = entry
+            .select("series_episodes")
+            .map_err(|_| ErrorKind::ParseError)?
+            .text()
+            .parse()?;
+
         let watched = entry
             .select("my_watched_episodes")
             .map_err(|_| ErrorKind::ParseError)?
@@ -84,8 +91,11 @@ pub fn get_entries(username: String) -> Result<Vec<Entry>> {
         };
 
         entries.push(Entry {
-            id:      id,
-            name:    name,
+            info: Anime {
+                id:       id,
+                name:     name,
+                episodes: episodes,
+            },
             watched: watched,
             status:  status,
         });
@@ -94,14 +104,36 @@ pub fn get_entries(username: String) -> Result<Vec<Entry>> {
     Ok(entries)
 }
 
-type Tags<'a> = [(&'a str, String)];
+#[derive(Debug)]
+pub enum Tag {
+    Episode(u32),
+    Status(Status),
+    StartDate(Date<Local>),
+    FinishDate(Date<Local>),
+    Rewatching(bool),
+}
 
-fn generate_anime_entry<W: Write>(dest: W, entries: &Tags) -> Result<()> {
+impl Tag {
+    fn to_xml(&self) -> (&str, String) {
+        use self::Tag::*;
+
+        match *self {
+            Episode(num)     => ("episode", num.to_string()),
+            Status(status)   => ("status", (status as i32).to_string()),
+            StartDate(date)  => ("date_start", date.format("%m%d%Y").to_string()),
+            FinishDate(date) => ("date_finish", date.format("%m%d%Y").to_string()),
+            Rewatching(val)  => ("enable_rewatching", (val as u8).to_string()),
+        }
+    }
+}
+
+fn generate_anime_entry<W: Write>(dest: W, entries: &[Tag]) -> Result<()> {
     let mut writer = EmitterConfig::new().create_writer(dest);
 
     writer.write(XmlEvent::start_element("entry"))?;
 
-    for &(name, ref value) in entries {
+    for tag in entries {
+        let (name, value) = tag.to_xml();
         writer.write(XmlEvent::start_element(name))?;
         writer.write(XmlEvent::characters(&value))?;
         writer.write(XmlEvent::end_element())?;
@@ -111,7 +143,7 @@ fn generate_anime_entry<W: Write>(dest: W, entries: &Tags) -> Result<()> {
     Ok(())
 }
 
-fn exec_change(req_type: RequestType, tags: &Tags, auth: &Auth) -> Result<()> {
+fn exec_change(req_type: RequestType, tags: &[Tag], auth: &Auth) -> Result<()> {
     let mut xml = Vec::new();
     generate_anime_entry(&mut xml, tags)?;
 
@@ -121,33 +153,16 @@ fn exec_change(req_type: RequestType, tags: &Tags, auth: &Auth) -> Result<()> {
     Ok(())
 }
 
-pub type ID      = u32;
-pub type Watched = u32;
-
 pub enum Action {
-    Add(ID, Watched),
-    Update(ID, Watched, Status),
+    Add,
+    Update,
 }
 
-pub fn modify(action: Action, auth: &Auth) -> Result<()> {
-    let (req_type, tags) = match action {
-        Action::Add(id, watched) => {
-            let tags = vec![
-                ("episode", watched.to_string()),
-                ("status", (Status::Watching as i32).to_string()),
-            ];
-
-            (Add(id), tags)
-        },
-        Action::Update(id, watched, status) => {
-            let tags = vec![
-                ("episode", watched.to_string()),
-                ("status", (status as i32).to_string()),
-            ];
-
-            (Update(id), tags)
-        },
+pub fn modify(id: u32, action: Action, auth: &Auth, tags: &[Tag]) -> Result<()> {
+    let req_type = match action {
+        Action::Add    => RequestType::Add(id),
+        Action::Update => RequestType::Update(id),
     };
 
-    exec_change(req_type, tags.as_slice(), &auth)
+    exec_change(req_type, tags, &auth)
 }

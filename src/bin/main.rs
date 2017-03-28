@@ -9,6 +9,7 @@ use std::env;
 use std::io;
 use std::path::PathBuf;
 use anime::LocalAnime;
+use mal::Auth;
 
 fn main() {
     let args = clap_app!(anitrack =>
@@ -53,7 +54,7 @@ fn main() {
             let entries = mal::list::get_entries(auth.username).unwrap();
             println!("{:?}", entries);
 
-            let watched = entries.iter().find(|e| e.id == selected.id).unwrap().watched;
+            let watched = entries.iter().find(|e| e.info.id == selected.id).unwrap().watched;
             println!("watched episodes of [{}]: {}", selected.name, watched);
         }
     }
