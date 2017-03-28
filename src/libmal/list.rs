@@ -5,7 +5,7 @@ use request;
 use request::RequestType;
 use request::RequestType::*;
 use rquery::Document;
-use super::Status;
+use super::{Auth, Status};
 use self::xml::writer::{EmitterConfig, XmlEvent};
 
 error_chain! {
@@ -47,7 +47,8 @@ pub struct Entry {
 
 // TODO: Convert to iterator
 pub fn get_entries(username: String) -> Result<Vec<Entry>> {
-    let req = request::get(GetList(username.clone()), username, None)?;
+    let req = request::get(GetList(username), None)?;
+
     let doc = Document::new_from_xml_stream(req)
                 .map_err(|_| ErrorKind::DocumentError)?;
 
@@ -93,7 +94,9 @@ pub fn get_entries(username: String) -> Result<Vec<Entry>> {
     Ok(entries)
 }
 
-fn generate_anime_entry<W: Write>(dest: W, entries: &[(&str, String)]) -> Result<()> {
+type Tags<'a> = [(&'a str, String)];
+
+fn generate_anime_entry<W: Write>(dest: W, entries: &Tags) -> Result<()> {
     let mut writer = EmitterConfig::new().create_writer(dest);
 
     writer.write(XmlEvent::start_element("entry"))?;
@@ -108,20 +111,12 @@ fn generate_anime_entry<W: Write>(dest: W, entries: &[(&str, String)]) -> Result
     Ok(())
 }
 
-fn exec_change(req_type: RequestType, tags: &[(&str, String)], username: String, password: String)
-    -> Result<()> {
-        
+fn exec_change(req_type: RequestType, tags: &Tags, auth: &Auth) -> Result<()> {
     let mut xml = Vec::new();
     generate_anime_entry(&mut xml, tags)?;
 
     let body = String::from_utf8(xml)?;
-
-    request::post(
-        req_type,
-        &body,
-        username,
-        password
-    )?;
+    request::post(req_type, &body, &auth)?;
 
     Ok(())
 }
@@ -134,7 +129,7 @@ pub enum Action {
     Update(ID, Watched, Status),
 }
 
-pub fn modify(action: Action, username: String, password: String) -> Result<()> {
+pub fn modify(action: Action, auth: &Auth) -> Result<()> {
     let (req_type, tags) = match action {
         Action::Add(id, watched) => {
             let tags = vec![
@@ -154,5 +149,5 @@ pub fn modify(action: Action, username: String, password: String) -> Result<()> 
         },
     };
 
-    exec_change(req_type, tags.as_slice(), username, password)
+    exec_change(req_type, tags.as_slice(), &auth)
 }

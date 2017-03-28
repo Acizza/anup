@@ -36,6 +36,21 @@ error_chain! {
 }
 
 #[derive(Debug)]
+pub struct Auth {
+    pub username: String,
+    pub password: String,
+}
+
+impl Auth {
+    pub fn new(username: String, password: String) -> Auth {
+        Auth {
+            username: username,
+            password: password,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum Status {
     Watching = 1,
     Completed,
@@ -66,10 +81,10 @@ pub struct SearchInfo {
     pub episodes: u32,
 }
 
-pub fn find(name: &str, username: String, password: String) -> Result<Vec<SearchInfo>> {
+pub fn find(name: &str, auth: &Auth) -> Result<Vec<SearchInfo>> {
     use request::RequestType::Find;
     
-    let req = match request::get(Find(name.into()), username, Some(password)) {
+    let req = match request::get(Find(name.into()), Some(&auth)) {
         Ok(req) => req,
         Err(request::Error(request::ErrorKind::BadStatus(StatusCode::NoContent), _)) => {
             bail!(ErrorKind::NotFound)

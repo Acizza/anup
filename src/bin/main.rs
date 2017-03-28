@@ -28,11 +28,13 @@ fn main() {
 
     // Temporary
     if args.is_present("next") {
-        let username = args.value_of("username").unwrap();
-        let password = args.value_of("password").unwrap();
+        let auth = Auth {
+            username: args.value_of("username").unwrap().into(),
+            password: args.value_of("password").unwrap().into(),
+        };
 
         let local = LocalAnime::find(&path).unwrap();
-        let found = mal::find(&local.name, username.into(), password.into()).unwrap();
+        let found = mal::find(&local.name, &auth).unwrap();
 
         if found.len() > 0 {
             let selected = if found.len() > 1 {
@@ -48,7 +50,7 @@ fn main() {
                 &found[0]
             };
 
-            let entries = mal::list::get_entries(username.into()).unwrap();
+            let entries = mal::list::get_entries(auth.username).unwrap();
             println!("{:?}", entries);
 
             let watched = entries.iter().find(|e| e.id == selected.id).unwrap().watched;

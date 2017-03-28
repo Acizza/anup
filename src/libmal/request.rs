@@ -7,6 +7,7 @@ use self::hyper::header::{Authorization, Basic, ContentType};
 use self::hyper::net::HttpsConnector;
 use self::hyper::status::StatusCode;
 use self::hyper_native_tls::NativeTlsClient;
+use super::Auth;
 
 pub const BASE_URL: &'static str = "https://myanimelist.net";
 
@@ -75,9 +76,7 @@ impl RequestType {
     }
 }
 
-pub fn get(req_type: RequestType, username: String, password: Option<String>)
-    -> Result<Response> {
-
+pub fn get(req_type: RequestType, auth: Option<&Auth>) -> Result<Response> {
     let url = req_type.get_url()?;
 
     // TODO: Isolate?
@@ -88,16 +87,13 @@ pub fn get(req_type: RequestType, username: String, password: Option<String>)
     let request = {
         let mut req = client.get(&url);
 
-        match password {
-            Some(password) => {
-                req = req.header(Authorization(
-                    Basic {
-                        username: username,
-                        password: Some(password),
-                    }
-                ));
-            },
-            None => (),
+        if let Some(auth) = auth {
+            req = req.header(Authorization(
+                Basic {
+                    username: auth.username.clone(),
+                    password: Some(auth.password.clone()),
+                }
+            ));
         }
 
         req.send()?
@@ -110,9 +106,7 @@ pub fn get(req_type: RequestType, username: String, password: Option<String>)
     }
 }
 
-pub fn post(req_type: RequestType, body: &str, username: String, password: String)
-    -> Result<Response> {
-    
+pub fn post(req_type: RequestType, body: &str, auth: &Auth) -> Result<Response> {
     let url = req_type.get_url()?;
 
     // TODO: Isolate?
@@ -133,8 +127,8 @@ pub fn post(req_type: RequestType, body: &str, username: String, password: Strin
         .body(&body)
         .header(Authorization(
             Basic {
-                username: username,
-                password: Some(password),
+                username: auth.username.clone(),
+                password: Some(auth.password.clone()),
             }
         ))
         .send()?;
