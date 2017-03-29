@@ -61,17 +61,24 @@ impl Tag {
 
 #[derive(Debug, Clone)]
 pub struct Entry {
-    pub info:    AnimeInfo,
-    pub watched: u32,
-    pub status:  Status,
+    pub info:       AnimeInfo,
+    pub watched:    u32,
+    pub status:     Status,
+    pub rewatching: bool,
 }
 
 impl Entry {
-    pub fn update_watched(&self, watched: u32, auth: &Auth) -> Result<Status> {
+    pub fn update_watched(&mut self, watched: u32, auth: &Auth) -> Result<Status> {
         let mut tags = vec![Tag::Episode(watched)];
 
         let new_status = if watched >= self.info.episodes {
             tags.push(Tag::FinishDate(Some(Local::now().date())));
+
+            if self.rewatching {
+                tags.push(Tag::Rewatching(false));
+                self.rewatching = false;
+            }
+
             Status::Completed
         } else {
             Status::Watching
@@ -80,6 +87,9 @@ impl Entry {
         tags.push(Tag::Status(new_status));
         modify(self.info.id, Action::Update, &auth, tags.as_slice())?;
 
+        self.watched = watched;
+        self.status  = new_status;
+        
         Ok(new_status)
     }
 
@@ -87,14 +97,18 @@ impl Entry {
         modify(self.info.id, Action::Update, &auth, &[Tag::Score(score)])
     }
 
-    pub fn start_rewatch(&self, auth: &Auth) -> Result<()> {
+    pub fn start_rewatch(&mut self, auth: &Auth) -> Result<()> {
         modify(self.info.id, Action::Update, &auth, &[
             Tag::Rewatching(true),
             Tag::Episode(0),
-            Tag::Status(Status::Watching),
             Tag::StartDate(Some(Local::now().date())),
             Tag::FinishDate(None),
-        ])
+        ])?;
+
+        self.watched    = 0;
+        self.rewatching = true;
+
+        Ok(())
     }
 }
 
@@ -142,14 +156,25 @@ pub fn get_entries(username: String) -> Result<Vec<Entry>> {
             Status::parse(status_id).ok_or(ErrorKind::ParseError)?
         };
 
+        let rewatching = {
+            let num = entry
+                .select("my_rewatching")
+                .map_err(|_| ErrorKind::ParseError)?
+                .text()
+                .parse::<u8>()?;
+
+            num == 1
+        };
+
         entries.push(Entry {
             info: AnimeInfo {
                 id:       id,
                 name:     name,
                 episodes: episodes,
             },
-            watched: watched,
-            status:  status,
+            watched:    watched,
+            status:     status,
+            rewatching: rewatching,
         });
     }
 
@@ -164,9 +189,10 @@ pub fn add_to_watching(info: &AnimeInfo, auth: &Auth) -> Result<Entry> {
     ])?;
 
     Ok(Entry {
-        info:    info.clone(),
-        watched: 0,
-        status:  Status::Watching,
+        info:       info.clone(),
+        watched:    0,
+        status:     Status::Watching,
+        rewatching: false,
     })
 }
 

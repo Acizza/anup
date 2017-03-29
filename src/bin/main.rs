@@ -13,13 +13,14 @@ use anime::LocalAnime;
 use clap::ArgMatches;
 use input::DefAnswer;
 use mal::{Auth, Status, AnimeInfo};
+use mal::list;
 
 error_chain! {
     links {
         Anime(anime::Error, anime::ErrorKind);
         Input(input::Error, input::ErrorKind);
         MAL(mal::Error, mal::ErrorKind);
-        MALList(mal::list::Error, mal::list::ErrorKind);
+        MALList(list::Error, list::ErrorKind);
     }
 
     foreign_links {
@@ -60,25 +61,26 @@ fn get_anime_selection(local: &LocalAnime, auth: &Auth) -> Result<AnimeInfo> {
     }
 }
 
-fn get_from_list(info: &AnimeInfo, auth: &Auth) -> Result<mal::list::Entry> {
-    let list  = mal::list::get_entries(auth.username.clone())?;
+fn get_from_list(info: &AnimeInfo, auth: &Auth) -> Result<list::Entry> {
+    let list  = list::get_entries(auth.username.clone())?;
     let entry = list.iter().find(|a| a.info.id == info.id);
 
     match entry {
         Some(entry) => {
             match entry.status {
-                Status::Completed => {
-                    println!("[{}] already completed\ndo you want to rewatch it? (Y/n)",
-                        info.name
-                    );
+                Status::Completed if !entry.rewatching => {
+                    println!("[{}] already completed", info.name);
+                    println!("\nwould you like to rewatch it? (Y/n)");
+                    println!("(note that you'll need to increase the rewatch count manually)");
 
                     if input::read_yn(DefAnswer::Yes)? {
+                        let mut entry = entry.clone();
                         entry.start_rewatch(&auth)?;
+
+                        Ok(entry)
                     } else {
                         bail!(ErrorKind::Exit)
                     }
-
-                    Ok(mal::list::Entry { watched: 0, .. entry.clone() })
                 },
                 _ => Ok(entry.clone()),
             }
@@ -87,7 +89,7 @@ fn get_from_list(info: &AnimeInfo, auth: &Auth) -> Result<mal::list::Entry> {
             println!("\n[{}] not on anime list\nwould you like to add it? (Y/n)", &info.name);
 
             if input::read_yn(DefAnswer::Yes)? {
-                Ok(mal::list::add_to_watching(&info, &auth)?)
+                Ok(list::add_to_watching(&info, &auth)?)
             } else {
                 bail!(ErrorKind::Exit)
             }
@@ -95,7 +97,7 @@ fn get_from_list(info: &AnimeInfo, auth: &Auth) -> Result<mal::list::Entry> {
     }
 }
 
-fn set_watched(ep_count: u32, entry: &mal::list::Entry, auth: &Auth) -> Result<()> {
+fn set_watched(ep_count: u32, entry: &mut list::Entry, auth: &Auth) -> Result<()> {
     let new_status = entry.update_watched(ep_count, &auth)?;
 
     match new_status {
@@ -125,8 +127,8 @@ fn play_next_episode(path: &Path, auth: Auth) -> Result<()> {
 
     println!("[{}] identified", &local.name);
 
-    let mal_info   = get_anime_selection(&local, &auth)?;
-    let list_entry = get_from_list(&mal_info, &auth)?;
+    let mal_info       = get_anime_selection(&local, &auth)?;
+    let mut list_entry = get_from_list(&mal_info, &auth)?;
 
     let next_episode = list_entry.watched + 1;
 
@@ -135,13 +137,13 @@ fn play_next_episode(path: &Path, auth: Auth) -> Result<()> {
                         .output()?;
 
     if output.status.success() {
-        set_watched(next_episode, &list_entry, &auth)?;
+        set_watched(next_episode, &mut list_entry, &auth)?;
     } else {
         println!("video player not exited normally");
         println!("would you still like to count the episode as watched? (y/N)");
 
         if input::read_yn(DefAnswer::No)? {
-            set_watched(next_episode, &list_entry, &auth)?;
+            set_watched(next_episode, &mut list_entry, &auth)?;
         }
     }
 
