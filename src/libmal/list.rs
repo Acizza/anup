@@ -68,10 +68,10 @@ pub struct Entry {
 }
 
 impl Entry {
-    pub fn update_watched(&mut self, watched: u32, auth: &Auth) -> Result<Status> {
+    pub fn update_watched(&mut self, watched: u32, auth: &Auth) -> Result<()> {
         let mut tags = vec![Tag::Episode(watched)];
 
-        let new_status = if watched >= self.info.episodes {
+        if watched >= self.info.episodes && self.info.episodes > 0 {
             tags.push(Tag::FinishDate(Some(Local::now().date())));
 
             if self.rewatching {
@@ -79,18 +79,16 @@ impl Entry {
                 self.rewatching = false;
             }
 
-            Status::Completed
+            self.status = Status::Completed;
         } else {
-            Status::Watching
+            self.status = Status::Watching;
         };
 
-        tags.push(Tag::Status(new_status));
+        tags.push(Tag::Status(self.status));
         modify(self.info.id, Action::Update, &auth, tags.as_slice())?;
 
         self.watched = watched;
-        self.status  = new_status;
-        
-        Ok(new_status)
+        Ok(())
     }
 
     pub fn set_score(&self, score: u8, auth: &Auth) -> Result<()> {

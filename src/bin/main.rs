@@ -98,9 +98,9 @@ fn get_from_list(info: &AnimeInfo, auth: &Auth) -> Result<list::Entry> {
 }
 
 fn set_watched(ep_count: u32, entry: &mut list::Entry, auth: &Auth) -> Result<()> {
-    let new_status = entry.update_watched(ep_count, &auth)?;
+    entry.update_watched(ep_count, &auth)?;
 
-    match new_status {
+    match entry.status {
         Status::Completed => {
             println!("[{}] completed!\nwould you like to rate it? (Y/n)", &entry.info.name);
 
