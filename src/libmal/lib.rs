@@ -1,6 +1,7 @@
 #[macro_use] extern crate error_chain;
-extern crate rquery;
+extern crate chrono;
 extern crate hyper;
+extern crate rquery;
 
 mod request;
 pub mod list;

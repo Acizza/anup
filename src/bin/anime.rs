@@ -16,6 +16,11 @@ error_chain! {
             description("anime not found")
             display("anime not found")
         }
+
+        EpisodeNotFound(ep: u32) {
+            description("episode not found")
+            display("unable to find episode {}", ep)
+        }
     }
 }
 
@@ -49,5 +54,12 @@ impl LocalAnime {
             name: anime_name,
             episode_paths: episodes,
         })
+    }
+
+    pub fn get_episode(&self, ep: u32) -> Result<String> {
+        match self.episode_paths.get(&ep) {
+            Some(path) => Ok(path.clone()),
+            None       => bail!(ErrorKind::EpisodeNotFound(ep)),
+        }
     }
 }

@@ -2,30 +2,28 @@
 #[macro_use] extern crate error_chain;
 #[macro_use] extern crate clap;
 extern crate mal;
-extern crate chrono;
 
 mod anime;
+mod input;
 
 use std::env;
-use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use anime::LocalAnime;
-use mal::{Auth, Status, AnimeInfo};
-use mal::list::Action;
-use mal::list::Tag::*;
-use chrono::Local;
 use clap::ArgMatches;
+use input::DefAnswer;
+use mal::{Auth, Status, AnimeInfo};
 
 error_chain! {
     links {
         Anime(anime::Error, anime::ErrorKind);
+        Input(input::Error, input::ErrorKind);
         MAL(mal::Error, mal::ErrorKind);
         MALList(mal::list::Error, mal::list::ErrorKind);
     }
 
     foreign_links {
         Io(std::io::Error);
-        ParseInt(std::num::ParseIntError);
     }
 
     errors {
@@ -33,25 +31,12 @@ error_chain! {
             description("no anime found")
             display("unable to find [{}] on MAL", name)
         }
+
+        Exit {
+            description("")
+            display("")
+        }
     }
-}
-
-fn read_line() -> Result<String> {
-    let mut buffer = String::new();
-    io::stdin().read_line(&mut buffer)?;
-
-    Ok(buffer[..buffer.len() - 1].to_string())
-}
-
-fn read_int(min: i32, max: i32) -> Result<i32> {
-    let mut input = read_line()?.parse()?;
-
-    while input < min || input > max {
-        println!("input must be between {}-{}", min, max);
-        input = read_line()?.parse()?;
-    }
-
-    Ok(input)
 }
 
 fn get_anime_selection(local: &LocalAnime, auth: &Auth) -> Result<AnimeInfo> {
@@ -65,7 +50,7 @@ fn get_anime_selection(local: &LocalAnime, auth: &Auth) -> Result<AnimeInfo> {
             println!("\t{} [{}]", i + 1, info.name);
         }
 
-        let index = read_int(0, found.len() as i32)? - 1;
+        let index = input::read_int(0, found.len() as i32)? - 1;
 
         Ok(found[index as usize].clone())
     } else if found.len() == 0 {
@@ -80,78 +65,84 @@ fn get_from_list(info: &AnimeInfo, auth: &Auth) -> Result<mal::list::Entry> {
     let entry = list.iter().find(|a| a.info.id == info.id);
 
     match entry {
-        Some(data) => Ok(data.clone()),
+        Some(entry) => {
+            match entry.status {
+                Status::Completed => {
+                    println!("[{}] already completed\ndo you want to rewatch it? (Y/n)",
+                        info.name
+                    );
+
+                    if input::read_yn(DefAnswer::Yes)? {
+                        entry.start_rewatch(&auth)?;
+                    } else {
+                        bail!(ErrorKind::Exit)
+                    }
+
+                    Ok(mal::list::Entry { watched: 0, .. entry.clone() })
+                },
+                _ => Ok(entry.clone()),
+            }
+        },
         None => {
             println!("\n[{}] not on anime list\nwould you like to add it? (Y/n)", &info.name);
-            let input = read_line()?.to_lowercase();
 
-            if input == "n" {
-                bail!("specified anime must be on list to continue")
+            if input::read_yn(DefAnswer::Yes)? {
+                Ok(mal::list::add_to_watching(&info, &auth)?)
             } else {
-                mal::list::modify(info.id, Action::Add, &auth, &[
-                    Episode(0),
-                    Status(Status::Watching),
-                    StartDate(Local::now().date()),
-                ])?;
-
-                Ok(mal::list::Entry {
-                    info: info.clone(),
-                    watched: 0,
-                    status: Status::Watching,
-                })
+                bail!(ErrorKind::Exit)
             }
         },
     }
 }
 
-fn increment_ep_count(entry: &mal::list::Entry, auth: &Auth) -> Result<Status> {
-    let new_ep_count = entry.watched + 1;
-    let mut tags     = vec![Episode(new_ep_count)];
-
-    let new_status = if new_ep_count == entry.info.episodes {
-        tags.push(FinishDate(Local::now().date()));
-        Status::Completed
-    } else {
-        Status::Watching
-    };
-
-    tags.push(Status(new_status));
-    mal::list::modify(entry.info.id, Action::Update, &auth, tags.as_slice())?;
-
-    Ok(new_status)
-}
-
-fn play_next_episode(path: &Path, auth: Auth) -> Result<()> {
-    let local = LocalAnime::find(path)?;
-    println!("[{}] identified", &local.name);
-
-    let mal_info   = get_anime_selection(&local, &auth)?;
-    let list_entry = get_from_list(&mal_info, &auth)?;
-    
-    // TODO: Launch video player
-
-    let new_status = increment_ep_count(&list_entry, &auth)?;
+fn set_watched(ep_count: u32, entry: &mal::list::Entry, auth: &Auth) -> Result<()> {
+    let new_status = entry.update_watched(ep_count, &auth)?;
 
     match new_status {
         Status::Completed => {
-            println!("[{}] completed!\nwould you like to rate it? (Y/n)", &mal_info.name);
-            let input = read_line()?.to_lowercase();
+            println!("[{}] completed!\nwould you like to rate it? (Y/n)", &entry.info.name);
 
-            if input != "n" {
+            if input::read_yn(DefAnswer::Yes)? {
                 println!("\nenter a score between 1-10:");
-                let score = read_int(1, 10)? as u8;
+                let score = input::read_int(1, 10)? as u8;
 
-                mal::list::modify(mal_info.id, Action::Update, &auth, &[
-                    Score(score),
-                ])?;
+                entry.set_score(score, &auth)?;
             }
         },
         _ => {
             println!("[{}] episode {}/{} completed",
-                mal_info.name,
-                list_entry.watched + 1,
-                mal_info.episodes);
+                entry.info.name,
+                ep_count,
+                entry.info.episodes);
         },
+    }
+
+    Ok(())
+}
+
+fn play_next_episode(path: &Path, auth: Auth) -> Result<()> {
+    let local = LocalAnime::find(path)?;
+
+    println!("[{}] identified", &local.name);
+
+    let mal_info   = get_anime_selection(&local, &auth)?;
+    let list_entry = get_from_list(&mal_info, &auth)?;
+
+    let next_episode = list_entry.watched + 1;
+
+    let output = Command::new("/usr/bin/xdg-open")
+                        .arg(local.get_episode(next_episode)?)
+                        .output()?;
+
+    if output.status.success() {
+        set_watched(next_episode, &list_entry, &auth)?;
+    } else {
+        println!("video player not exited normally");
+        println!("would you still like to count the episode as watched? (y/N)");
+
+        if input::read_yn(DefAnswer::No)? {
+            set_watched(next_episode, &list_entry, &auth)?;
+        }
     }
 
     Ok(())
@@ -189,6 +180,7 @@ fn main() {
 
     match run(args) {
         Ok(_) => (),
-        Err(e) => panic!("error: {}", e),
+        Err(Error(ErrorKind::Exit, _)) => (),
+        Err(e) => println!("error: {}", e),
     }
 }
