@@ -26,17 +26,17 @@ pub fn read_int(min: i32, max: i32) -> Result<i32> {
 }
 
 #[derive(Debug)]
-pub enum DefAnswer {
+pub enum Answer {
     Yes,
     No
 }
 
-pub fn read_yn(def: DefAnswer) -> Result<bool> {
+pub fn read_yn(def: Answer) -> Result<bool> {
     let input = read_line()?.to_lowercase();
 
     let non_default = match def {
-        DefAnswer::Yes => "n",
-        DefAnswer::No  => "y",
+        Answer::Yes => "n",
+        Answer::No  => "y",
     };
 
     Ok(input != non_default)

@@ -5,13 +5,15 @@ extern crate mal;
 
 mod anime;
 mod input;
+mod prompt;
 
 use std::env;
+use std::fs::File;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use anime::LocalAnime;
 use clap::ArgMatches;
-use input::DefAnswer;
+use input::Answer;
 use mal::{Auth, Status, AnimeInfo};
 use mal::list;
 
@@ -21,10 +23,12 @@ error_chain! {
         Input(input::Error, input::ErrorKind);
         MAL(mal::Error, mal::ErrorKind);
         MALList(list::Error, list::ErrorKind);
+        Prompt(prompt::Error, prompt::ErrorKind);
     }
 
     foreign_links {
         Io(std::io::Error);
+        ParseInt(std::num::ParseIntError);
     }
 
     errors {
@@ -32,36 +36,10 @@ error_chain! {
             description("no anime found")
             display("unable to find [{}] on MAL", name)
         }
-
-        Exit {
-            description("")
-            display("")
-        }
     }
 }
 
-fn get_anime_selection(local: &LocalAnime, auth: &Auth) -> Result<AnimeInfo> {
-    let found = mal::find(&local.name, &auth)?;
-
-    if found.len() > 1 {
-        println!("\nmultiple anime on MAL found");
-        println!("input the number corrosponding with the intended anime:");
-
-        for (i, info) in found.iter().enumerate() {
-            println!("\t{} [{}]", i + 1, info.name);
-        }
-
-        let index = input::read_int(0, found.len() as i32)? - 1;
-
-        Ok(found[index as usize].clone())
-    } else if found.len() == 0 {
-        bail!(ErrorKind::NoneFound(local.name.clone()))
-    } else {
-        Ok(found[0].clone())
-    }
-}
-
-fn get_from_list(info: &AnimeInfo, auth: &Auth) -> Result<list::Entry> {
+fn get_mal_entry(info: &AnimeInfo, auth: &Auth) -> Result<list::Entry> {
     let list  = list::get_entries(auth.username.clone())?;
     let entry = list.iter().find(|a| a.info.id == info.id);
 
@@ -69,48 +47,22 @@ fn get_from_list(info: &AnimeInfo, auth: &Auth) -> Result<list::Entry> {
         Some(entry) => {
             match entry.status {
                 Status::Completed if !entry.rewatching => {
-                    println!("[{}] already completed", info.name);
-                    println!("\nwould you like to rewatch it? (Y/n)");
-                    println!("(note that you'll need to increase the rewatch count manually)");
-
-                    if input::read_yn(DefAnswer::Yes)? {
-                        let mut entry = entry.clone();
-                        entry.start_rewatch(&auth)?;
-
-                        Ok(entry)
-                    } else {
-                        bail!(ErrorKind::Exit)
-                    }
+                    let mut entry = entry.clone();
+                    prompt::rewatch(&mut entry, &auth)?;
+                    Ok(entry)
                 },
                 _ => Ok(entry.clone()),
             }
         },
-        None => {
-            println!("\n[{}] not on anime list\nwould you like to add it? (Y/n)", &info.name);
-
-            if input::read_yn(DefAnswer::Yes)? {
-                Ok(list::add_to_watching(&info, &auth)?)
-            } else {
-                bail!(ErrorKind::Exit)
-            }
-        },
+        None => Ok(prompt::add_to_list(&info, &auth)?),
     }
 }
 
 fn set_watched(ep_count: u32, entry: &mut list::Entry, auth: &Auth) -> Result<()> {
-    entry.update_watched(ep_count, &auth)?;
+    entry.set_watched(ep_count, &auth)?;
 
     match entry.status {
-        Status::Completed => {
-            println!("[{}] completed!\nwould you like to rate it? (Y/n)", &entry.info.name);
-
-            if input::read_yn(DefAnswer::Yes)? {
-                println!("\nenter a score between 1-10:");
-                let score = input::read_int(1, 10)? as u8;
-
-                entry.set_score(score, &auth)?;
-            }
-        },
+        Status::Completed => prompt::completed(entry, &auth)?,
         _ => {
             println!("[{}] episode {}/{} completed",
                 entry.info.name,
@@ -122,28 +74,71 @@ fn set_watched(ep_count: u32, entry: &mut list::Entry, auth: &Auth) -> Result<()
     Ok(())
 }
 
+fn get_info_path(path: &Path) -> String {
+    let mut path = PathBuf::from(path);
+    path.push(format!(".{}", env!("CARGO_PKG_NAME")));
+    path.to_str().unwrap().to_string()
+}
+
+fn save_id(path: &Path, info: &AnimeInfo) -> Result<()> {
+    let mut file = File::create(get_info_path(path))?;
+    write!(file, "{}", info.id)?;
+
+    Ok(())
+}
+
+fn load_id(path: &Path) -> Result<u32> {
+    let mut file = File::open(get_info_path(path))?;
+    let mut buffer = String::new();
+
+    file.read_to_string(&mut buffer)?;
+    Ok(buffer.parse()?)
+}
+
 fn play_next_episode(path: &Path, auth: Auth) -> Result<()> {
     let local = LocalAnime::find(path)?;
 
-    println!("[{}] identified", &local.name);
+    let mut list_entry = {
+        let info = match load_id(path) {
+            Ok(id) => {
+                let info = mal::find_by_id(&local.name, id, &auth)?;
+                println!("[{}] detected", info.name);
 
-    let mal_info       = get_anime_selection(&local, &auth)?;
-    let mut list_entry = get_from_list(&mal_info, &auth)?;
+                info
+            },
+            Err(_) => {
+                println!("[{}] identified", local.name);
 
-    let next_episode = list_entry.watched + 1;
+                let found = mal::find(&local.name, &auth)?;
+                let found = prompt::select_found_anime(&found)?;
 
-    let output = Command::new("/usr/bin/xdg-open")
-                        .arg(local.get_episode(next_episode)?)
-                        .output()?;
+                save_id(path, &found)?;
+                found
+            },
+        };
 
-    if output.status.success() {
-        set_watched(next_episode, &mut list_entry, &auth)?;
-    } else {
-        println!("video player not exited normally");
-        println!("would you still like to count the episode as watched? (y/N)");
+        get_mal_entry(&info, &auth)?
+    };
 
-        if input::read_yn(DefAnswer::No)? {
+    loop {
+        let next_episode = list_entry.watched + 1;
+        let exit_status  = local.play_episode(next_episode)?;
+
+        if exit_status.success() {
             set_watched(next_episode, &mut list_entry, &auth)?;
+        } else {
+            println!("video player not exited normally");
+            println!("would you still like to count the episode as watched? (y/N)");
+
+            if input::read_yn(Answer::No)? {
+                set_watched(next_episode, &mut list_entry, &auth)?;
+            }
+        }
+
+        println!("\ndo you want to watch the next episode? (Y/n)");
+
+        if !input::read_yn(Answer::Yes)? {
+            break
         }
     }
 
@@ -182,7 +177,7 @@ fn main() {
 
     match run(args) {
         Ok(_) => (),
-        Err(Error(ErrorKind::Exit, _)) => (),
+        Err(Error(ErrorKind::Prompt(prompt::ErrorKind::Exit), _)) => (),
         Err(e) => println!("error: {}", e),
     }
 }

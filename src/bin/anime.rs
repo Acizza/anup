@@ -3,6 +3,7 @@ extern crate regex;
 use ::std::collections::HashMap;
 use ::std::fs;
 use ::std::path::Path;
+use ::std::process::{Command, ExitStatus};
 use self::regex::Regex;
 
 error_chain! {
@@ -34,7 +35,7 @@ impl LocalAnime {
     pub fn find(path: &Path) -> Result<LocalAnime> {
         // TODO: Replace with custom solution (?)
         lazy_static! {
-            static ref RE: Regex = Regex::new(r"(?:\[.+?\](?:\s+|_+)?)?(?P<name>.+?)(?:\s+|_+)-(?:\s+|_+)(?P<episode>\d+)").unwrap();
+            static ref RE: Regex = Regex::new(r"(?:\[.+?\]\s*)?(?P<name>.+?)\s*-?\s*(?P<episode>\d+)\s*(?:\(|\[|\.)").unwrap();
         }
 
         let mut anime_name = String::new();
@@ -42,12 +43,24 @@ impl LocalAnime {
 
         for entry in fs::read_dir(path)? {
             let entry = entry?;
-            let name = entry.file_name();
 
-            let caps = RE.captures(name.to_str().unwrap()).ok_or(ErrorKind::NoneFound)?;
+            let name = entry
+                .file_name()
+                .into_string()
+                .unwrap()
+                .replace('_', " ");
+
+            let caps = match RE.captures(&name) {
+                Some(v) => v,
+                None => continue,
+            };
+
             anime_name = caps["name"].to_string();
-
             episodes.insert(caps["episode"].parse()?, entry.path().to_str().unwrap().to_string());
+        }
+
+        if episodes.len() == 0 {
+            bail!(ErrorKind::NoneFound)
         }
 
         Ok(LocalAnime {
@@ -61,5 +74,13 @@ impl LocalAnime {
             Some(path) => Ok(path.clone()),
             None       => bail!(ErrorKind::EpisodeNotFound(ep)),
         }
+    }
+
+    pub fn play_episode(&self, ep: u32) -> Result<ExitStatus> {
+        let output = Command::new("/usr/bin/xdg-open")
+            .arg(self.get_episode(ep)?)
+            .output()?;
+
+        Ok(output.status)
     }
 }

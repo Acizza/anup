@@ -28,6 +28,11 @@ error_chain! {
             description("XML parse error")
             display("failed to parse XML data")
         }
+
+        NotFound(name: String) {
+            description("no anime found")
+            display("[{}] not found on MAL", name)
+        }
     }
 }
 
@@ -83,7 +88,7 @@ pub fn find(name: &str, auth: &Auth) -> Result<Vec<AnimeInfo>> {
     let req = match request::get(Find(name.into()), Some(&auth)) {
         Ok(req) => req,
         Err(request::Error(request::ErrorKind::BadStatus(StatusCode::NoContent), _)) => {
-            return Ok(Vec::new())
+            bail!(ErrorKind::NotFound(name.into()))
         },
         Err(e) => bail!(e),
     };
@@ -104,4 +109,11 @@ pub fn find(name: &str, auth: &Auth) -> Result<Vec<AnimeInfo>> {
     }
 
     Ok(entries)
+}
+
+pub fn find_by_id(name: &str, id: u32, auth: &Auth) -> Result<AnimeInfo> {
+    find(name, auth)?
+        .into_iter()
+        .find(|i| i.id == id)
+        .ok_or(ErrorKind::NotFound(name.into()).into())
 }

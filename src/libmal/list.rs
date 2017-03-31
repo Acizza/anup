@@ -31,6 +31,11 @@ error_chain! {
             description("XML parse error")
             display("failed to parse XML data")
         }
+
+        NotFound(id: u32) {
+            description("anime not found")
+            display("anime with id {} not found on list", id)
+        }
     }
 }
 
@@ -68,7 +73,7 @@ pub struct Entry {
 }
 
 impl Entry {
-    pub fn update_watched(&mut self, watched: u32, auth: &Auth) -> Result<()> {
+    pub fn set_watched(&mut self, watched: u32, auth: &Auth) -> Result<()> {
         let mut tags = vec![Tag::Episode(watched)];
 
         if watched >= self.info.episodes && self.info.episodes > 0 {
@@ -81,6 +86,10 @@ impl Entry {
 
             self.status = Status::Completed;
         } else {
+            if self.watched == 0 {
+                tags.push(Tag::StartDate(Some(Local::now().date())));
+            }
+
             self.status = Status::Watching;
         };
 
