@@ -55,7 +55,10 @@ impl LocalAnime {
                 None => continue,
             };
 
-            anime_name = caps["name"].to_string();
+            anime_name = caps["name"]
+                .replace(" -", ":") // Dashes typically indicate a colon for torrents
+                .to_string();
+
             episodes.insert(caps["episode"].parse()?, entry.path().to_str().unwrap().to_string());
         }
 

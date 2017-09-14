@@ -6,7 +6,7 @@ use request;
 use request::RequestType;
 use rquery::Document;
 use super::{AnimeInfo, Auth, Status};
-use self::chrono::date::Date;
+use self::chrono::Date;
 use self::chrono::Local;
 use self::xml::writer::{EmitterConfig, XmlEvent};
 

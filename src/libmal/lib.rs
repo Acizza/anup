@@ -1,5 +1,4 @@
 #[macro_use] extern crate error_chain;
-extern crate chrono;
 extern crate hyper;
 extern crate rquery;
 
