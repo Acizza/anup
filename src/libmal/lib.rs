@@ -3,7 +3,6 @@ extern crate failure;
 extern crate reqwest;
 extern crate rquery;
 
-use std::io::Read;
 use std::string::ToString;
 use failure::Error;
 use reqwest::{Url, Response};
@@ -20,7 +19,7 @@ pub enum XmlError {
 #[derive(Debug)]
 pub struct MAL {
     pub username: String,
-    pub password: String,
+    password: String,
     client: reqwest::Client,
 }
 
@@ -34,38 +33,9 @@ impl MAL {
     }
 
     pub fn search(&self, name: &str) -> Result<Vec<AnimeEntry>, Error> {
-        let resp = self.perform_request(Request::Find(name))?;
-        let entries = AnimeEntry::all_from_xml(resp)?;
+        let resp = self.exec_request(RequestURL::Search(name))?;
 
-        Ok(entries)
-    }
-
-    fn perform_request(&self, req_type: Request) -> Result<Response, Error> {
-        let mut req = match req_type {
-            Request::Find(_) => self.client.get(&req_type.to_string()),
-            Request::Add(_)  => self.client.post(&req_type.to_string()),
-        };
-
-        let resp = req
-            .basic_auth(
-                self.username.clone(),
-                Some(self.password.clone()))
-            .send()?;
-
-        Ok(resp)
-    }
-}
-
-#[derive(Debug)]
-pub struct AnimeEntry {
-    pub id:       u32,
-    pub title:    String,
-    pub episodes: u32,
-}
-
-impl AnimeEntry {
-    fn all_from_xml<R: Read>(xml: R) -> Result<Vec<AnimeEntry>, Error> {
-        let doc = Document::new_from_xml_stream(xml)
+        let doc = Document::new_from_xml_stream(resp)
             .map_err(|e| XmlError::Load(e))?;
 
         let mut entries = Vec::new();
@@ -81,33 +51,50 @@ impl AnimeEntry {
 
             entries.push(anime_entry);
         }
-        
+
         Ok(entries)
     }
+
+    fn exec_request(&self, req_type: RequestURL) -> reqwest::Result<Response> {
+        let mut req = match req_type {
+            RequestURL::Search(_) => self.client.get(&req_type.to_string()),
+            RequestURL::Add(_)    => self.client.post(&req_type.to_string()),
+        };
+
+        req.basic_auth(self.username.clone(), Some(self.password.clone()))
+           .send()
+    }
+}
+
+#[derive(Debug)]
+pub struct AnimeEntry {
+    pub id:       u32,
+    pub title:    String,
+    pub episodes: u32,
 }
 
 pub type ID = u32;
 
 #[derive(Debug)]
-enum Request<'a> {
-    Find(&'a str),
+enum RequestURL<'a> {
+    Search(&'a str),
     Add(ID),
 }
 
-impl<'a> Request<'a> {
+impl<'a> RequestURL<'a> {
     const BASE_URL: &'static str = "https://myanimelist.net";
 }
 
-impl<'a> ToString for Request<'a> {
+impl<'a> ToString for RequestURL<'a> {
     fn to_string(&self) -> String {
-        let mut url = Url::parse(Request::BASE_URL).unwrap();
+        let mut url = Url::parse(RequestURL::BASE_URL).unwrap();
 
         match *self {
-            Request::Find(ref name) => {
+            RequestURL::Search(ref name) => {
                 url.set_path("/api/anime/search.xml");
                 url.query_pairs_mut().append_pair("q", &name);
             },
-            Request::Add(id) => {
+            RequestURL::Add(id) => {
                 url.set_path(&format!("/api/animelist/add/{}.xml", id));
             },
         }
