@@ -37,8 +37,8 @@ fn find_and_select_series(mal: &MAL, name: &str) -> Result<mal::AnimeEntry, Erro
     if series.len() == 0 {
         return Err(format_err!("no anime named [{}] found", name));
     } else if series.len() > 1 {
-        println!("multiple anime named [{}] found", name);
-        println!("enter the number next to the anime name for the one you want\n");
+        println!("found multiple anime named [{}] on MAL", name);
+        println!("input the number corrosponding with the intended anime:\n");
 
         for (i, s) in series.iter().enumerate() {
             println!("{} [{}]", 1 + i, s.title);
