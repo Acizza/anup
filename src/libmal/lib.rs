@@ -9,8 +9,8 @@ use minidom::Element;
 use reqwest::{Url, Response};
 
 #[derive(Fail, Debug)]
-#[fail(display = "unable to find XML node named '{}'", _0)]
-pub struct MissingXMLNode(&'static str);
+#[fail(display = "unable to find XML node named '{}' in MAL response", _0)]
+pub struct MissingXMLNode(pub &'static str);
 
 #[derive(Debug)]
 pub struct MAL {

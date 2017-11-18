@@ -8,11 +8,12 @@ mod input;
 mod series;
 
 use std::path::Path;
-use failure::Error;
+use failure::{Error, ResultExt};
 use mal::MAL;
 use series::Series;
 
-fn main() {
+fn run() -> Result<(), Error> {
+    // Temporary
     let args = std::env::args().collect::<Vec<String>>();
 
     let series = match Series::from_path(Path::new(&args[1])) {
@@ -26,13 +27,31 @@ fn main() {
     println!("{:?}", series);
 
     let mal = MAL::new(args[2].clone(), args[3].clone());
-    let selected = find_and_select_series(&mal, &series.name).unwrap();
+    let selected = find_and_select_series(&mal, &series.name)?;
 
     println!("selected:\n{:?}", selected);
+    Ok(())
+}
+
+fn main() {
+    match run() {
+        Ok(_) => (),
+        Err(e) => {
+            let mut fail: &failure::Fail = e.cause();
+            eprintln!("fatal error: {}", fail);
+
+            while let Some(cause) = fail.cause() {
+                eprintln!("cause: {}", cause);
+                fail = cause;
+            }
+
+            eprintln!("{}", e.backtrace());
+        },
+    }
 }
 
 fn find_and_select_series(mal: &MAL, name: &str) -> Result<mal::AnimeEntry, Error> {
-    let mut series = mal.search(name)?;
+    let mut series = mal.search(name).context("MAL search failed")?;
 
     if series.len() == 0 {
         return Err(format_err!("no anime named [{}] found", name));
