@@ -1,22 +1,15 @@
 use std;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use failure::Error;
 use regex::Regex;
 
-error_chain! {
-    foreign_links {
-        Io(std::io::Error);
-    }
-
-    errors {
-        MultipleSeriesFound {
-            display("multiple series found")
-        }
-
-        NoEpisodesFound {
-            display("no episodes found")
-        }
-    }
+#[derive(Fail, Debug)]
+pub enum SeriesError {
+    #[fail(display = "multiple series found")]
+    MultipleSeriesFound,
+    #[fail(display = "no episodes found")]
+    NoEpisodesFound,
 }
 
 type EpisodeNumber = u32;
@@ -28,7 +21,7 @@ pub struct Series {
 }
 
 impl Series {
-    pub fn from_path(path: &Path) -> Result<Series> {
+    pub fn from_path(path: &Path) -> Result<Series, Error> {
         let mut series = None;
         let mut episodes = HashMap::new();
 
@@ -43,16 +36,16 @@ impl Series {
 
             match series {
                 Some(ref set_series) if set_series != &ep_info.series => {
-                    bail!(ErrorKind::MultipleSeriesFound)
+                    return Err(SeriesError::MultipleSeriesFound.into());
                 },
                 None => series = Some(ep_info.series),
-                _    => (),
+                _ => (),
             }
 
             episodes.insert(ep_info.number, path);
         }
 
-        let series = series.ok_or(ErrorKind::NoEpisodesFound)?;
+        let series = series.ok_or(SeriesError::NoEpisodesFound)?;
 
         Ok(Series {
             name: series,

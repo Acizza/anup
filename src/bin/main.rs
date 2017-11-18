@@ -1,4 +1,5 @@
-#[macro_use] extern crate error_chain;
+#[macro_use] extern crate failure;
+#[macro_use] extern crate failure_derive;
 #[macro_use] extern crate lazy_static;
 extern crate mal;
 extern crate regex;
@@ -7,21 +8,9 @@ mod input;
 mod series;
 
 use std::path::Path;
+use failure::Error;
 use mal::MAL;
 use series::Series;
-
-error_chain! {
-    links {
-        MAL(mal::Error, mal::ErrorKind);
-        Input(input::Error, input::ErrorKind);
-    }
-
-    errors {
-        NoAnimeFound(name: String) {
-            display("no anime named [{}] found", name)
-        }
-    }
-}
 
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();
@@ -42,11 +31,11 @@ fn main() {
     println!("selected:\n{:?}", selected);
 }
 
-fn find_and_select_series(mal: &MAL, name: &str) -> Result<mal::AnimeEntry> {
+fn find_and_select_series(mal: &MAL, name: &str) -> Result<mal::AnimeEntry, Error> {
     let mut series = mal.search(name)?;
 
     if series.len() == 0 {
-        bail!(ErrorKind::NoAnimeFound(name.into()))
+        return Err(format_err!("no anime named [{}] found", name));
     } else if series.len() > 1 {
         println!("multiple anime named [{}] found", name);
         println!("enter the number next to the anime name for the one you want\n");
