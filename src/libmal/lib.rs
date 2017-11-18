@@ -1,20 +1,16 @@
 #[macro_use] extern crate failure_derive;
 extern crate failure;
+extern crate minidom;
 extern crate reqwest;
-extern crate rquery;
 
 use std::string::ToString;
-use failure::Error;
+use failure::{Error, SyncFailure};
+use minidom::Element;
 use reqwest::{Url, Response};
-use rquery::Document;
 
-#[derive(Debug, Fail)]
-pub enum XmlError {
-    #[fail(display = "failed to load XML: {:?}", _0)]
-    Load(rquery::DocumentError),
-    #[fail(display = "failed to parse XML: {:?}", _0)]
-    Parse(rquery::SelectError),
-}
+#[derive(Fail, Debug)]
+#[fail(display = "unable to find XML node named '{}'", _0)]
+pub struct MissingXMLNode(&'static str);
 
 #[derive(Debug)]
 pub struct MAL {
@@ -33,23 +29,26 @@ impl MAL {
     }
 
     pub fn search(&self, name: &str) -> Result<Vec<AnimeEntry>, Error> {
-        let resp = self.exec_request(RequestURL::Search(name))?;
-
-        let doc = Document::new_from_xml_stream(resp)
-            .map_err(|e| XmlError::Load(e))?;
+        let resp = self.exec_request(RequestURL::Search(name))?.text()?;
+        let root: Element = resp.parse().map_err(SyncFailure::new)?;
 
         let mut entries = Vec::new();
 
-        for entry in doc.select_all("entry").map_err(|e| XmlError::Parse(e))? {
-            let select = |n| entry.select(n).map_err(|e| XmlError::Parse(e));
-
-            let anime_entry = AnimeEntry {
-                id:       select("id")?.text().parse()?,
-                title:    select("title")?.text().clone(),
-                episodes: select("episodes")?.text().parse()?,
+        for child in root.children() {
+            let get_child = |name| {
+                child.children()
+                     .find(|c| c.name() == name)
+                     .map(|c| c.text())
+                     .ok_or(MissingXMLNode(name))
             };
 
-            entries.push(anime_entry);
+            let entry = AnimeEntry {
+                id:       get_child("id")?.parse()?,
+                title:    get_child("title")?,
+                episodes: get_child("episodes")?.parse()?,
+            };
+
+            entries.push(entry);
         }
 
         Ok(entries)
