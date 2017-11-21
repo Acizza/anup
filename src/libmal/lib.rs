@@ -28,7 +28,7 @@ impl MAL {
         }
     }
 
-    pub fn search(&self, name: &str) -> Result<Vec<AnimeEntry>, Error> {
+    pub fn search(&self, name: &str) -> Result<Vec<SearchEntry>, Error> {
         let resp = self.exec_request(RequestURL::Search(name))?.text()?;
         let root: Element = resp.parse().map_err(SyncFailure::new)?;
 
@@ -42,7 +42,7 @@ impl MAL {
                      .ok_or(MissingXMLNode(name))
             };
 
-            let entry = AnimeEntry {
+            let entry = SearchEntry {
                 id:       get_child("id")?.parse()?,
                 title:    get_child("title")?,
                 episodes: get_child("episodes")?.parse()?,
@@ -66,7 +66,7 @@ impl MAL {
 }
 
 #[derive(Debug)]
-pub struct AnimeEntry {
+pub struct SearchEntry {
     pub id:       u32,
     pub title:    String,
     pub episodes: u32,

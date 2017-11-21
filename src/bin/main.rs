@@ -50,7 +50,7 @@ fn main() {
     }
 }
 
-fn find_and_select_series(mal: &MAL, name: &str) -> Result<mal::AnimeEntry, Error> {
+fn find_and_select_series(mal: &MAL, name: &str) -> Result<mal::SearchEntry, Error> {
     let mut series = mal.search(name).context("MAL search failed")?;
 
     if series.len() == 0 {
