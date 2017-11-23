@@ -20,13 +20,7 @@ fn run() -> Result<(), Error> {
     // Temporary
     let args = std::env::args().collect::<Vec<String>>();
 
-    let series = match Series::from_path(Path::new(&args[1])) {
-        Ok(s) => s,
-        Err(err) => {
-            eprintln!("{}", err);
-            panic!("{:?}", err);
-        }
-    };
+    let series = Series::from_path(Path::new(&args[1]))?;
 
     let mal = MAL::new(args[2].clone(), args[3].clone());
     let selected = find_and_select_series(&mal, &series.name)?;
