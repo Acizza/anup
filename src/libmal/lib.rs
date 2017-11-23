@@ -11,7 +11,7 @@ pub mod list;
 use failure::{Error, SyncFailure};
 use list::ListEntry;
 use minidom::Element;
-use reqwest::{Response, Url};
+use reqwest::{RequestBuilder, Response, Url};
 use std::string::ToString;
 
 pub type ID = u32;
@@ -74,7 +74,7 @@ impl MAL {
     }
 
     pub fn search(&self, name: &str) -> Result<Vec<SeriesInfo>, Error> {
-        let resp = self.exec_request(RequestURL::Search(name))?.text()?;
+        let resp = self.send_get_auth_req(RequestURL::Search(name))?.text()?;
         let root: Element = resp.parse().map_err(SyncFailure::new)?;
 
         let mut entries = Vec::new();
@@ -104,14 +104,16 @@ impl MAL {
         list::get_for_user(&self.username)
     }
 
-    // TODO: handle invalid credentials
-    fn exec_request(&self, req_type: RequestURL) -> reqwest::Result<Response> {
-        let mut req = match req_type {
-            RequestURL::Search(_) => self.client.get(&req_type.to_string()),
-            RequestURL::Add(_) => self.client.post(&req_type.to_string()),
-            RequestURL::AnimeList(_) => self.client.get(&req_type.to_string()), // Temporary
-        };
+    fn send_get_auth_req(&self, req_type: RequestURL) -> reqwest::Result<Response> {
+        self.send_auth_req(self.client.get(&req_type.to_string()))
+    }
 
+    fn send_post_auth_req(&self, req_type: RequestURL) -> reqwest::Result<Response> {
+        self.send_auth_req(self.client.post(&req_type.to_string()))
+    }
+
+    // TODO: handle invalid credentials
+    fn send_auth_req(&self, mut req: RequestBuilder) -> reqwest::Result<Response> {
         req.basic_auth(self.username.clone(), Some(self.password.clone()))
             .send()
     }
