@@ -24,12 +24,17 @@ fn run() -> Result<(), Error> {
         },
     };
 
-    println!("{:?}", series);
-
     let mal = MAL::new(args[2].clone(), args[3].clone());
     let selected = find_and_select_series(&mal, &series.name)?;
 
-    println!("selected:\n{:?}", selected);
+    let anime_list = mal.get_anime_list().context("anime list retrieval failed")?;
+
+    if let Some(list_status) = anime_list.iter().find(|a| a.info.id == selected.id) {
+        println!("found anime on anime list:\n{:?}", list_status);
+    } else {
+        println!("anime not found on anime list");
+    }
+
     Ok(())
 }
 

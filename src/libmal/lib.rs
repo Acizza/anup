@@ -1,12 +1,55 @@
 #[macro_use] extern crate failure_derive;
+extern crate chrono;
 extern crate failure;
 extern crate minidom;
 extern crate reqwest;
 
-use std::string::ToString;
+pub mod list;
+
 use failure::{Error, SyncFailure};
+use list::ListEntry;
 use minidom::Element;
 use reqwest::{Url, Response};
+use std::string::ToString;
+
+pub type ID = u32;
+
+#[derive(Debug)]
+enum RequestURL<'a> {
+    AnimeList(&'a str),
+    Search(&'a str),
+    Add(ID),
+}
+
+impl<'a> RequestURL<'a> {
+    const BASE_URL: &'static str = "https://myanimelist.net";
+}
+
+impl<'a> ToString for RequestURL<'a> {
+    fn to_string(&self) -> String {
+        let mut url = Url::parse(RequestURL::BASE_URL).unwrap();
+
+        match *self {
+            RequestURL::AnimeList(ref uname) => {
+                url.set_path("/malappinfo.php");
+
+                url.query_pairs_mut()
+                   .append_pair("u", &uname)
+                   .append_pair("status", "all")
+                   .append_pair("type", "anime");
+            },
+            RequestURL::Search(ref name) => {
+                url.set_path("/api/anime/search.xml");
+                url.query_pairs_mut().append_pair("q", &name);
+            },
+            RequestURL::Add(id) => {
+                url.set_path(&format!("/api/animelist/add/{}.xml", id));
+            },
+        }
+
+        url.into_string()
+    }
+}
 
 #[derive(Fail, Debug)]
 #[fail(display = "unable to find XML node named '{}' in MAL response", _0)]
@@ -54,10 +97,16 @@ impl MAL {
         Ok(entries)
     }
 
+    pub fn get_anime_list(&self) -> Result<Vec<ListEntry>, Error> {
+        list::get_for_user(&self.username)
+    }
+
+    // TODO: handle invalid credentials
     fn exec_request(&self, req_type: RequestURL) -> reqwest::Result<Response> {
         let mut req = match req_type {
             RequestURL::Search(_) => self.client.get(&req_type.to_string()),
             RequestURL::Add(_)    => self.client.post(&req_type.to_string()),
+            RequestURL::AnimeList(_) => self.client.get(&req_type.to_string()), // Temporary
         };
 
         req.basic_auth(self.username.clone(), Some(self.password.clone()))
@@ -70,34 +119,4 @@ pub struct SearchEntry {
     pub id:       u32,
     pub title:    String,
     pub episodes: u32,
-}
-
-pub type ID = u32;
-
-#[derive(Debug)]
-enum RequestURL<'a> {
-    Search(&'a str),
-    Add(ID),
-}
-
-impl<'a> RequestURL<'a> {
-    const BASE_URL: &'static str = "https://myanimelist.net";
-}
-
-impl<'a> ToString for RequestURL<'a> {
-    fn to_string(&self) -> String {
-        let mut url = Url::parse(RequestURL::BASE_URL).unwrap();
-
-        match *self {
-            RequestURL::Search(ref name) => {
-                url.set_path("/api/anime/search.xml");
-                url.query_pairs_mut().append_pair("q", &name);
-            },
-            RequestURL::Add(id) => {
-                url.set_path(&format!("/api/animelist/add/{}.xml", id));
-            },
-        }
-
-        url.into_string()
-    }
 }
