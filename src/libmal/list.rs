@@ -4,11 +4,11 @@ use minidom::Element;
 use MissingXMLNode;
 use RequestURL;
 use reqwest;
-use SearchEntry;
+use SeriesInfo;
 
 #[derive(Debug)]
 pub struct ListEntry {
-    pub info: SearchEntry,
+    pub info: SeriesInfo,
     pub watched_episodes: u32,
     pub start_date: Option<NaiveDate>,
     pub end_date: Option<NaiveDate>,
@@ -57,7 +57,7 @@ pub fn get_for_user(username: &str) -> Result<Vec<ListEntry>, Error> {
         };
 
         let entry = ListEntry {
-            info: SearchEntry {
+            info: SeriesInfo {
                 id: get_child("series_animedb_id")?.parse()?,
                 title: get_child("series_title")?,
                 episodes: get_child("series_episodes")?.parse()?,
