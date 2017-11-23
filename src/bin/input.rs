@@ -13,7 +13,7 @@ pub fn read_usize_range(min: usize, max: usize) -> Result<usize, Error> {
         let input = read_line()?.parse()?;
 
         if input >= min && input <= max {
-            return Ok(input)
+            return Ok(input);
         } else {
             println!("input must be between {}-{}", min, max);
         }

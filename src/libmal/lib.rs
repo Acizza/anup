@@ -1,4 +1,6 @@
-#[macro_use] extern crate failure_derive;
+#[macro_use]
+extern crate failure_derive;
+
 extern crate chrono;
 extern crate failure;
 extern crate minidom;
@@ -9,7 +11,7 @@ pub mod list;
 use failure::{Error, SyncFailure};
 use list::ListEntry;
 use minidom::Element;
-use reqwest::{Url, Response};
+use reqwest::{Response, Url};
 use std::string::ToString;
 
 pub type ID = u32;
@@ -34,17 +36,17 @@ impl<'a> ToString for RequestURL<'a> {
                 url.set_path("/malappinfo.php");
 
                 url.query_pairs_mut()
-                   .append_pair("u", &uname)
-                   .append_pair("status", "all")
-                   .append_pair("type", "anime");
-            },
+                    .append_pair("u", &uname)
+                    .append_pair("status", "all")
+                    .append_pair("type", "anime");
+            }
             RequestURL::Search(ref name) => {
                 url.set_path("/api/anime/search.xml");
                 url.query_pairs_mut().append_pair("q", &name);
-            },
+            }
             RequestURL::Add(id) => {
                 url.set_path(&format!("/api/animelist/add/{}.xml", id));
-            },
+            }
         }
 
         url.into_string()
@@ -79,15 +81,16 @@ impl MAL {
 
         for child in root.children() {
             let get_child = |name| {
-                child.children()
-                     .find(|c| c.name() == name)
-                     .map(|c| c.text())
-                     .ok_or(MissingXMLNode(name))
+                child
+                    .children()
+                    .find(|c| c.name() == name)
+                    .map(|c| c.text())
+                    .ok_or(MissingXMLNode(name))
             };
 
             let entry = SeriesInfo {
-                id:       get_child("id")?.parse()?,
-                title:    get_child("title")?,
+                id: get_child("id")?.parse()?,
+                title: get_child("title")?,
                 episodes: get_child("episodes")?.parse()?,
             };
 
@@ -105,18 +108,18 @@ impl MAL {
     fn exec_request(&self, req_type: RequestURL) -> reqwest::Result<Response> {
         let mut req = match req_type {
             RequestURL::Search(_) => self.client.get(&req_type.to_string()),
-            RequestURL::Add(_)    => self.client.post(&req_type.to_string()),
+            RequestURL::Add(_) => self.client.post(&req_type.to_string()),
             RequestURL::AnimeList(_) => self.client.get(&req_type.to_string()), // Temporary
         };
 
         req.basic_auth(self.username.clone(), Some(self.password.clone()))
-           .send()
+            .send()
     }
 }
 
 #[derive(Debug)]
 pub struct SeriesInfo {
-    pub id:       u32,
-    pub title:    String,
+    pub id: u32,
+    pub title: String,
     pub episodes: u32,
 }

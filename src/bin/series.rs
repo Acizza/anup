@@ -6,17 +6,15 @@ use regex::Regex;
 
 #[derive(Fail, Debug)]
 pub enum SeriesError {
-    #[fail(display = "multiple series found")]
-    MultipleSeriesFound,
-    #[fail(display = "no episodes found")]
-    NoEpisodesFound,
+    #[fail(display = "multiple series found")] MultipleSeriesFound,
+    #[fail(display = "no episodes found")] NoEpisodesFound,
 }
 
 type EpisodeNumber = u32;
 
 #[derive(Debug)]
 pub struct Series {
-    pub name:     String,
+    pub name: String,
     pub episodes: HashMap<EpisodeNumber, PathBuf>,
 }
 
@@ -31,13 +29,13 @@ impl Series {
 
             let ep_info = match EpisodeInfo::from_path(&path) {
                 Some(info) => info,
-                None       => continue,
+                None => continue,
             };
 
             match series {
                 Some(ref set_series) if set_series != &ep_info.series => {
                     return Err(SeriesError::MultipleSeriesFound.into());
-                },
+                }
                 None => series = Some(ep_info.series),
                 _ => (),
             }
@@ -63,7 +61,7 @@ struct EpisodeInfo {
 impl EpisodeInfo {
     fn from_path(path: &Path) -> Option<EpisodeInfo> {
         if !path.is_file() {
-            return None
+            return None;
         }
 
         lazy_static! {
@@ -71,10 +69,7 @@ impl EpisodeInfo {
                 .unwrap();
         }
 
-        let filename = path.file_name()?
-            .to_str()
-            .unwrap()
-            .replace('_', " ");
+        let filename = path.file_name()?.to_str().unwrap().replace('_', " ");
 
         let caps = RE.captures(&filename)?;
 

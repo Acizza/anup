@@ -1,6 +1,10 @@
-#[macro_use] extern crate failure;
-#[macro_use] extern crate failure_derive;
-#[macro_use] extern crate lazy_static;
+#[macro_use]
+extern crate failure;
+#[macro_use]
+extern crate failure_derive;
+#[macro_use]
+extern crate lazy_static;
+
 extern crate mal;
 extern crate regex;
 
@@ -21,7 +25,7 @@ fn run() -> Result<(), Error> {
         Err(err) => {
             eprintln!("{}", err);
             panic!("{:?}", err);
-        },
+        }
     };
 
     let mal = MAL::new(args[2].clone(), args[3].clone());
@@ -51,7 +55,7 @@ fn main() {
             }
 
             eprintln!("{}", e.backtrace());
-        },
+        }
     }
 }
 
