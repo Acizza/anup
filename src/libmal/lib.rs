@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate failure_derive;
 
+pub mod list;
+
 mod request;
 
 extern crate chrono;
@@ -8,18 +10,20 @@ extern crate failure;
 extern crate minidom;
 extern crate reqwest;
 
-pub mod list;
-
 use chrono::NaiveDate;
 use failure::{Error, SyncFailure};
 use list::{AnimeEntry, EntryTag, Status};
 use minidom::Element;
 use request::RequestURL;
 
+/// Represents basic information of an anime series on MyAnimeList.
 #[derive(Debug)]
 pub struct SeriesInfo {
+    /// The ID of the anime series.
     pub id: u32,
+    /// The title of the anime series.
     pub title: String,
+    /// The number of episodes in the anime series.
     pub episodes: u32,
 }
 
@@ -31,14 +35,19 @@ pub struct MissingXMLNode(pub String);
 #[fail(display = "received bad response from MAL: {} {}", _0, _1)]
 pub struct BadResponse(pub u16, pub String);
 
+/// Used to interact with the MyAnimeList API with authorization being handled automatically.
 #[derive(Debug)]
 pub struct MAL {
+    /// The user's name on MyAnimeList
     pub username: String,
-    pub password: String,
+    password: String,
     client: reqwest::Client,
 }
 
 impl MAL {
+    /// Creates a new instance of the MAL struct for interacting with the MyAnimeList API.
+    ///
+    /// If you only need to call `MAL::get_anime_list`, then the `password` field can be an empty string.
     pub fn new(username: String, password: String) -> MAL {
         MAL {
             username,
@@ -47,6 +56,18 @@ impl MAL {
         }
     }
 
+    /// Searches MyAnimeList for an anime and returns all found results.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use mal::MAL;
+    ///
+    /// let mal = MAL::new("username".into(), "password".into());
+    /// let found = mal.search("Cowboy Bebop").unwrap();
+    ///
+    /// assert!(found.len() > 0);
+    /// ```
     pub fn search(&self, name: &str) -> Result<Vec<SeriesInfo>, Error> {
         let resp = request::auth_get(&self, RequestURL::Search(name))?.text()?;
         let root: Element = resp.parse().map_err(SyncFailure::new)?;
@@ -68,6 +89,10 @@ impl MAL {
         Ok(entries)
     }
 
+    /// Retrieves the user's anime list and returns every entry as an AnimeEntry.
+    ///
+    /// If this is the only function you need to call in `MAL`, you don't need
+    /// to provide a valid password when calling `MAL::new`.
     pub fn get_anime_list(&self) -> Result<Vec<AnimeEntry>, Error> {
         let resp = request::auth_get(&self, RequestURL::AnimeList(&self.username))?.text()?;
         let root: Element = resp.parse().map_err(SyncFailure::new)?;

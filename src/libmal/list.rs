@@ -3,12 +3,18 @@ use failure::{Error, SyncFailure};
 use minidom::Element;
 use SeriesInfo;
 
+/// Represents information about an anime series on a user's list.
 #[derive(Debug)]
 pub struct AnimeEntry {
+    /// The general series information.
     pub info: SeriesInfo,
+    /// The number of episodes watched.
     pub watched_episodes: u32,
+    /// The date the user started watching the series.
     pub start_date: Option<NaiveDate>,
+    /// The date the user finished watching the series.
     pub end_date: Option<NaiveDate>,
+    /// The current watch status of the series.
     pub status: Status,
 }
 
@@ -16,7 +22,8 @@ pub struct AnimeEntry {
 #[fail(display = "{} does not map to any Status enum variants", _0)]
 pub struct InvalidStatus(pub i32);
 
-#[derive(Debug, Clone)]
+/// Represents the watch status of an anime on a user's list.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Status {
     Watching = 1,
     Completed,
@@ -26,6 +33,19 @@ pub enum Status {
 }
 
 impl Status {
+    /// Attempts to convert an i32 to a `Status`.
+    ///
+    /// Note that the i32 value of each `Status` variant is mapped
+    /// to the one provided by the MyAnimeList API, so they do not increment naturally.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use mal::list::Status;
+    ///
+    /// let status = Status::from_i32(1).unwrap();
+    /// assert_eq!(status, Status::Watching);
+    /// ```
     pub fn from_i32(value: i32) -> Result<Status, InvalidStatus> {
         match value {
             1 => Ok(Status::Watching),
@@ -38,13 +58,20 @@ impl Status {
     }
 }
 
+/// Represents a specific value of an anime on a user's anime list.
 #[derive(Debug)]
 pub enum EntryTag {
+    /// The number of watched episodes.
     Episode(u32),
+    /// The current watch status.
     Status(Status),
+    /// The date the user started watching the anime.
     StartDate(NaiveDate),
+    /// The date the user finished watching the anime.
     FinishDate(NaiveDate),
+    /// The score to give the anime.
     Score(u8),
+    /// Indicates whether or not the user is rewatching the anime.
     Rewatching(bool),
 }
 
