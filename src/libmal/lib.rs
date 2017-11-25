@@ -95,7 +95,27 @@ impl MAL {
         Ok(entries)
     }
 
-    pub fn add_to_list(&self, id: u32, tags: &[EntryTag]) -> Result<(), Error> {
+    /// Adds an anime to the user's list.
+    /// If the specified anime is already on the user's list, the function will return an HTTP 400 error.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The MyAnimeList ID for the anime to add
+    /// * `tags` - The values to set on the specified anime
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use mal::MAL;
+    /// use mal::list::{EntryTag, Status};
+    ///
+    /// // ID for Cowboy Bebop
+    /// let id = 1;
+    ///
+    /// let mal = MAL::new("username".into(), "password".into());
+    /// mal.add_anime(id, &[EntryTag::Status(Status::Watching)]).unwrap();
+    /// ```
+    pub fn add_anime(&self, id: u32, tags: &[EntryTag]) -> Result<(), Error> {
         let body = EntryTag::build_xml_resp(tags)?;
         request::auth_post(&self, RequestURL::Add(id), body)?;
 
@@ -109,6 +129,19 @@ impl MAL {
     ///
     /// * `id` - The MyAnimeList ID for the anime to update
     /// * `tags` - The values to set on the specified anime
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use mal::MAL;
+    /// use mal::list::{EntryTag, Status};
+    ///
+    /// // ID for Cowboy Bebop
+    /// let id = 1;
+    ///
+    /// let mal = MAL::new("username".into(), "password".into());
+    /// mal.update_anime(id, &[EntryTag::Episode(5)]).unwrap();
+    /// ```
     pub fn update_anime(&self, id: u32, tags: &[EntryTag]) -> Result<(), Error> {
         let body = EntryTag::build_xml_resp(tags)?;
         request::auth_post(&self, RequestURL::Update(id), body)?;
