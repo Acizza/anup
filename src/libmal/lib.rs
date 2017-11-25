@@ -8,8 +8,11 @@ extern crate failure;
 extern crate minidom;
 extern crate reqwest;
 
+pub mod list;
+
 use chrono::NaiveDate;
 use failure::{Error, SyncFailure};
+use list::{AnimeEntry, EntryTag, Status};
 use minidom::Element;
 use request::RequestURL;
 
@@ -18,41 +21,6 @@ pub struct SeriesInfo {
     pub id: u32,
     pub title: String,
     pub episodes: u32,
-}
-
-#[derive(Debug)]
-pub struct ListEntry {
-    pub info: SeriesInfo,
-    pub watched_episodes: u32,
-    pub start_date: Option<NaiveDate>,
-    pub end_date: Option<NaiveDate>,
-    pub status: Status,
-}
-
-#[derive(Fail, Debug)]
-#[fail(display = "{} does not map to any Status enum variants", _0)]
-pub struct InvalidStatus(pub i32);
-
-#[derive(Debug)]
-pub enum Status {
-    Watching = 1,
-    Completed,
-    OnHold,
-    Dropped,
-    PlanToWatch = 6,
-}
-
-impl Status {
-    pub fn from_i32(value: i32) -> Result<Status, InvalidStatus> {
-        match value {
-            1 => Ok(Status::Watching),
-            2 => Ok(Status::Completed),
-            3 => Ok(Status::OnHold),
-            4 => Ok(Status::Dropped),
-            6 => Ok(Status::PlanToWatch),
-            i => Err(InvalidStatus(i)),
-        }
-    }
 }
 
 #[derive(Fail, Debug)]
@@ -100,7 +68,7 @@ impl MAL {
         Ok(entries)
     }
 
-    pub fn get_anime_list(&self) -> Result<Vec<ListEntry>, Error> {
+    pub fn get_anime_list(&self) -> Result<Vec<AnimeEntry>, Error> {
         let resp = request::auth_get(&self, RequestURL::AnimeList(&self.username))?.text()?;
         let root: Element = resp.parse().map_err(SyncFailure::new)?;
 
@@ -109,7 +77,7 @@ impl MAL {
         for child in root.children().skip(1) {
             let get_child = |name| get_xml_child_text(child, name);
 
-            let entry = ListEntry {
+            let entry = AnimeEntry {
                 info: SeriesInfo {
                     id: get_child("series_animedb_id")?.parse()?,
                     title: get_child("series_title")?,
@@ -125,6 +93,13 @@ impl MAL {
         }
 
         Ok(entries)
+    }
+
+    pub fn add_to_list(&self, id: u32, tags: &[EntryTag]) -> Result<(), Error> {
+        let body = EntryTag::build_xml_resp(tags)?;
+        request::auth_post(&self, RequestURL::Add(id), body)?;
+
+        Ok(())
     }
 }
 

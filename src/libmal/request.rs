@@ -1,6 +1,7 @@
 use failure::Error;
 use MAL;
 use reqwest::{RequestBuilder, Response, Url};
+use reqwest::header::{ContentType, Headers};
 
 pub type ID = u32;
 
@@ -46,14 +47,23 @@ impl<'a> ToString for RequestURL<'a> {
 pub struct BadResponse(pub u16, pub String);
 
 pub fn auth_get(mal: &MAL, req_type: RequestURL) -> Result<Response, Error> {
-    send_auth_req(mal, mal.client.get(&req_type.to_string()))
+    send_auth_req(mal, &mut mal.client.get(&req_type.to_string()))
 }
 
-pub fn auth_post(mal: &MAL, req_type: RequestURL) -> Result<Response, Error> {
-    send_auth_req(mal, mal.client.post(&req_type.to_string()))
+pub fn auth_post(mal: &MAL, req_type: RequestURL, body: String) -> Result<Response, Error> {
+    let mut headers = Headers::new();
+    headers.set(ContentType::form_url_encoded());
+
+    send_auth_req(
+        mal,
+        mal.client
+            .post(&req_type.to_string())
+            .body(format!("data={}", body))
+            .headers(headers),
+    )
 }
 
-fn send_auth_req(mal: &MAL, mut req: RequestBuilder) -> Result<Response, Error> {
+fn send_auth_req(mal: &MAL, req: &mut RequestBuilder) -> Result<Response, Error> {
     let resp = req.basic_auth(mal.username.clone(), Some(mal.password.clone()))
         .send()?;
 
