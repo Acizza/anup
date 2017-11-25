@@ -101,6 +101,20 @@ impl MAL {
 
         Ok(())
     }
+
+    /// Updates an existing anime on the user's list.
+    /// Note that if the specified anime isn't already on the user's list, nothing will happen.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The MyAnimeList ID for the anime to update
+    /// * `tags` - The values to set on the specified anime
+    pub fn update_anime(&self, id: u32, tags: &[EntryTag]) -> Result<(), Error> {
+        let body = EntryTag::build_xml_resp(tags)?;
+        request::auth_post(&self, RequestURL::Update(id), body)?;
+
+        Ok(())
+    }
 }
 
 fn get_xml_child_text(elem: &minidom::Element, name: &str) -> Result<String, MissingXMLNode> {

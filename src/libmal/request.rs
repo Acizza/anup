@@ -10,6 +10,7 @@ pub enum RequestURL<'a> {
     AnimeList(&'a str),
     Search(&'a str),
     Add(ID),
+    Update(ID),
 }
 
 impl<'a> RequestURL<'a> {
@@ -35,6 +36,9 @@ impl<'a> ToString for RequestURL<'a> {
             }
             RequestURL::Add(id) => {
                 url.set_path(&format!("/api/animelist/add/{}.xml", id));
+            }
+            RequestURL::Update(id) => {
+                url.set_path(&format!("/api/animelist/update/{}.xml", id));
             }
         }
 
