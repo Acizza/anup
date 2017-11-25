@@ -15,6 +15,7 @@ use failure::{Error, SyncFailure};
 use list::{AnimeEntry, EntryTag, Status};
 use minidom::Element;
 use request::RequestURL;
+use std::convert::Into;
 
 /// Represents basic information of an anime series on MyAnimeList.
 #[derive(Debug)]
@@ -48,10 +49,10 @@ impl MAL {
     /// Creates a new instance of the MAL struct for interacting with the MyAnimeList API.
     ///
     /// If you only need to call `MAL::get_anime_list`, then the `password` field can be an empty string.
-    pub fn new(username: String, password: String) -> MAL {
+    pub fn new<S: Into<String>>(username: S, password: S) -> MAL {
         MAL {
-            username,
-            password,
+            username: username.into(),
+            password: password.into(),
             client: reqwest::Client::new(),
         }
     }
@@ -63,7 +64,7 @@ impl MAL {
     /// ```no_run
     /// use mal::MAL;
     ///
-    /// let mal = MAL::new("username".into(), "password".into());
+    /// let mal = MAL::new("username", "password");
     /// let found = mal.search("Cowboy Bebop").unwrap();
     ///
     /// assert!(found.len() > 0);
@@ -137,7 +138,7 @@ impl MAL {
     /// // ID for Cowboy Bebop
     /// let id = 1;
     ///
-    /// let mal = MAL::new("username".into(), "password".into());
+    /// let mal = MAL::new("username", "password");
     /// mal.add_anime(id, &[EntryTag::Status(Status::Watching)]).unwrap();
     /// ```
     pub fn add_anime(&self, id: u32, tags: &[EntryTag]) -> Result<(), Error> {
@@ -164,7 +165,7 @@ impl MAL {
     /// // ID for Cowboy Bebop
     /// let id = 1;
     ///
-    /// let mal = MAL::new("username".into(), "password".into());
+    /// let mal = MAL::new("username", "password");
     /// mal.update_anime(id, &[EntryTag::Episode(5)]).unwrap();
     /// ```
     pub fn update_anime(&self, id: u32, tags: &[EntryTag]) -> Result<(), Error> {
