@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate failure_derive;
 
+mod request;
+
 extern crate chrono;
 extern crate failure;
 extern crate minidom;
@@ -9,47 +11,7 @@ extern crate reqwest;
 use chrono::NaiveDate;
 use failure::{Error, SyncFailure};
 use minidom::Element;
-use reqwest::{RequestBuilder, Response, Url};
-use std::string::ToString;
-
-pub type ID = u32;
-
-#[derive(Debug)]
-enum RequestURL<'a> {
-    AnimeList(&'a str),
-    Search(&'a str),
-    Add(ID),
-}
-
-impl<'a> RequestURL<'a> {
-    const BASE_URL: &'static str = "https://myanimelist.net";
-}
-
-impl<'a> ToString for RequestURL<'a> {
-    fn to_string(&self) -> String {
-        let mut url = Url::parse(RequestURL::BASE_URL).unwrap();
-
-        match *self {
-            RequestURL::AnimeList(ref uname) => {
-                url.set_path("/malappinfo.php");
-
-                url.query_pairs_mut()
-                    .append_pair("u", &uname)
-                    .append_pair("status", "all")
-                    .append_pair("type", "anime");
-            }
-            RequestURL::Search(ref name) => {
-                url.set_path("/api/anime/search.xml");
-                url.query_pairs_mut().append_pair("q", &name);
-            }
-            RequestURL::Add(id) => {
-                url.set_path(&format!("/api/animelist/add/{}.xml", id));
-            }
-        }
-
-        url.into_string()
-    }
-}
+use request::RequestURL;
 
 #[derive(Debug)]
 pub struct SeriesInfo {
@@ -118,7 +80,7 @@ impl MAL {
     }
 
     pub fn search(&self, name: &str) -> Result<Vec<SeriesInfo>, Error> {
-        let resp = self.send_get_auth_req(RequestURL::Search(name))?.text()?;
+        let resp = request::auth_get(&self, RequestURL::Search(name))?.text()?;
         let root: Element = resp.parse().map_err(SyncFailure::new)?;
 
         let mut entries = Vec::new();
@@ -139,10 +101,9 @@ impl MAL {
     }
 
     pub fn get_anime_list(&self) -> Result<Vec<ListEntry>, Error> {
-        let resp = self.send_get_auth_req(RequestURL::AnimeList(&self.username))?
-            .text()?;
-
+        let resp = request::auth_get(&self, RequestURL::AnimeList(&self.username))?.text()?;
         let root: Element = resp.parse().map_err(SyncFailure::new)?;
+
         let mut entries = Vec::new();
 
         for child in root.children().skip(1) {
@@ -164,28 +125,6 @@ impl MAL {
         }
 
         Ok(entries)
-    }
-
-    fn send_get_auth_req(&self, req_type: RequestURL) -> Result<Response, Error> {
-        self.send_auth_req(self.client.get(&req_type.to_string()))
-    }
-
-    fn send_post_auth_req(&self, req_type: RequestURL) -> Result<Response, Error> {
-        self.send_auth_req(self.client.post(&req_type.to_string()))
-    }
-
-    fn send_auth_req(&self, mut req: RequestBuilder) -> Result<Response, Error> {
-        let resp = req.basic_auth(self.username.clone(), Some(self.password.clone()))
-            .send()?;
-
-        let status = resp.status();
-
-        if status.is_success() {
-            Ok(resp)
-        } else {
-            let reason = status.canonical_reason().unwrap_or("Unknown Error").into();
-            Err(BadResponse(status.as_u16(), reason).into())
-        }
     }
 }
 
