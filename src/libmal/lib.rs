@@ -57,6 +57,10 @@ impl<'a> ToString for RequestURL<'a> {
 #[fail(display = "unable to find XML node named '{}' in MAL response", _0)]
 pub struct MissingXMLNode(pub &'static str);
 
+#[derive(Fail, Debug)]
+#[fail(display = "received bad response from MAL: {} {}", _0, _1)]
+pub struct BadResponse(pub u16, pub &'static str);
+
 #[derive(Debug)]
 pub struct MAL {
     pub username: String,
@@ -104,18 +108,26 @@ impl MAL {
         list::get_for_user(&self.username)
     }
 
-    fn send_get_auth_req(&self, req_type: RequestURL) -> reqwest::Result<Response> {
+    fn send_get_auth_req(&self, req_type: RequestURL) -> Result<Response, Error> {
         self.send_auth_req(self.client.get(&req_type.to_string()))
     }
 
-    fn send_post_auth_req(&self, req_type: RequestURL) -> reqwest::Result<Response> {
+    fn send_post_auth_req(&self, req_type: RequestURL) -> Result<Response, Error> {
         self.send_auth_req(self.client.post(&req_type.to_string()))
     }
 
-    // TODO: handle invalid credentials
-    fn send_auth_req(&self, mut req: RequestBuilder) -> reqwest::Result<Response> {
-        req.basic_auth(self.username.clone(), Some(self.password.clone()))
-            .send()
+    fn send_auth_req(&self, mut req: RequestBuilder) -> Result<Response, Error> {
+        let resp = req.basic_auth(self.username.clone(), Some(self.password.clone()))
+            .send()?;
+
+        let status = resp.status();
+
+        if status.is_success() {
+            Ok(resp)
+        } else {
+            let reason = status.canonical_reason().unwrap_or("Unknown Error");
+            Err(BadResponse(status.as_u16(), reason).into())
+        }
     }
 }
 
