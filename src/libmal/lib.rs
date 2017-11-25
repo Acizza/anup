@@ -18,7 +18,7 @@ use request::RequestURL;
 use std::convert::Into;
 
 /// Represents basic information of an anime series on MyAnimeList.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SeriesInfo {
     /// The ID of the anime series.
     pub id: u32,
@@ -26,6 +26,12 @@ pub struct SeriesInfo {
     pub title: String,
     /// The number of episodes in the anime series.
     pub episodes: u32,
+}
+
+impl PartialEq for SeriesInfo {
+    fn eq(&self, other: &SeriesInfo) -> bool {
+        self.id == other.id
+    }
 }
 
 #[derive(Fail, Debug)]

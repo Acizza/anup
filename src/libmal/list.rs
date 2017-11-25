@@ -4,7 +4,7 @@ use minidom::Element;
 use SeriesInfo;
 
 /// Represents information about an anime series on a user's list.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AnimeEntry {
     /// The general series information.
     pub info: SeriesInfo,
@@ -18,12 +18,18 @@ pub struct AnimeEntry {
     pub status: Status,
 }
 
+impl PartialEq for AnimeEntry {
+    fn eq(&self, other: &AnimeEntry) -> bool {
+        self.info == other.info
+    }
+}
+
 #[derive(Fail, Debug)]
 #[fail(display = "{} does not map to any Status enum variants", _0)]
 pub struct InvalidStatus(pub i32);
 
 /// Represents the watch status of an anime on a user's list.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Status {
     Watching = 1,
     Completed,
@@ -59,7 +65,7 @@ impl Status {
 }
 
 /// Represents a specific value of an anime on a user's anime list.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum EntryTag {
     /// The number of watched episodes.
     Episode(u32),
