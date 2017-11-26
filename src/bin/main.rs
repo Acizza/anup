@@ -9,6 +9,7 @@ extern crate mal;
 extern crate regex;
 
 mod input;
+mod process;
 mod series;
 
 use std::path::Path;

@@ -1,21 +1,21 @@
+use failure::Error;
+use regex::Regex;
+use process;
 use std;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use failure::Error;
-use regex::Regex;
 
 #[derive(Fail, Debug)]
 pub enum SeriesError {
     #[fail(display = "multiple series found")] MultipleSeriesFound,
     #[fail(display = "no episodes found")] NoEpisodesFound,
+    #[fail(display = "episode {} not found", _0)] EpisodeNotFound(u32),
 }
-
-type EpisodeNumber = u32;
 
 #[derive(Debug)]
 pub struct Series {
     pub name: String,
-    pub episodes: HashMap<EpisodeNumber, PathBuf>,
+    pub episodes: HashMap<u32, PathBuf>,
 }
 
 impl Series {
@@ -50,12 +50,20 @@ impl Series {
             episodes: episodes,
         })
     }
+
+    pub fn play_episode(&self, ep_num: u32) -> Result<(), Error> {
+        let path = self.episodes.get(&ep_num)
+            .ok_or(SeriesError::EpisodeNotFound(ep_num))?;
+
+        process::open_with_default(path).output()?;
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
 struct EpisodeInfo {
     pub series: String,
-    pub number: EpisodeNumber,
+    pub number: u32,
 }
 
 impl EpisodeInfo {
