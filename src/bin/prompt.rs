@@ -43,7 +43,7 @@ pub fn add_to_anime_list(mal: &MAL, series: &Series) -> Result<AnimeEntry, Error
             series.info.id,
             &[
                 EntryTag::Status(Status::Watching),
-                EntryTag::StartDate(today),
+                EntryTag::StartDate(Some(today)),
             ],
         )?;
 
@@ -61,29 +61,55 @@ pub fn add_to_anime_list(mal: &MAL, series: &Series) -> Result<AnimeEntry, Error
     }
 }
 
-pub fn update_watched(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
-    let mut tags = vec![EntryTag::Episode(entry.watched_episodes)];
+fn completed(mal: &MAL, entry: &mut AnimeEntry, mut tags: Vec<EntryTag>) -> Result<(), Error> {
+    let today = get_today_naive();
 
-    if entry.watched_episodes >= entry.info.episodes {
-        let today = get_today_naive();
+    tags.push(EntryTag::Status(Status::Completed));
+    entry.status = Status::Completed;
 
-        tags.push(EntryTag::Status(Status::Completed));
-        tags.push(EntryTag::FinishDate(today));
+    println!(
+        "[{}] completed!\ndo you want to rate it? (Y/n)",
+        entry.info.title
+    );
 
-        entry.status = Status::Completed;
-        entry.end_date = Some(today);
+    if input::read_yn(Answer::Yes)? {
+        println!("enter your score between 1-10:");
+        let score = input::read_usize_range(1, 10)? as u8;
 
-        println!(
-            "[{}] completed!\ndo you want to rate it? (Y/n)",
-            entry.info.title
-        );
+        tags.push(EntryTag::Score(score));
+    }
+
+    if entry.rewatching {
+        tags.push(EntryTag::Rewatching(false));
+    }
+
+    // Someone may want to keep the original start / finish date for an
+    // anime they're rewatching.
+    // Also, including the rewatch check here again makes the resulting logic simpler
+    // for deciding when to set the finish date
+    if entry.rewatching && entry.end_date.is_some() {
+        println!("do you want to override the finish date? (Y/n)");
 
         if input::read_yn(Answer::Yes)? {
-            println!("enter your score between 1-10:");
-            let score = input::read_usize_range(1, 10)? as u8;
-
-            tags.push(EntryTag::Score(score));
+            tags.push(EntryTag::FinishDate(Some(today)));
+            entry.end_date = Some(today);
         }
+    } else {
+        tags.push(EntryTag::FinishDate(Some(today)));
+        entry.end_date = Some(today);
+    }
+
+    mal.update_anime(entry.info.id, &tags)?;
+    Ok(())
+}
+
+pub fn update_watched(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
+    let tags = vec![EntryTag::Episode(entry.watched_episodes)];
+
+    if entry.watched_episodes >= entry.info.episodes {
+        completed(mal, entry, tags)?;
+        // Nothing to do now
+        std::process::exit(0);
     } else {
         println!(
             "[{}] episode {}/{} completed",
@@ -91,9 +117,10 @@ pub fn update_watched(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
             entry.watched_episodes,
             entry.info.episodes
         );
+
+        mal.update_anime(entry.info.id, &tags)?;
     }
 
-    mal.update_anime(entry.info.id, &tags)?;
     Ok(())
 }
 
@@ -124,8 +151,8 @@ pub fn rewatch(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
         if input::read_yn(Answer::Yes)? {
             let today = get_today_naive();
 
-            tags.push(EntryTag::StartDate(today));
-            // TODO: set ending date
+            tags.push(EntryTag::StartDate(Some(today)));
+            tags.push(EntryTag::FinishDate(None));
 
             entry.start_date = Some(today);
             entry.end_date = None;

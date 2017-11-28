@@ -56,10 +56,6 @@ fn run(args: Vec<String>) -> Result<(), Error> {
             prompt::abnormal_player_exit(&mal, &mut entry)?;
         }
 
-        if entry.status == Status::Completed {
-            break;
-        }
-
         println!("do you want to watch the next episode? (Y/n)");
 
         if !input::read_yn(Answer::Yes)? {

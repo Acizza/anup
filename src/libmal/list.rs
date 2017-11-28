@@ -74,9 +74,9 @@ pub enum EntryTag {
     /// The current watch status.
     Status(Status),
     /// The date the user started watching the anime.
-    StartDate(NaiveDate),
+    StartDate(Option<NaiveDate>),
     /// The date the user finished watching the anime.
-    FinishDate(NaiveDate),
+    FinishDate(Option<NaiveDate>),
     /// The score to give the anime.
     Score(u8),
     /// Indicates whether or not the user is rewatching the anime.
@@ -102,8 +102,8 @@ impl EntryTag {
             let child = match *stat {
                 Episode(num) => elem_with_txt!("episode", num.to_string()),
                 Status(ref status) => elem_with_txt!("status", (status.clone() as i32).to_string()),
-                StartDate(date) => elem_with_txt!("date_start", date_to_str(&date)),
-                FinishDate(date) => elem_with_txt!("date_finish", date_to_str(&date)),
+                StartDate(date) => elem_with_txt!("date_start", date_to_str(date)),
+                FinishDate(date) => elem_with_txt!("date_finish", date_to_str(date)),
                 Score(score) => elem_with_txt!("score", score.to_string()),
                 Rewatching(v) => elem_with_txt!("enable_rewatching", (v as u8).to_string()),
             };
@@ -118,6 +118,12 @@ impl EntryTag {
     }
 }
 
-fn date_to_str(date: &NaiveDate) -> String {
-    date.format("%m%d%Y").to_string()
+fn date_to_str(date: Option<NaiveDate>) -> String {
+    match date {
+        Some(date) => date.format("%m%d%Y").to_string(),
+        None => {
+            // MAL uses an all-zero date to represent a non-set one
+            "00000000".into()
+        },
+    }
 }
