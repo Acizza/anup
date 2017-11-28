@@ -16,6 +16,8 @@ pub struct AnimeEntry {
     pub end_date: Option<NaiveDate>,
     /// The current watch status of the series.
     pub status: Status,
+    /// Indicates whether or not the anime is currently being rewatched.
+    pub rewatching: bool,
 }
 
 impl PartialEq for AnimeEntry {

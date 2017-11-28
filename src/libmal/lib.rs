@@ -119,6 +119,7 @@ impl MAL {
                 start_date: parse_str_date(&get_child("my_start_date")?),
                 end_date: parse_str_date(&get_child("my_finish_date")?),
                 status: Status::from_i32(get_child("my_status")?.parse()?)?,
+                rewatching: get_child("my_rewatching")?.parse::<u8>()? == 1,
             };
 
             entries.push(entry);

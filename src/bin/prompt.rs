@@ -53,6 +53,7 @@ pub fn add_to_anime_list(mal: &MAL, series: &Series) -> Result<AnimeEntry, Error
             start_date: Some(today),
             end_date: None,
             status: Status::Watching,
+            rewatching: false,
         })
     } else {
         // No point in continuing in this case
