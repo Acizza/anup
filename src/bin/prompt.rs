@@ -53,6 +53,7 @@ pub fn add_to_anime_list(mal: &MAL, series: &Series) -> Result<AnimeEntry, Error
             start_date: Some(today),
             end_date: None,
             status: Status::Watching,
+            score: 0,
             rewatching: false,
         })
     } else {
@@ -65,7 +66,6 @@ fn completed(mal: &MAL, entry: &mut AnimeEntry, mut tags: Vec<EntryTag>) -> Resu
     let today = get_today_naive();
 
     tags.push(EntryTag::Status(Status::Completed));
-    entry.status = Status::Completed;
 
     println!(
         "[{}] completed!\ndo you want to rate it? (Y/n)",
@@ -92,15 +92,14 @@ fn completed(mal: &MAL, entry: &mut AnimeEntry, mut tags: Vec<EntryTag>) -> Resu
 
         if input::read_yn(Answer::Yes)? {
             tags.push(EntryTag::FinishDate(Some(today)));
-            entry.end_date = Some(today);
         }
     } else {
         tags.push(EntryTag::FinishDate(Some(today)));
-        entry.end_date = Some(today);
     }
 
     mal.update_anime(entry.info.id, &tags)?;
-    Ok(())
+    // Nothing to do now
+    std::process::exit(0);
 }
 
 pub fn update_watched(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
@@ -108,8 +107,6 @@ pub fn update_watched(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
 
     if entry.watched_episodes >= entry.info.episodes {
         completed(mal, entry, tags)?;
-        // Nothing to do now
-        std::process::exit(0);
     } else {
         println!(
             "[{}] episode {}/{} completed",
@@ -141,24 +138,18 @@ pub fn rewatch(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
     println!("(note that you have to increase the rewatch count manually)");
 
     if input::read_yn(Answer::Yes)? {
-        let mut tags = vec![EntryTag::Rewatching(true), EntryTag::Episode(0)];
-
-        entry.rewatching = true;
-        entry.watched_episodes = 0;
+        let id = entry.info.id;
+        let mut changeset = entry.new_changeset().rewatching(true).episode(0);
 
         println!("do you want to reset the start and end date? (Y/n)");
 
         if input::read_yn(Answer::Yes)? {
-            let today = get_today_naive();
-
-            tags.push(EntryTag::StartDate(Some(today)));
-            tags.push(EntryTag::FinishDate(None));
-
-            entry.start_date = Some(today);
-            entry.end_date = None;
+            changeset = changeset
+                .start_date(Some(get_today_naive()))
+                .finish_date(None);
         }
 
-        mal.update_anime(entry.info.id, &tags)?;
+        mal.update_anime(id, &changeset.build())?;
     } else {
         // No point in continuing in this case
         std::process::exit(0);
