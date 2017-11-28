@@ -9,6 +9,7 @@ extern crate chrono;
 extern crate mal;
 extern crate regex;
 
+mod input;
 mod prompt;
 mod process;
 mod series;
