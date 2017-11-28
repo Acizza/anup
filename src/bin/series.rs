@@ -1,4 +1,5 @@
 use failure::Error;
+use mal;
 use regex::Regex;
 use process;
 use std;
@@ -13,13 +14,13 @@ pub enum SeriesError {
 }
 
 #[derive(Debug)]
-pub struct Series {
-    pub name: String,
-    pub episodes: HashMap<u32, PathBuf>,
+pub struct EpisodeData {
+    pub series_name: String,
+    pub paths: HashMap<u32, PathBuf>,
 }
 
-impl Series {
-    pub fn from_path(path: &Path) -> Result<Series, Error> {
+impl EpisodeData {
+    pub fn parse(path: &Path) -> Result<EpisodeData, Error> {
         let mut series = None;
         let mut episodes = HashMap::new();
 
@@ -45,18 +46,10 @@ impl Series {
 
         let series = series.ok_or(SeriesError::NoEpisodesFound)?;
 
-        Ok(Series {
-            name: series,
-            episodes: episodes,
+        Ok(EpisodeData {
+            series_name: series,
+            paths: episodes,
         })
-    }
-
-    pub fn play_episode(&self, ep_num: u32) -> Result<(), Error> {
-        let path = self.episodes.get(&ep_num)
-            .ok_or(SeriesError::EpisodeNotFound(ep_num))?;
-
-        process::open_with_default(path).output()?;
-        Ok(())
     }
 }
 
@@ -85,5 +78,28 @@ impl EpisodeInfo {
             series: caps["series"].into(),
             number: caps["episode"].parse().ok()?,
         })
+    }
+}
+
+#[derive(Debug)]
+pub struct Series {
+    pub info: mal::SeriesInfo,
+    pub episodes: HashMap<u32, PathBuf>,
+}
+
+impl Series {
+    pub fn new(info: mal::SeriesInfo, ep_data: EpisodeData) -> Series {
+        Series {
+            info,
+            episodes: ep_data.paths,
+        }
+    }
+
+    pub fn play_episode(&self, ep_num: u32) -> Result<(), Error> {
+        let path = self.episodes.get(&ep_num)
+            .ok_or(SeriesError::EpisodeNotFound(ep_num))?;
+
+        process::open_with_default(path).output()?;
+        Ok(())
     }
 }

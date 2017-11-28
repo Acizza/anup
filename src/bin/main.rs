@@ -15,20 +15,22 @@ mod series;
 use std::path::Path;
 use failure::{Error, ResultExt};
 use mal::MAL;
-use series::Series;
+use series::{EpisodeData, Series};
 
-fn run() -> Result<(), Error> {
-    // Temporary
-    let args = std::env::args().collect::<Vec<String>>();
+fn get_series_data(mal: &MAL, path: &Path) -> Result<Series, Error> {
+    let loc_data = EpisodeData::parse(path)?;
+    let info = prompt::find_and_select_series(mal, &loc_data.series_name)?;
 
-    let loc_data = Series::from_path(Path::new(&args[1]))?;
+    Ok(Series::new(info, loc_data))
+}
+
+fn run(args: Vec<String>) -> Result<(), Error> {
     let mal = MAL::new(args[2].clone(), args[3].clone());
-
-    let series = prompt::find_and_select_series(&mal, &loc_data.name)?;
+    let series = get_series_data(&mal, Path::new(&args[1]))?;
 
     let anime_list = mal.get_anime_list().context("anime list retrieval failed")?;
 
-    if let Some(list_status) = anime_list.iter().find(|a| a.info.id == series.id) {
+    if let Some(list_status) = anime_list.iter().find(|a| a.info.id == series.info.id) {
         println!("found anime on anime list:\n{:?}", list_status);
     } else {
         println!("anime not found on anime list");
@@ -38,7 +40,10 @@ fn run() -> Result<(), Error> {
 }
 
 fn main() {
-    match run() {
+    // Temporary
+    let args = std::env::args().collect::<Vec<String>>();
+
+    match run(args) {
         Ok(_) => (),
         Err(e) => {
             let mut fail: &failure::Fail = e.cause();
