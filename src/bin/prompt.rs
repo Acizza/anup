@@ -107,3 +107,35 @@ pub fn abnormal_player_exit(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Err
 
     Ok(())
 }
+
+pub fn rewatch(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
+    println!("[{}] already completed", entry.info.title);
+    println!("do you want to rewatch it? (Y/n)");
+    println!("(note that you have to increase the rewatch count manually)");
+
+    if input::read_yn(Answer::Yes)? {
+        let mut tags = vec![EntryTag::Rewatching(true), EntryTag::Episode(0)];
+
+        entry.rewatching = true;
+        entry.watched_episodes = 0;
+
+        println!("do you want to reset the start and end date? (Y/n)");
+
+        if input::read_yn(Answer::Yes)? {
+            let today = get_today_naive();
+
+            tags.push(EntryTag::StartDate(today));
+            // TODO: set ending date
+
+            entry.start_date = Some(today);
+            entry.end_date = None;
+        }
+
+        mal.update_anime(entry.info.id, &tags)?;
+    } else {
+        // No point in continuing in this case
+        std::process::exit(0);
+    }
+
+    Ok(())
+}

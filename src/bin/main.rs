@@ -74,7 +74,13 @@ fn get_mal_list_entry(mal: &MAL, series: &Series) -> Result<AnimeEntry, Error> {
     let list = mal.get_anime_list().context("anime list retrieval failed")?;
 
     match list.into_iter().find(|e| e.info.id == series.info.id) {
-        Some(entry) => Ok(entry),
+        Some(mut entry) => {
+            if entry.status == Status::Completed && !entry.rewatching {
+                prompt::rewatch(mal, &mut entry)?;
+            }
+
+            Ok(entry)
+        },
         None => prompt::add_to_anime_list(mal, series),
     }
 }
