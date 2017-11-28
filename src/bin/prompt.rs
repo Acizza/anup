@@ -1,5 +1,9 @@
+use chrono::{Local, NaiveDate};
 use failure::{Error, ResultExt};
 use mal::{SeriesInfo, MAL};
+use mal::list::{AnimeEntry, EntryTag, Status};
+use Series;
+use std;
 
 mod input {
     use failure::Error;
@@ -23,7 +27,36 @@ mod input {
             }
         }
     }
+
+    #[derive(Debug)]
+    pub enum Answer {
+        Yes,
+        No,
+    }
+
+    impl Into<bool> for Answer {
+        fn into(self) -> bool {
+            match self {
+                Answer::Yes => true,
+                Answer::No => false,
+            }
+        }
+    }
+
+    pub fn read_yn(default: Answer) -> Result<bool, Error> {
+        let line = read_line()?;
+
+        let answer = match line.as_str() {
+            "Y" | "y" => true,
+            "N" | "n" => false,
+            _ => default.into(),
+        };
+
+        Ok(answer)
+    }
 }
+
+use self::input::Answer;
 
 pub fn find_and_select_series(mal: &MAL, name: &str) -> Result<SeriesInfo, Error> {
     let mut series = mal.search(name).context("MAL search failed")?;
@@ -43,4 +76,38 @@ pub fn find_and_select_series(mal: &MAL, name: &str) -> Result<SeriesInfo, Error
     } else {
         Ok(series.swap_remove(0))
     }
+}
+
+pub fn add_to_anime_list(mal: &MAL, series: &Series) -> Result<AnimeEntry, Error> {
+    println!(
+        "[{}] is not on your anime list\ndo you want to add it? (Y/n)",
+        series.info.title
+    );
+
+    if input::read_yn(Answer::Yes)? {
+        let today = get_today_naive();
+
+        mal.add_anime(
+            series.info.id,
+            &[
+                EntryTag::Status(Status::Watching),
+                EntryTag::StartDate(today),
+            ],
+        )?;
+
+        Ok(AnimeEntry {
+            info: series.info.clone(),
+            watched_episodes: 0,
+            start_date: Some(today),
+            end_date: None,
+            status: Status::Watching,
+        })
+    } else {
+        // No point in continuing in this case
+        std::process::exit(0);
+    }
+}
+
+fn get_today_naive() -> NaiveDate {
+    Local::today().naive_utc()
 }
