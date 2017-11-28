@@ -5,6 +5,7 @@ use process;
 use std;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::process::ExitStatus;
 
 #[derive(Fail, Debug)]
 pub enum SeriesError {
@@ -95,11 +96,11 @@ impl Series {
         }
     }
 
-    pub fn play_episode(&self, ep_num: u32) -> Result<(), Error> {
+    pub fn play_episode(&self, ep_num: u32) -> Result<ExitStatus, Error> {
         let path = self.episodes.get(&ep_num)
             .ok_or(SeriesError::EpisodeNotFound(ep_num))?;
 
-        process::open_with_default(path).output()?;
-        Ok(())
+        let output = process::open_with_default(path).output()?;
+        Ok(output.status)
     }
 }

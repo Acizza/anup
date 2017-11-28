@@ -15,8 +15,9 @@ mod process;
 mod series;
 
 use failure::{Error, ResultExt};
+use input::Answer;
 use mal::MAL;
-use mal::list::AnimeEntry;
+use mal::list::{AnimeEntry, Status};
 use series::{EpisodeData, Series};
 use std::path::Path;
 
@@ -44,8 +45,27 @@ fn run(args: Vec<String>) -> Result<(), Error> {
     let mal = MAL::new(args[2].clone(), args[3].clone());
     let series = get_series_data(&mal, Path::new(&args[1]))?;
 
-    let entry = get_mal_list_entry(&mal, &series)?;
-    println!("{:?}", entry);
+    let mut entry = get_mal_list_entry(&mal, &series)?;
+
+    loop {
+        entry.watched_episodes += 1;
+
+        if series.play_episode(entry.watched_episodes)?.success() {
+            prompt::update_watched(&mal, &mut entry)?;
+        } else {
+            prompt::abnormal_player_exit(&mal, &mut entry)?;
+        }
+
+        if entry.status == Status::Completed {
+            break;
+        }
+
+        println!("do you want to watch the next episode? (Y/n)");
+
+        if !input::read_yn(Answer::Yes)? {
+            break;
+        }
+    }
 
     Ok(())
 }
