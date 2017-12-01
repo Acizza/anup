@@ -14,7 +14,7 @@ pub fn find_and_select_series(mal: &MAL, name: &str) -> Result<SeriesInfo, Error
     let mut series = mal.search(name).context("MAL search failed")?;
 
     if series.len() == 0 {
-        return Err(format_err!("no anime named [{}] found", name));
+        bail!("no anime named [{}] found", name);
     } else if series.len() > 1 {
         println!("found multiple anime named [{}] on MAL", name);
         println!("input the number corrosponding with the intended anime:\n");

@@ -36,7 +36,7 @@ impl EpisodeData {
 
             match series {
                 Some(ref set_series) if set_series != &ep_info.series => {
-                    return Err(SeriesError::MultipleSeriesFound.into());
+                    bail!(SeriesError::MultipleSeriesFound);
                 }
                 None => series = Some(ep_info.series),
                 _ => (),

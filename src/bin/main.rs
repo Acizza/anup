@@ -1,8 +1,6 @@
 #[macro_use]
 extern crate failure;
 #[macro_use]
-extern crate failure_derive;
-#[macro_use]
 extern crate lazy_static;
 
 extern crate chrono;
@@ -28,12 +26,10 @@ fn main() {
     match run(args) {
         Ok(_) => (),
         Err(e) => {
-            let mut fail: &failure::Fail = e.cause();
-            eprintln!("fatal error: {}", fail);
+            eprintln!("fatal error: {}", e.cause());
 
-            while let Some(cause) = fail.cause() {
+            for cause in e.causes().skip(1) {
                 eprintln!("cause: {}", cause);
-                fail = cause;
             }
 
             eprintln!("{}", e.backtrace());

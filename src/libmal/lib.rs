@@ -1,12 +1,11 @@
 #[macro_use]
-extern crate failure_derive;
+extern crate failure;
 
 pub mod list;
 
 mod request;
 
 extern crate chrono;
-extern crate failure;
 extern crate minidom;
 extern crate reqwest;
 
