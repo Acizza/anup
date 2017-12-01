@@ -62,6 +62,28 @@ pub fn add_to_anime_list(mal: &MAL, series: &Series) -> Result<AnimeEntry, Error
     }
 }
 
+/// Adds the `FinishDate` tag to the `tags` parameter.
+/// If the `entry` is being rewatched, it will ask the user before adding the tag.
+fn add_finish_date(
+    entry: &AnimeEntry,
+    date: NaiveDate,
+    tags: &mut Vec<EntryTag>,
+) -> Result<(), Error> {
+    // Someone may want to keep the original start / finish date for an
+    // anime they're rewatching
+    if entry.rewatching && entry.end_date.is_some() {
+        println!("do you want to override the finish date? (Y/n)");
+
+        if input::read_yn(Answer::Yes)? {
+            tags.push(EntryTag::FinishDate(Some(date)));
+        }
+    } else {
+        tags.push(EntryTag::FinishDate(Some(date)));
+    }
+
+    Ok(())
+}
+
 fn completed(mal: &MAL, entry: &mut AnimeEntry, mut tags: Vec<EntryTag>) -> Result<(), Error> {
     let today = get_today_naive();
 
@@ -83,19 +105,7 @@ fn completed(mal: &MAL, entry: &mut AnimeEntry, mut tags: Vec<EntryTag>) -> Resu
         tags.push(EntryTag::Rewatching(false));
     }
 
-    // Someone may want to keep the original start / finish date for an
-    // anime they're rewatching.
-    // Also, including the rewatch check here again makes the resulting logic simpler
-    // for deciding when to set the finish date
-    if entry.rewatching && entry.end_date.is_some() {
-        println!("do you want to override the finish date? (Y/n)");
-
-        if input::read_yn(Answer::Yes)? {
-            tags.push(EntryTag::FinishDate(Some(today)));
-        }
-    } else {
-        tags.push(EntryTag::FinishDate(Some(today)));
-    }
+    add_finish_date(entry, today, &mut tags)?;
 
     mal.update_anime(entry.info.id, &tags)?;
     // Nothing to do now
@@ -116,6 +126,30 @@ pub fn update_watched(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
         );
 
         mal.update_anime(entry.info.id, &tags)?;
+    }
+
+    Ok(())
+}
+
+pub fn next_episode_options(mal: &MAL, entry: &AnimeEntry) -> Result<(), Error> {
+    println!("\t[d] drop series\n\t[h] put series on hold\n\t[x] exit\n\t[n] watch next episode (default)");
+
+    let input = input::read_line()?.to_lowercase();
+
+    match input.as_str() {
+        "d" => {
+            let mut tags = vec![EntryTag::Status(Status::Dropped)];
+            add_finish_date(entry, get_today_naive(), &mut tags)?;
+
+            mal.update_anime(entry.info.id, &tags)?;
+            std::process::exit(0);
+        },
+        "h" => {
+            mal.update_anime(entry.info.id, &[EntryTag::Status(Status::OnHold)])?;
+            std::process::exit(0);
+        },
+        "x" => std::process::exit(0),
+        _ => (),
     }
 
     Ok(())

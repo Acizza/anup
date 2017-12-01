@@ -13,7 +13,6 @@ mod process;
 mod series;
 
 use failure::{Error, ResultExt};
-use input::Answer;
 use mal::MAL;
 use mal::list::{AnimeEntry, Status};
 use series::{EpisodeData, Series};
@@ -52,14 +51,8 @@ fn run(args: Vec<String>) -> Result<(), Error> {
             prompt::abnormal_player_exit(&mal, &mut entry)?;
         }
 
-        println!("do you want to watch the next episode? (Y/n)");
-
-        if !input::read_yn(Answer::Yes)? {
-            break;
-        }
+        prompt::next_episode_options(&mal, &entry)?;
     }
-
-    Ok(())
 }
 
 fn get_mal_list_entry(mal: &MAL, series: &Series) -> Result<AnimeEntry, Error> {
@@ -72,7 +65,7 @@ fn get_mal_list_entry(mal: &MAL, series: &Series) -> Result<AnimeEntry, Error> {
             }
 
             Ok(entry)
-        },
+        }
         None => prompt::add_to_anime_list(mal, series),
     }
 }
