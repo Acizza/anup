@@ -50,6 +50,22 @@ impl<'a> ToString for RequestURL<'a> {
 #[fail(display = "received bad response from MAL: {} {}", _0, _1)]
 pub struct BadResponse(pub u16, pub String);
 
+pub fn get(mal: &MAL, req_type: RequestURL) -> Result<Response, Error> {
+    send_req(&mut mal.client.get(&req_type.to_string()))
+}
+
+pub fn send_req(req: &mut RequestBuilder) -> Result<Response, Error> {
+    let resp = req.send()?;
+    let status = resp.status();
+
+    if status.is_success() {
+        Ok(resp)
+    } else {
+        let reason = status.canonical_reason().unwrap_or("Unknown Error").into();
+        Err(BadResponse(status.as_u16(), reason).into())
+    }
+}
+
 pub fn auth_get(mal: &MAL, req_type: RequestURL) -> Result<Response, Error> {
     send_auth_req(mal, &mut mal.client.get(&req_type.to_string()))
 }
@@ -68,15 +84,5 @@ pub fn auth_post(mal: &MAL, req_type: RequestURL, body: String) -> Result<Respon
 }
 
 fn send_auth_req(mal: &MAL, req: &mut RequestBuilder) -> Result<Response, Error> {
-    let resp = req.basic_auth(mal.username.clone(), Some(mal.password.clone()))
-        .send()?;
-
-    let status = resp.status();
-
-    if status.is_success() {
-        Ok(resp)
-    } else {
-        let reason = status.canonical_reason().unwrap_or("Unknown Error").into();
-        Err(BadResponse(status.as_u16(), reason).into())
-    }
+    send_req(req.basic_auth(mal.username.clone(), Some(mal.password.clone())))
 }

@@ -100,7 +100,7 @@ impl MAL {
     /// If this is the only function you need to call in `MAL`, you don't need
     /// to provide a valid password when calling `MAL::new`.
     pub fn get_anime_list(&self) -> Result<Vec<AnimeEntry>, Error> {
-        let resp = request::auth_get(&self, RequestURL::AnimeList(&self.username))?.text()?;
+        let resp = request::get(&self, RequestURL::AnimeList(&self.username))?.text()?;
         let root: Element = resp.parse().map_err(SyncFailure::new)?;
 
         let mut entries = Vec::new();
