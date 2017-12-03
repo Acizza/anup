@@ -3,14 +3,13 @@ use failure::{Error, ResultExt};
 use input::{self, Answer};
 use mal::{SeriesInfo, MAL};
 use mal::list::{AnimeEntry, EntryTag, Status};
-use Series;
 use std;
 
 fn get_today_naive() -> NaiveDate {
     Local::today().naive_utc()
 }
 
-pub fn find_and_select_series(mal: &MAL, name: &str) -> Result<SeriesInfo, Error> {
+pub fn find_and_select_series_info(mal: &MAL, name: &str) -> Result<SeriesInfo, Error> {
     let mut series = mal.search(name).context("MAL search failed")?;
 
     if series.len() == 0 {
@@ -30,17 +29,17 @@ pub fn find_and_select_series(mal: &MAL, name: &str) -> Result<SeriesInfo, Error
     }
 }
 
-pub fn add_to_anime_list(mal: &MAL, series: &Series) -> Result<AnimeEntry, Error> {
+pub fn add_to_anime_list(mal: &MAL, info: &SeriesInfo) -> Result<AnimeEntry, Error> {
     println!(
         "[{}] is not on your anime list\ndo you want to add it? (Y/n)",
-        series.info.title
+        info.title
     );
 
     if input::read_yn(Answer::Yes)? {
         let today = get_today_naive();
 
         mal.add_anime(
-            series.info.id,
+            info.id,
             &[
                 EntryTag::Status(Status::Watching),
                 EntryTag::StartDate(Some(today)),
@@ -48,7 +47,7 @@ pub fn add_to_anime_list(mal: &MAL, series: &Series) -> Result<AnimeEntry, Error
         )?;
 
         Ok(AnimeEntry {
-            info: series.info.clone(),
+            info: info.clone(),
             watched_episodes: 0,
             start_date: Some(today),
             end_date: None,
