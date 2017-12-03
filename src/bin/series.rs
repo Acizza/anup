@@ -57,11 +57,11 @@ impl Series {
         self.data.seasons.get(&season).ok_or(SeriesError::SeasonNotFound(season))
     }
 
-    pub fn data_exists(&self) -> bool {
-        self.data_path.exists()
+    pub fn has_season_data(&self, season: u32) -> bool {
+        self.data.seasons.contains_key(&season)
     }
 
-    pub fn save(&self) -> Result<(), Error> {
+    pub fn save_data(&self) -> Result<(), Error> {
         self.data.write_to(&self.data_path)
     }
 }

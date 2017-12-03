@@ -1,4 +1,6 @@
 #[macro_use]
+extern crate clap;
+#[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate lazy_static;
@@ -20,13 +22,10 @@ use failure::{Error, ResultExt};
 use mal::MAL;
 use mal::list::{AnimeEntry, Status};
 use series::{SeasonInfo, Series};
-use std::path::Path;
+use std::path::PathBuf;
 
 fn main() {
-    // Temporary
-    let args = std::env::args().collect::<Vec<String>>();
-
-    match run(args) {
+    match run() {
         Ok(_) => (),
         Err(e) => {
             eprintln!("fatal error: {}", e.cause());
@@ -40,32 +39,75 @@ fn main() {
     }
 }
 
-fn run(args: Vec<String>) -> Result<(), Error> {
-    let mal = MAL::new(args[2].clone(), args[3].clone());
+fn run() -> Result<(), Error> {
+    let matches = clap_app!(anitrack =>
+        (version: env!("CARGO_PKG_VERSION"))
+        (author: env!("CARGO_PKG_AUTHORS"))
+        (@arg PATH: "Specifies the directory to look for video files in")
+        (@arg USERNAME: -u --username +takes_value +required "Your MyAnimeList username")
+        (@arg PASSWORD: -p --password +takes_value +required "Your MyAnimeList password")
+        (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
+    ).get_matches();
 
-    let mut series = Series::from_path(Path::new(&args[1]))?;
-    let info = request_series_info(&mal, &mut series)?;
+    let path = match matches.value_of("PATH") {
+        Some(p) => PathBuf::from(p),
+        None => std::env::current_dir().context("failed to get current directory")?,
+    };
 
-    let mut entry = get_mal_list_entry(&mal, &info)?;
+    let mal = {
+        let username = matches.value_of("USERNAME").unwrap();
+        let password = matches.value_of("PASSWORD").unwrap();
+        MAL::new(username, password)
+    };
 
+    let season = matches
+        .value_of("SEASON")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1);
+
+    let mut series = Series::from_path(&path)?;
+    watch_season(&mal, season, &mut series)
+}
+
+fn watch_season(mal: &MAL, season: u32, series: &mut Series) -> Result<(), Error> {
+    let series_info = find_season_series_info(mal, season, series)?;
+
+    if !series.has_season_data(season) {
+        series.set_season_data(season, SeasonInfo::with_series_id(series_info.id));
+        series.save_data()?;
+    }
+
+    let anime_list = mal.get_anime_list().context("MAL list retrieval failed")?;
+    let mut list_entry = find_list_entry(mal, &series_info, &anime_list)?;
+
+    play_episode_loop(mal, series, &mut list_entry)
+}
+
+fn play_episode_loop(mal: &MAL, series: &Series, list_entry: &mut AnimeEntry) -> Result<(), Error> {
     loop {
-        entry.watched_episodes += 1;
+        list_entry.watched_episodes += 1;
 
-        if series.play_episode(entry.watched_episodes)?.success() {
-            prompt::update_watched(&mal, &mut entry)?;
+        if series.play_episode(list_entry.watched_episodes)?.success() {
+            prompt::update_watched(mal, list_entry)?;
         } else {
-            prompt::abnormal_player_exit(&mal, &mut entry)?;
+            prompt::abnormal_player_exit(mal, list_entry)?;
         }
 
-        prompt::next_episode_options(&mal, &entry)?;
+        prompt::next_episode_options(mal, list_entry)?;
     }
 }
 
-fn get_mal_list_entry(mal: &MAL, info: &mal::SeriesInfo) -> Result<AnimeEntry, Error> {
-    let list = mal.get_anime_list().context("anime list retrieval failed")?;
+fn find_list_entry(
+    mal: &MAL,
+    info: &mal::SeriesInfo,
+    list: &[AnimeEntry],
+) -> Result<AnimeEntry, Error> {
+    let found = list.iter().find(|e| e.info == *info);
 
-    match list.into_iter().find(|e| e.info == *info) {
-        Some(mut entry) => {
+    match found {
+        Some(entry) => {
+            let mut entry = entry.clone();
+
             if entry.status == Status::Completed && !entry.rewatching {
                 prompt::rewatch(mal, &mut entry)?;
             }
@@ -76,23 +118,25 @@ fn get_mal_list_entry(mal: &MAL, info: &mal::SeriesInfo) -> Result<AnimeEntry, E
     }
 }
 
-fn request_series_info(mal: &MAL, series: &mut Series) -> Result<mal::SeriesInfo, Error> {
-    if series.data_exists() {
-        let season = series.get_season_data(1)?;
-
-        mal.search(&series.name)?
-            .into_iter()
-            .find(|a| a.id == season.series_id)
-            .ok_or(format_err!( // TODO: use custom error type & context
-                "no anime with id {} found on MAL",
-                season.series_id,
-            ))
-    } else {
-        let selected = prompt::find_and_select_series_info(mal, &series.name)?;
-
-        series.set_season_data(1, SeasonInfo::with_series_id(selected.id));
-        series.save()?;
-
-        Ok(selected)
+fn find_season_series_info(
+    mal: &MAL,
+    season: u32,
+    series: &Series,
+) -> Result<mal::SeriesInfo, Error> {
+    match series.get_season_data(season) {
+        Ok(season) => find_series_info_by_id(mal, &series.name, season.series_id),
+        Err(_) => prompt::find_and_select_series_info(mal, &series.name),
     }
+}
+
+#[derive(Fail, Debug)]
+#[fail(display = "no anime with id {} found on MAL", _0)]
+struct UnknownAnimeID(u32);
+
+fn find_series_info_by_id(mal: &MAL, name: &str, id: u32) -> Result<mal::SeriesInfo, Error> {
+    mal.search(name)
+        .context("MAL search failed")?
+        .into_iter()
+        .find(|i| i.id == id)
+        .ok_or(UnknownAnimeID(id).into())
 }
