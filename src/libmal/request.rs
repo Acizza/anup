@@ -1,6 +1,6 @@
 use failure::Error;
 use MAL;
-use reqwest::{RequestBuilder, Response, Url};
+use reqwest::{RequestBuilder, Response, StatusCode, Url};
 use reqwest::header::{ContentType, Headers};
 
 pub type ID = u32;
@@ -58,11 +58,12 @@ pub fn send_req(req: &mut RequestBuilder) -> Result<Response, Error> {
     let resp = req.send()?;
     let status = resp.status();
 
-    if status.is_success() {
-        Ok(resp)
-    } else {
-        let reason = status.canonical_reason().unwrap_or("Unknown Error").into();
-        Err(BadResponse(status.as_u16(), reason).into())
+    match status {
+        StatusCode::Ok | StatusCode::Created => Ok(resp),
+        _ => {
+            let reason = status.canonical_reason().unwrap_or("Unknown Error").into();
+            Err(BadResponse(status.as_u16(), reason).into())
+        }
     }
 }
 
