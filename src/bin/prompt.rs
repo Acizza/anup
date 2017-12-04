@@ -5,11 +5,15 @@ use mal::{SeriesInfo, MAL};
 use mal::list::{AnimeEntry, EntryTag, Status};
 use std;
 
+// This code will be refactored and cleaned up soon™
+
 fn get_today_naive() -> NaiveDate {
     Local::today().naive_utc()
 }
 
-pub fn find_and_select_series_info(mal: &MAL, name: &str) -> Result<SeriesInfo, Error> {
+pub type SearchTerm = String;
+
+pub fn find_and_select_series_info(mal: &MAL, name: &str) -> Result<(SeriesInfo, SearchTerm), Error> {
     let mut series = mal.search(name).context("MAL search failed")?;
 
     if series.len() > 0 {
@@ -30,7 +34,7 @@ pub fn find_and_select_series_info(mal: &MAL, name: &str) -> Result<SeriesInfo, 
 
             find_and_select_series_info(mal, &name)
         } else {
-            Ok(series.swap_remove(index - 1))
+            Ok((series.swap_remove(index - 1), name.into()))
         }
     } else {
         bail!("no anime named [{}] found", name);

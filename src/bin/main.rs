@@ -70,10 +70,10 @@ fn run() -> Result<(), Error> {
 }
 
 fn watch_season(mal: &MAL, season: u32, series: &mut Series) -> Result<(), Error> {
-    let series_info = find_season_series_info(mal, season, series)?;
+    let (series_info, search_term) = find_season_series_info(mal, season, series)?;
 
     if !series.has_season_data(season) {
-        let info = SeasonInfo::create_basic(series_info.id, series_info.episodes);
+        let info = SeasonInfo::create_basic(series_info.id, series_info.episodes, search_term);
         series.set_season_data(season, info);
         series.save_data()?;
     }
@@ -139,13 +139,17 @@ fn find_list_entry(
     }
 }
 
+// This will be cleaned up soon™
 fn find_season_series_info(
     mal: &MAL,
     season: u32,
     series: &Series,
-) -> Result<mal::SeriesInfo, Error> {
+) -> Result<(mal::SeriesInfo, prompt::SearchTerm), Error> {
     match series.get_season_data(season) {
-        Ok(season) => find_series_info_by_id(mal, &series.name, season.series_id),
+        Ok(season) => Ok((
+            find_series_info_by_id(mal, &season.search_title, season.series_id)?,
+            series.name.clone(),
+        )),
         Err(_) => prompt::find_and_select_series_info(mal, &series.name),
     }
 }

@@ -99,14 +99,16 @@ impl SeriesData {
 pub struct SeasonInfo {
     pub series_id: u32,
     pub episodes: u32,
+    pub search_title: String,
     pub title_format: Option<String>,
 }
 
 impl SeasonInfo {
-    pub fn create_basic(id: u32, episodes: u32) -> SeasonInfo {
+    pub fn create_basic(id: u32, episodes: u32, search_title: String) -> SeasonInfo {
         SeasonInfo {
             series_id: id,
             episodes,
+            search_title,
             title_format: None,
         }
     }
