@@ -132,6 +132,7 @@ pub fn update_watched(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
             }
         }
 
+        entry.sync_tags(&tags);
         mal.update_anime(entry.info.id, &tags)?;
     }
 
