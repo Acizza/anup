@@ -112,7 +112,7 @@ fn completed(mal: &MAL, entry: &mut AnimeEntry, mut tags: Vec<EntryTag>) -> Resu
 }
 
 pub fn update_watched(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
-    let tags = vec![EntryTag::Episode(entry.watched_episodes)];
+    let mut tags = vec![EntryTag::Episode(entry.watched_episodes)];
 
     if entry.watched_episodes >= entry.info.episodes {
         completed(mal, entry, tags)?;
@@ -123,6 +123,14 @@ pub fn update_watched(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
             entry.watched_episodes,
             entry.info.episodes
         );
+
+        if !entry.rewatching {
+            tags.push(EntryTag::Status(Status::Watching));
+
+            if entry.watched_episodes <= 1 {
+                tags.push(EntryTag::StartDate(Some(get_today_naive())));
+            }
+        }
 
         mal.update_anime(entry.info.id, &tags)?;
     }
