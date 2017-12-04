@@ -151,13 +151,13 @@ fn find_season_series_info(
 }
 
 #[derive(Fail, Debug)]
-#[fail(display = "no anime with id {} found on MAL", _0)]
-struct UnknownAnimeID(u32);
+#[fail(display = "no anime with id {} found with name [{}] on MAL", _0, _1)]
+struct UnknownAnimeID(u32, String);
 
 fn find_series_info_by_id(mal: &MAL, name: &str, id: u32) -> Result<mal::SeriesInfo, Error> {
     mal.search(name)
         .context("MAL search failed")?
         .into_iter()
         .find(|i| i.id == id)
-        .ok_or(UnknownAnimeID(id).into())
+        .ok_or(UnknownAnimeID(id, name.into()).into())
 }

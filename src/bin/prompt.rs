@@ -12,20 +12,28 @@ fn get_today_naive() -> NaiveDate {
 pub fn find_and_select_series_info(mal: &MAL, name: &str) -> Result<SeriesInfo, Error> {
     let mut series = mal.search(name).context("MAL search failed")?;
 
-    if series.len() == 0 {
-        bail!("no anime named [{}] found", name);
-    } else if series.len() > 1 {
-        println!("found multiple anime named [{}] on MAL", name);
-        println!("input the number corrosponding with the intended anime:\n");
+    if series.len() > 0 {
+        println!("MAL results for [{}]:", name);
+        println!("enter the number next to the desired series:\n");
+
+        println!("0 [custom search]");
 
         for (i, s) in series.iter().enumerate() {
             println!("{} [{}]", 1 + i, s.title);
         }
 
-        let idx = input::read_usize_range(1, series.len())? - 1;
-        Ok(series.swap_remove(idx))
+        let index = input::read_usize_range(0, series.len())?;
+
+        if index == 0 {
+            println!("enter the name you want to search for:");
+            let name = input::read_line()?;
+
+            find_and_select_series_info(mal, &name)
+        } else {
+            Ok(series.swap_remove(index - 1))
+        }
     } else {
-        Ok(series.swap_remove(0))
+        bail!("no anime named [{}] found", name);
     }
 }
 
