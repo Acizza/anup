@@ -73,21 +73,42 @@ fn watch_season(mal: &MAL, season: u32, series: &mut Series) -> Result<(), Error
     let series_info = find_season_series_info(mal, season, series)?;
 
     if !series.has_season_data(season) {
-        series.set_season_data(season, SeasonInfo::with_series_id(series_info.id));
+        let info = SeasonInfo::create_basic(series_info.id, series_info.episodes);
+        series.set_season_data(season, info);
         series.save_data()?;
     }
 
     let anime_list = mal.get_anime_list().context("MAL list retrieval failed")?;
     let mut list_entry = find_list_entry(mal, &series_info, &anime_list)?;
 
-    play_episode_loop(mal, series, &mut list_entry)
+    play_episode_loop(mal, season, series, &mut list_entry)
 }
 
-fn play_episode_loop(mal: &MAL, series: &Series, list_entry: &mut AnimeEntry) -> Result<(), Error> {
+fn get_season_ep_offset(season: u32, series: &Series) -> Result<u32, Error> {
+    let mut ep_offset = 0;
+
+    for cur_season in 1..season {
+        // TODO: handle case where previous season info doesn't exist?
+        let season = series.get_season_data(cur_season)?;
+        ep_offset += season.episodes;
+    }
+
+    Ok(ep_offset)
+}
+
+fn play_episode_loop(
+    mal: &MAL,
+    season: u32,
+    series: &Series,
+    list_entry: &mut AnimeEntry,
+) -> Result<(), Error> {
+    let season_offset = get_season_ep_offset(season, series)?;
+
     loop {
         list_entry.watched_episodes += 1;
+        let real_ep_num = list_entry.watched_episodes + season_offset;
 
-        if series.play_episode(list_entry.watched_episodes)?.success() {
+        if series.play_episode(real_ep_num)?.success() {
             prompt::update_watched(mal, list_entry)?;
         } else {
             prompt::abnormal_player_exit(mal, list_entry)?;

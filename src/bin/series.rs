@@ -13,7 +13,7 @@ pub enum SeriesError {
     #[fail(display = "multiple series found")] MultipleSeriesFound,
     #[fail(display = "no episodes found")] NoEpisodesFound,
     #[fail(display = "episode {} not found", _0)] EpisodeNotFound(u32),
-    #[fail(display = "season {} not found", _0)] SeasonNotFound(u32),
+    #[fail(display = "season {} information not found", _0)] SeasonInfoNotFound(u32),
 }
 
 #[derive(Debug)]
@@ -54,7 +54,7 @@ impl Series {
     }
 
     pub fn get_season_data(&self, season: u32) -> Result<&SeasonInfo, SeriesError> {
-        self.data.seasons.get(&season).ok_or(SeriesError::SeasonNotFound(season))
+        self.data.seasons.get(&season).ok_or(SeriesError::SeasonInfoNotFound(season))
     }
 
     pub fn has_season_data(&self, season: u32) -> bool {
@@ -98,13 +98,15 @@ impl SeriesData {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SeasonInfo {
     pub series_id: u32,
+    pub episodes: u32,
     pub title_format: Option<String>,
 }
 
 impl SeasonInfo {
-    pub fn with_series_id(id: u32) -> SeasonInfo {
+    pub fn create_basic(id: u32, episodes: u32) -> SeasonInfo {
         SeasonInfo {
             series_id: id,
+            episodes,
             title_format: None,
         }
     }
