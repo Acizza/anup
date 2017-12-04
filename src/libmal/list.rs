@@ -23,115 +23,51 @@ pub struct AnimeEntry {
 }
 
 impl AnimeEntry {
-    /// Creates a new `EntryChangeset` builder.
-    pub fn new_changeset(&mut self) -> EntryChangeset {
-        EntryChangeset::new(self)
+    /// Synchronizes `AnimeEntry` values with its equivalent `EntryTag` value.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use mal::SeriesInfo;
+    /// use mal::list::{AnimeEntry, EntryTag, Status};
+    ///
+    /// let mut entry = AnimeEntry {
+    ///     info: SeriesInfo {
+    ///         id: 1234,
+    ///         title: "Test Anime".into(),
+    ///         episodes: 12
+    ///     },
+    ///     watched_episodes: 0,
+    ///     start_date: None,
+    ///     end_date: None,
+    ///     status: Status::PlanToWatch,
+    ///     score: 0,
+    ///     rewatching: false
+    /// };
+    ///
+    /// let tags = vec![EntryTag::Episode(1), EntryTag::Status(Status::Watching)];
+    /// entry.sync_tags(&tags);
+    ///
+    /// assert_eq!(entry.watched_episodes, 1);
+    /// assert_eq!(entry.status, Status::Watching);
+    /// ```
+    pub fn sync_tags(&mut self, tags: &[EntryTag]) {
+        for tag in tags {
+            match *tag {
+                EntryTag::Episode(ep) => self.watched_episodes = ep,
+                EntryTag::Status(status) => self.status = status,
+                EntryTag::StartDate(date) => self.start_date = date,
+                EntryTag::FinishDate(date) => self.end_date = date,
+                EntryTag::Score(score) => self.score = score,
+                EntryTag::Rewatching(rewatching) => self.rewatching = rewatching,
+            }
+        }
     }
 }
 
 impl PartialEq for AnimeEntry {
     fn eq(&self, other: &AnimeEntry) -> bool {
         self.info == other.info
-    }
-}
-
-/// A builder for generating an `EntryTag` list while keeping an `AnimeEntry` in sync.
-///
-/// When adding / updating an anime on a user's list, you'll often
-/// want to syncronize the changes that will appear on the user's list with
-/// the `AnimeEntry` values. This builder will generate an `EntryTag` list that
-/// can be used with `MAL::add_anime` / `MAL::update_anime` and set the
-/// appropriate values in the `AnimeEntry` struct at the same time.
-///
-/// # Example
-///
-/// ```
-/// use mal::SeriesInfo;
-/// use mal::list::{AnimeEntry, EntryTag, Status};
-///
-/// let mut entry = AnimeEntry {
-///     info: SeriesInfo {
-///         id: 1234,
-///         title: "Test Anime".into(),
-///         episodes: 12
-///     },
-///     watched_episodes: 0,
-///     start_date: None,
-///     end_date: None,
-///     status: Status::PlanToWatch,
-///     score: 0,
-///     rewatching: false
-/// };
-///
-/// let tags = entry.new_changeset()
-///     .episode(1)
-///     .status(Status::Watching)
-///     .build();
-///
-/// assert_eq!(tags, vec![EntryTag::Episode(1), EntryTag::Status(Status::Watching)]);
-///
-/// assert_eq!(entry.watched_episodes, 1);
-/// assert_eq!(entry.status, Status::Watching);
-/// ```
-#[derive(Debug)]
-pub struct EntryChangeset<'a> {
-    entry: &'a mut AnimeEntry,
-    tags: Vec<EntryTag>,
-}
-
-impl<'a> EntryChangeset<'a> {
-    fn new(entry: &'a mut AnimeEntry) -> EntryChangeset<'a> {
-        EntryChangeset {
-            entry,
-            tags: Vec::new(),
-        }
-    }
-
-    /// Set the number of episodes watched.
-    pub fn episode(mut self, ep: u32) -> EntryChangeset<'a> {
-        self.tags.push(EntryTag::Episode(ep));
-        self.entry.watched_episodes = ep;
-        self
-    }
-
-    /// Set the date the user started watching the anime.
-    pub fn start_date(mut self, date: Option<NaiveDate>) -> EntryChangeset<'a> {
-        self.tags.push(EntryTag::StartDate(date));
-        self.entry.start_date = date;
-        self
-    }
-
-    /// Set the date the user finished watching the anime.
-    pub fn finish_date(mut self, date: Option<NaiveDate>) -> EntryChangeset<'a> {
-        self.tags.push(EntryTag::FinishDate(date));
-        self.entry.end_date = date;
-        self
-    }
-
-    /// Set the current watch status of the anime.
-    pub fn status(mut self, status: Status) -> EntryChangeset<'a> {
-        self.tags.push(EntryTag::Status(status));
-        self.entry.status = status;
-        self
-    }
-
-    /// Set the user's rating of an anime.
-    pub fn score(mut self, score: u8) -> EntryChangeset<'a> {
-        self.tags.push(EntryTag::Score(score));
-        self.entry.score = score;
-        self
-    }
-
-    /// Set whether or not the anime is being rewatched.
-    pub fn rewatching(mut self, rewatching: bool) -> EntryChangeset<'a> {
-        self.tags.push(EntryTag::Rewatching(rewatching));
-        self.entry.rewatching = rewatching;
-        self
-    }
-
-    /// Consume the builder and get the created `EntryTag` list.
-    pub fn build(self) -> Vec<EntryTag> {
-        self.tags
     }
 }
 

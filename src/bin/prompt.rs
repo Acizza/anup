@@ -179,18 +179,17 @@ pub fn rewatch(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
     println!("(note that you have to increase the rewatch count manually)");
 
     if input::read_yn(Answer::Yes)? {
-        let id = entry.info.id;
-        let mut changeset = entry.new_changeset().rewatching(true).episode(0);
+        let mut tags = vec![EntryTag::Rewatching(true), EntryTag::Episode(0)];
 
         println!("do you want to reset the start and end date? (Y/n)");
 
         if input::read_yn(Answer::Yes)? {
-            changeset = changeset
-                .start_date(Some(get_today_naive()))
-                .finish_date(None);
+            tags.push(EntryTag::StartDate(Some(get_today_naive())));
+            tags.push(EntryTag::FinishDate(None));
         }
 
-        mal.update_anime(id, &changeset.build())?;
+        entry.sync_tags(&tags);
+        mal.update_anime(entry.info.id, &tags)?;
     } else {
         // No point in continuing in this case
         std::process::exit(0);
