@@ -132,7 +132,7 @@ pub fn update_watched(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
             }
         }
 
-        entry.sync_tags(&tags);
+        entry.sync_from_tags(&tags);
         mal.update_anime(entry.info.id, &tags)?;
     }
 
@@ -189,7 +189,7 @@ pub fn rewatch(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
             tags.push(EntryTag::FinishDate(None));
         }
 
-        entry.sync_tags(&tags);
+        entry.sync_from_tags(&tags);
         mal.update_anime(entry.info.id, &tags)?;
     } else {
         // No point in continuing in this case

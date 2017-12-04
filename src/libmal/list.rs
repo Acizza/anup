@@ -46,12 +46,12 @@ impl AnimeEntry {
     /// };
     ///
     /// let tags = vec![EntryTag::Episode(1), EntryTag::Status(Status::Watching)];
-    /// entry.sync_tags(&tags);
+    /// entry.sync_from_tags(&tags);
     ///
     /// assert_eq!(entry.watched_episodes, 1);
     /// assert_eq!(entry.status, Status::Watching);
     /// ```
-    pub fn sync_tags(&mut self, tags: &[EntryTag]) {
+    pub fn sync_from_tags(&mut self, tags: &[EntryTag]) {
         for tag in tags {
             match *tag {
                 EntryTag::Episode(ep) => self.watched_episodes = ep,
