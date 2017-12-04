@@ -14,6 +14,7 @@ use failure::{Error, SyncFailure};
 use list::{AnimeEntry, EntryTag, Status};
 use minidom::Element;
 use request::RequestURL;
+use reqwest::StatusCode;
 use std::convert::Into;
 
 /// Represents basic information of an anime series on MyAnimeList.
@@ -75,8 +76,13 @@ impl MAL {
     /// assert!(found.len() > 0);
     /// ```
     pub fn search(&self, name: &str) -> Result<Vec<SeriesInfo>, Error> {
-        let resp = request::auth_get(&self, RequestURL::Search(name))?.text()?;
-        let root: Element = resp.parse().map_err(SyncFailure::new)?;
+        let mut resp = request::auth_get(&self, RequestURL::Search(name))?;
+
+        if resp.status() == StatusCode::NoContent {
+            return Ok(Vec::new());
+        }
+
+        let root: Element = resp.text()?.parse().map_err(SyncFailure::new)?;
 
         let mut entries = Vec::new();
 
@@ -100,7 +106,7 @@ impl MAL {
     /// If this is the only function you need to call in `MAL`, you don't need
     /// to provide a valid password when calling `MAL::new`.
     pub fn get_anime_list(&self) -> Result<Vec<AnimeEntry>, Error> {
-        let resp = request::get(&self, RequestURL::AnimeList(&self.username))?.text()?;
+        let resp = request::get_verify(&self, RequestURL::AnimeList(&self.username))?.text()?;
         let root: Element = resp.parse().map_err(SyncFailure::new)?;
 
         let mut entries = Vec::new();
@@ -150,7 +156,7 @@ impl MAL {
     /// ```
     pub fn add_anime(&self, id: u32, tags: &[EntryTag]) -> Result<(), Error> {
         let body = EntryTag::build_xml_resp(tags)?;
-        request::auth_post(&self, RequestURL::Add(id), body)?;
+        request::auth_post_verify(&self, RequestURL::Add(id), body)?;
 
         Ok(())
     }
@@ -177,7 +183,7 @@ impl MAL {
     /// ```
     pub fn update_anime(&self, id: u32, tags: &[EntryTag]) -> Result<(), Error> {
         let body = EntryTag::build_xml_resp(tags)?;
-        request::auth_post(&self, RequestURL::Update(id), body)?;
+        request::auth_post_verify(&self, RequestURL::Update(id), body)?;
 
         Ok(())
     }

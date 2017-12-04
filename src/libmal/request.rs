@@ -46,25 +46,15 @@ impl<'a> ToString for RequestURL<'a> {
     }
 }
 
-#[derive(Fail, Debug)]
-#[fail(display = "received bad response from MAL: {} {}", _0, _1)]
-pub struct BadResponse(pub u16, pub String);
-
 pub fn get(mal: &MAL, req_type: RequestURL) -> Result<Response, Error> {
-    send_req(&mut mal.client.get(&req_type.to_string()))
+    Ok(mal.client.get(&req_type.to_string()).send()?)
 }
 
-pub fn send_req(req: &mut RequestBuilder) -> Result<Response, Error> {
-    let resp = req.send()?;
-    let status = resp.status();
+pub fn get_verify(mal: &MAL, req_type: RequestURL) -> Result<Response, Error> {
+    let resp = get(mal, req_type)?;
+    verify_good_response(&resp)?;
 
-    match status {
-        StatusCode::Ok | StatusCode::Created => Ok(resp),
-        _ => {
-            let reason = status.canonical_reason().unwrap_or("Unknown Error").into();
-            Err(BadResponse(status.as_u16(), reason).into())
-        }
-    }
+    Ok(resp)
 }
 
 pub fn auth_get(mal: &MAL, req_type: RequestURL) -> Result<Response, Error> {
@@ -84,6 +74,30 @@ pub fn auth_post(mal: &MAL, req_type: RequestURL, body: String) -> Result<Respon
     )
 }
 
+pub fn auth_post_verify(mal: &MAL, req_type: RequestURL, body: String) -> Result<Response, Error> {
+    let resp = auth_post(mal, req_type, body)?;
+    verify_good_response(&resp)?;
+
+    Ok(resp)
+}
+
 fn send_auth_req(mal: &MAL, req: &mut RequestBuilder) -> Result<Response, Error> {
-    send_req(req.basic_auth(mal.username.clone(), Some(mal.password.clone())))
+    let resp = req.basic_auth(mal.username.clone(), Some(mal.password.clone()))
+        .send()?;
+
+    Ok(resp)
+}
+
+#[derive(Fail, Debug)]
+#[fail(display = "received bad response from MAL: {} {}", _0, _1)]
+pub struct BadResponse(pub u16, pub String);
+
+pub fn verify_good_response(resp: &Response) -> Result<(), BadResponse> {
+    match resp.status() {
+        StatusCode::Ok | StatusCode::Created => Ok(()),
+        status => {
+            let reason = status.canonical_reason().unwrap_or("Unknown Error").into();
+            Err(BadResponse(status.as_u16(), reason).into())
+        }
+    }
 }
