@@ -1,4 +1,5 @@
-use failure::Error;
+use failure::{Error, ResultExt};
+use mal::{self, MAL};
 use regex::Regex;
 use process;
 use serde_json;
@@ -95,6 +96,12 @@ impl SeriesData {
     }
 }
 
+#[derive(Fail, Debug)]
+pub enum SeasonInfoError {
+    #[fail(display = "no anime with id {} found with name [{}] on MAL", _0, _1)]
+    UnknownAnimeID(u32, String),
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SeasonInfo {
     pub series_id: u32,
@@ -111,6 +118,14 @@ impl SeasonInfo {
             search_title,
             title_format: None,
         }
+    }
+
+    pub fn request_mal_info(&self, mal: &MAL) -> Result<mal::SeriesInfo, Error> {
+        mal.search(&self.search_title)
+            .context("MAL search failed")?
+            .into_iter()
+            .find(|i| i.id == self.series_id)
+            .ok_or(SeasonInfoError::UnknownAnimeID(self.series_id, self.search_title.clone()).into())
     }
 }
 

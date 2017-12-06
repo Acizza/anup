@@ -146,22 +146,7 @@ fn find_season_series_info(
     series: &Series,
 ) -> Result<(mal::SeriesInfo, prompt::SearchTerm), Error> {
     match series.get_season_data(season) {
-        Ok(season) => Ok((
-            find_series_info_by_id(mal, &season.search_title, season.series_id)?,
-            series.name.clone(),
-        )),
+        Ok(season) => Ok((season.request_mal_info(mal)?, series.name.clone())),
         Err(_) => prompt::find_and_select_series_info(mal, &series.name),
     }
-}
-
-#[derive(Fail, Debug)]
-#[fail(display = "no anime with id {} found with name [{}] on MAL", _0, _1)]
-struct UnknownAnimeID(u32, String);
-
-fn find_series_info_by_id(mal: &MAL, name: &str, id: u32) -> Result<mal::SeriesInfo, Error> {
-    mal.search(name)
-        .context("MAL search failed")?
-        .into_iter()
-        .find(|i| i.id == id)
-        .ok_or(UnknownAnimeID(id, name.into()).into())
 }
