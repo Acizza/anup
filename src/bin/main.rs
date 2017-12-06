@@ -21,6 +21,7 @@ mod series;
 use failure::{Error, ResultExt};
 use mal::MAL;
 use mal::list::{AnimeEntry, Status};
+use prompt::SearchResult;
 use series::{SeasonInfo, Series};
 use std::path::PathBuf;
 
@@ -70,10 +71,16 @@ fn run() -> Result<(), Error> {
 }
 
 fn watch_season(mal: &MAL, season: u32, series: &mut Series) -> Result<(), Error> {
-    let (series_info, search_term) = find_season_series_info(mal, season, series)?;
+    let find_result = find_season_series_info(mal, season, series)?;
+    let series_info = find_result.info;
 
     if !series.has_season_data(season) {
-        let info = SeasonInfo::create_basic(series_info.id, series_info.episodes, search_term);
+        let info = SeasonInfo::create_basic(
+            series_info.id,
+            series_info.episodes,
+            find_result.search_term,
+        );
+
         series.set_season_data(season, info);
         series.save_data()?;
     }
@@ -139,14 +146,14 @@ fn find_list_entry(
     }
 }
 
-// This will be cleaned up soon™
-fn find_season_series_info(
-    mal: &MAL,
-    season: u32,
-    series: &Series,
-) -> Result<(mal::SeriesInfo, prompt::SearchTerm), Error> {
+fn find_season_series_info(mal: &MAL, season: u32, series: &Series) -> Result<SearchResult, Error> {
     match series.get_season_data(season) {
-        Ok(season) => Ok((season.request_mal_info(mal)?, series.name.clone())),
+        Ok(season) => {
+            let info = season.request_mal_info(mal)?;
+            let name = series.name.clone();
+
+            Ok(SearchResult::new(info, name))
+        }
         Err(_) => prompt::find_and_select_series_info(mal, &series.name),
     }
 }
