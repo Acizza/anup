@@ -12,7 +12,6 @@ use std::process::ExitStatus;
 #[derive(Fail, Debug)]
 pub enum SeriesError {
     #[fail(display = "multiple series found")] MultipleSeriesFound,
-    #[fail(display = "no episodes found")] NoEpisodesFound,
     #[fail(display = "episode {} not found", _0)] EpisodeNotFound(u32),
     #[fail(display = "season {} information not found", _0)] SeasonInfoNotFound(u32),
 }
@@ -107,7 +106,6 @@ pub struct SeasonInfo {
     pub series_id: u32,
     pub episodes: u32,
     pub search_title: String,
-    pub title_format: Option<String>,
 }
 
 impl SeasonInfo {
@@ -116,7 +114,6 @@ impl SeasonInfo {
             series_id: id,
             episodes,
             search_title,
-            title_format: None,
         }
     }
 
@@ -127,6 +124,12 @@ impl SeasonInfo {
             .find(|i| i.id == self.series_id)
             .ok_or(SeasonInfoError::UnknownAnimeID(self.series_id, self.search_title.clone()).into())
     }
+}
+
+#[derive(Fail, Debug)]
+pub enum EpisodeDataError {
+    #[fail(display = "no episodes found")]
+    NoEpisodesFound,
 }
 
 #[derive(Debug)]
@@ -141,26 +144,25 @@ impl EpisodeData {
         let mut episodes = HashMap::new();
 
         for entry in std::fs::read_dir(path)? {
-            let entry = entry?;
-            let path = entry.path();
+            let path = entry?.path();
 
-            let ep_info = match EpisodeInfo::from_path(&path) {
+            let info = match EpisodeInfo::parse(&path) {
                 Some(info) => info,
                 None => continue,
             };
 
-            match series {
-                Some(ref set_series) if set_series != &ep_info.series => {
+            if let Some(ref series) = series {
+                if series != &info.series {
                     bail!(SeriesError::MultipleSeriesFound);
                 }
-                None => series = Some(ep_info.series),
-                _ => (),
+            } else {
+                series = Some(info.series);
             }
 
-            episodes.insert(ep_info.number, path);
+            episodes.insert(info.episode, path);
         }
 
-        let series = series.ok_or(SeriesError::NoEpisodesFound)?;
+        let series = series.ok_or(EpisodeDataError::NoEpisodesFound)?;
 
         Ok(EpisodeData {
             series_name: series,
@@ -171,28 +173,29 @@ impl EpisodeData {
 
 #[derive(Debug)]
 struct EpisodeInfo {
-    pub series: String,
-    pub number: u32,
+    series: String,
+    episode: u32,
 }
 
 impl EpisodeInfo {
-    fn from_path(path: &Path) -> Option<EpisodeInfo> {
+    fn parse(path: &Path) -> Option<EpisodeInfo> {
         if !path.is_file() {
             return None;
         }
 
         lazy_static! {
-            static ref RE: Regex = Regex::new(r"(?:\[.+?\]\s*)?(?P<series>.+?)\s*-?\s*(?P<episode>\d+)\s*(?:\(|\[|\.)")
+            static ref EP_FORMAT: Regex = Regex::new(r"(?:\[.+?\]\s*)?(?P<series>.+?)\s*-?\s*(?P<episode>\d+)\s*(?:\(|\[|\.)")
                 .unwrap();
         }
 
         let filename = path.file_name()?.to_str().unwrap().replace('_', " ");
+        let caps = EP_FORMAT.captures(&filename)?;
 
-        let caps = RE.captures(&filename)?;
-
-        Some(EpisodeInfo {
+        let info = EpisodeInfo {
             series: caps["series"].into(),
-            number: caps["episode"].parse().ok()?,
-        })
+            episode: caps["episode"].parse().ok()?,
+        };
+
+        Some(info)
     }
 }
