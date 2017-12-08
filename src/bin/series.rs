@@ -188,11 +188,24 @@ impl EpisodeInfo {
                 .unwrap();
         }
 
-        let filename = path.file_name()?.to_str().unwrap().replace('_', " ");
+        // Replace certain special characters with spaces since they can either
+        // affect parsing or prevent finding results on MAL
+        let filename = path.file_name()?.to_str()
+            .unwrap()
+            .replace('_', " ");
+
         let caps = EP_FORMAT.captures(&filename)?;
 
+        let clean_name = {
+            let raw = &caps["series"];
+            raw.replace('.', " ")
+               .replace(" -", ":") // Dashes typically represent a colon in file names
+               .trim()
+               .to_string()
+        };
+
         let info = EpisodeInfo {
-            series: caps["series"].into(),
+            series: clean_name,
             episode: caps["episode"].parse().ok()?,
         };
 
