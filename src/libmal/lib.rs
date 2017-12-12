@@ -11,7 +11,7 @@ extern crate reqwest;
 
 use chrono::NaiveDate;
 use failure::{Error, SyncFailure};
-use list::{AnimeEntry, EntryTag, Status};
+use list::{EntryInfo, EntryTag, Status};
 use minidom::Element;
 use request::RequestURL;
 use reqwest::StatusCode;
@@ -105,7 +105,7 @@ impl MAL {
     ///
     /// If this is the only function you need to call in `MAL`, you don't need
     /// to provide a valid password when calling `MAL::new`.
-    pub fn get_anime_list(&self) -> Result<Vec<AnimeEntry>, Error> {
+    pub fn get_anime_list(&self) -> Result<Vec<EntryInfo>, Error> {
         let resp = request::get_verify(&self, RequestURL::AnimeList(&self.username))?.text()?;
         let root: Element = resp.parse().map_err(SyncFailure::new)?;
 
@@ -114,8 +114,8 @@ impl MAL {
         for child in root.children().skip(1) {
             let get_child = |name| get_xml_child_text(child, name);
 
-            let entry = AnimeEntry {
-                info: SeriesInfo {
+            let entry = EntryInfo {
+                series: SeriesInfo {
                     id: get_child("series_animedb_id")?.parse()?,
                     title: get_child("series_title")?,
                     episodes: get_child("series_episodes")?.parse()?,

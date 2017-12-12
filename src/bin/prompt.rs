@@ -2,7 +2,7 @@ use chrono::{Local, NaiveDate};
 use failure::{Error, ResultExt};
 use input::{self, Answer};
 use mal::{SeriesInfo, MAL};
-use mal::list::{AnimeEntry, EntryTag, Status};
+use mal::list::{EntryInfo, EntryUpdate, EntryTag, Status};
 use std;
 
 // This code will be refactored and cleaned up soon™
@@ -54,7 +54,7 @@ pub fn find_and_select_series_info(mal: &MAL, name: &str) -> Result<SearchResult
     }
 }
 
-pub fn add_to_anime_list(mal: &MAL, info: &SeriesInfo) -> Result<AnimeEntry, Error> {
+pub fn add_to_anime_list(mal: &MAL, info: &SeriesInfo) -> Result<EntryInfo, Error> {
     println!(
         "[{}] is not on your anime list\ndo you want to add it? (Y/n)",
         info.title
@@ -71,8 +71,8 @@ pub fn add_to_anime_list(mal: &MAL, info: &SeriesInfo) -> Result<AnimeEntry, Err
             ],
         )?;
 
-        Ok(AnimeEntry {
-            info: info.clone(),
+        Ok(EntryInfo {
+            series: info.clone(),
             watched_episodes: 0,
             start_date: Some(today),
             end_date: None,
@@ -89,7 +89,7 @@ pub fn add_to_anime_list(mal: &MAL, info: &SeriesInfo) -> Result<AnimeEntry, Err
 /// Adds the `FinishDate` tag to the `tags` parameter.
 /// If the `entry` is being rewatched, it will ask the user before adding the tag.
 fn add_finish_date(
-    entry: &AnimeEntry,
+    entry: &EntryInfo,
     date: NaiveDate,
     tags: &mut Vec<EntryTag>,
 ) -> Result<(), Error> {
@@ -108,14 +108,14 @@ fn add_finish_date(
     Ok(())
 }
 
-fn completed(mal: &MAL, entry: &mut AnimeEntry, mut tags: Vec<EntryTag>) -> Result<(), Error> {
+fn completed(mal: &MAL, entry: &mut EntryInfo, mut tags: Vec<EntryTag>) -> Result<(), Error> {
     let today = get_today_naive();
 
     tags.push(EntryTag::Status(Status::Completed));
 
     println!(
         "[{}] completed!\ndo you want to rate it? (Y/n)",
-        entry.info.title
+        entry.series.title
     );
 
     if input::read_yn(Answer::Yes)? {
@@ -131,22 +131,22 @@ fn completed(mal: &MAL, entry: &mut AnimeEntry, mut tags: Vec<EntryTag>) -> Resu
 
     add_finish_date(entry, today, &mut tags)?;
 
-    mal.update_anime(entry.info.id, &tags)?;
+    mal.update_anime(entry.series.id, &tags)?;
     // Nothing to do now
     std::process::exit(0);
 }
 
-pub fn update_watched(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
+pub fn update_watched(mal: &MAL, entry: &mut EntryInfo) -> Result<(), Error> {
     let mut tags = vec![EntryTag::Episode(entry.watched_episodes)];
 
-    if entry.watched_episodes >= entry.info.episodes {
+    if entry.watched_episodes >= entry.series.episodes {
         completed(mal, entry, tags)?;
     } else {
         println!(
             "[{}] episode {}/{} completed",
-            entry.info.title,
+            entry.series.title,
             entry.watched_episodes,
-            entry.info.episodes
+            entry.series.episodes
         );
 
         if !entry.rewatching {
@@ -158,13 +158,13 @@ pub fn update_watched(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
         }
 
         entry.sync_from_tags(&tags);
-        mal.update_anime(entry.info.id, &tags)?;
+        mal.update_anime(entry.series.id, &tags)?;
     }
 
     Ok(())
 }
 
-pub fn next_episode_options(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
+pub fn next_episode_options(mal: &MAL, entry: &mut EntryInfo) -> Result<(), Error> {
     println!("options:");
     println!("\t[d] drop series\n\t[h] put series on hold\n\t[r] rate series\n\t[x] exit\n\t[n] watch next episode (default)");
 
@@ -175,11 +175,11 @@ pub fn next_episode_options(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Err
             let mut tags = vec![EntryTag::Status(Status::Dropped)];
             add_finish_date(entry, get_today_naive(), &mut tags)?;
 
-            mal.update_anime(entry.info.id, &tags)?;
+            mal.update_anime(entry.series.id, &tags)?;
             std::process::exit(0);
         },
         "h" => {
-            mal.update_anime(entry.info.id, &[EntryTag::Status(Status::OnHold)])?;
+            mal.update_anime(entry.series.id, &[EntryTag::Status(Status::OnHold)])?;
             std::process::exit(0);
         },
         "r" => {
@@ -189,7 +189,7 @@ pub fn next_episode_options(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Err
             let tags = vec![EntryTag::Score(score)];
 
             entry.sync_from_tags(&tags);
-            mal.update_anime(entry.info.id, &tags)?;
+            mal.update_anime(entry.series.id, &tags)?;
 
             next_episode_options(mal, entry)?;
         },
@@ -200,7 +200,7 @@ pub fn next_episode_options(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Err
     Ok(())
 }
 
-pub fn abnormal_player_exit(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
+pub fn abnormal_player_exit(mal: &MAL, entry: &mut EntryInfo) -> Result<(), Error> {
     println!("video player not exited normally");
     println!("do you still want to count the episode as watched? (y/N)");
 
@@ -211,8 +211,8 @@ pub fn abnormal_player_exit(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Err
     Ok(())
 }
 
-pub fn rewatch(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
-    println!("[{}] already completed", entry.info.title);
+pub fn rewatch(mal: &MAL, entry: &mut EntryInfo) -> Result<(), Error> {
+    println!("[{}] already completed", entry.series.title);
     println!("do you want to rewatch it? (Y/n)");
     println!("(note that you have to increase the rewatch count manually)");
 
@@ -227,7 +227,7 @@ pub fn rewatch(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
         }
 
         entry.sync_from_tags(&tags);
-        mal.update_anime(entry.info.id, &tags)?;
+        mal.update_anime(entry.series.id, &tags)?;
     } else {
         // No point in continuing in this case
         std::process::exit(0);

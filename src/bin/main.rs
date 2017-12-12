@@ -20,7 +20,7 @@ mod series;
 
 use failure::{Error, ResultExt};
 use mal::MAL;
-use mal::list::{AnimeEntry, Status};
+use mal::list::{EntryInfo, EntryUpdate, Status};
 use prompt::SearchResult;
 use series::{SeasonInfo, Series};
 use std::path::PathBuf;
@@ -107,7 +107,7 @@ fn play_episode_loop(
     mal: &MAL,
     season: u32,
     series: &Series,
-    list_entry: &mut AnimeEntry,
+    list_entry: &mut EntryInfo,
 ) -> Result<(), Error> {
     let season_offset = get_season_ep_offset(season, series)?;
 
@@ -128,9 +128,9 @@ fn play_episode_loop(
 fn find_list_entry(
     mal: &MAL,
     info: &mal::SeriesInfo,
-    list: &[AnimeEntry],
-) -> Result<AnimeEntry, Error> {
-    let found = list.iter().find(|e| e.info == *info);
+    list: &[EntryInfo],
+) -> Result<EntryInfo, Error> {
+    let found = list.iter().find(|e| e.series == *info);
 
     match found {
         Some(entry) => {

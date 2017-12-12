@@ -5,9 +5,9 @@ use SeriesInfo;
 
 /// Represents information about an anime series on a user's list.
 #[derive(Debug, Clone)]
-pub struct AnimeEntry {
+pub struct EntryInfo {
     /// The general series information.
-    pub info: SeriesInfo,
+    pub series: SeriesInfo,
     /// The number of episodes watched.
     pub watched_episodes: u32,
     /// The date the user started watching the series.
@@ -22,7 +22,7 @@ pub struct AnimeEntry {
     pub rewatching: bool,
 }
 
-impl AnimeEntry {
+impl EntryInfo {
     /// Synchronizes `AnimeEntry` values with its equivalent `EntryTag` value.
     /// 
     /// # Examples
@@ -65,9 +65,61 @@ impl AnimeEntry {
     }
 }
 
-impl PartialEq for AnimeEntry {
-    fn eq(&self, other: &AnimeEntry) -> bool {
-        self.info == other.info
+impl PartialEq for EntryInfo {
+    fn eq(&self, other: &EntryInfo) -> bool {
+        self.series == other.series
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct EntryUpdate {
+    pub watched_episodes: Option<u32>,
+    pub status: Option<Status>,
+    pub start_date: Option<Option<NaiveDate>>,
+    pub finish_date: Option<Option<NaiveDate>>,
+    pub score: Option<u8>,
+    pub rewatching: Option<bool>,
+}
+
+macro_rules! gen_update_xml {
+    ($entry:ident, $xml_elem:ident, $($field:ident($val_name:ident): $xml_name:expr => $xml_val:expr),+) => {
+        $(if let Some($val_name) = $entry.$field {
+            let mut elem = Element::bare($xml_name);
+            elem.append_text_node($xml_val);
+            $xml_elem.append_child(elem);
+        })+
+    };
+}
+
+impl EntryUpdate {
+    #[inline]
+    pub fn new() -> EntryUpdate {
+        EntryUpdate {
+            watched_episodes: None,
+            status: None,
+            start_date: None,
+            finish_date: None,
+            score: None,
+            rewatching: None,
+        }
+    }
+
+    fn build_xml_resp(&self) -> Result<String, Error> {
+        let mut entry = Element::bare("entry");
+
+        gen_update_xml!(self, entry,
+            watched_episodes(num): "episode" => num.to_string(),
+            status(status): "status" => (status as i32).to_string(),
+            start_date(date): "date_start" => date_to_str(date),
+            finish_date(date): "date_finish" => date_to_str(date),
+            score(score): "score" => score.to_string(),
+            rewatching(v): "enable_rewatching" => (v as u8).to_string()
+        );
+
+        let mut buffer = Vec::new();
+        entry.write_to(&mut buffer).map_err(SyncFailure::new)?;
+
+        Ok(String::from_utf8(buffer)?)
     }
 }
 
