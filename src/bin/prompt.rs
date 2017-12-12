@@ -164,8 +164,9 @@ pub fn update_watched(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn next_episode_options(mal: &MAL, entry: &AnimeEntry) -> Result<(), Error> {
-    println!("\t[d] drop series\n\t[h] put series on hold\n\t[x] exit\n\t[n] watch next episode (default)");
+pub fn next_episode_options(mal: &MAL, entry: &mut AnimeEntry) -> Result<(), Error> {
+    println!("options:");
+    println!("\t[d] drop series\n\t[h] put series on hold\n\t[r] rate series\n\t[x] exit\n\t[n] watch next episode (default)");
 
     let input = input::read_line()?.to_lowercase();
 
@@ -180,6 +181,17 @@ pub fn next_episode_options(mal: &MAL, entry: &AnimeEntry) -> Result<(), Error> 
         "h" => {
             mal.update_anime(entry.info.id, &[EntryTag::Status(Status::OnHold)])?;
             std::process::exit(0);
+        },
+        "r" => {
+            println!("enter your score between 1-10:");
+
+            let score = input::read_usize_range(1, 10)? as u8;
+            let tags = vec![EntryTag::Score(score)];
+
+            entry.sync_from_tags(&tags);
+            mal.update_anime(entry.info.id, &tags)?;
+
+            next_episode_options(mal, entry)?;
         },
         "x" => std::process::exit(0),
         _ => (),
