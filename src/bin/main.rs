@@ -20,7 +20,7 @@ mod series;
 
 use failure::{Error, ResultExt};
 use mal::MAL;
-use mal::list::{EntryInfo, EntryUpdate, Status};
+use mal::list::{AnimeList, ListEntry, Status};
 use prompt::SearchResult;
 use series::{SeasonInfo, Series};
 use std::path::PathBuf;
@@ -85,10 +85,10 @@ fn watch_season(mal: &MAL, season: u32, series: &mut Series) -> Result<(), Error
         series.save_data()?;
     }
 
-    let anime_list = mal.get_anime_list().context("MAL list retrieval failed")?;
-    let mut list_entry = find_list_entry(mal, &series_info, &anime_list)?;
+    let anime_list = AnimeList::new(mal);
+    let mut list_entry = find_list_entry(&anime_list, &series_info)?;
 
-    play_episode_loop(mal, season, series, &mut list_entry)
+    play_episode_loop(season, series, &anime_list, &mut list_entry)
 }
 
 fn get_season_ep_offset(season: u32, series: &Series) -> Result<u32, Error> {
@@ -104,45 +104,41 @@ fn get_season_ep_offset(season: u32, series: &Series) -> Result<u32, Error> {
 }
 
 fn play_episode_loop(
-    mal: &MAL,
     season: u32,
     series: &Series,
-    list_entry: &mut EntryInfo,
+    list: &AnimeList,
+    entry: &mut ListEntry,
 ) -> Result<(), Error> {
     let season_offset = get_season_ep_offset(season, series)?;
 
     loop {
-        list_entry.watched_episodes += 1;
-        let real_ep_num = list_entry.watched_episodes + season_offset;
+        entry.watched_episodes += 1;
+        let real_ep_num = entry.watched_episodes + season_offset;
 
         if series.play_episode(real_ep_num)?.success() {
-            prompt::update_watched(mal, list_entry)?;
+            prompt::update_watched(list, entry)?;
         } else {
-            prompt::abnormal_player_exit(mal, list_entry)?;
+            prompt::abnormal_player_exit(list, entry)?;
         }
 
-        prompt::next_episode_options(mal, list_entry)?;
+        prompt::next_episode_options(list, entry)?;
+        list.update(entry)?;
     }
 }
 
-fn find_list_entry(
-    mal: &MAL,
-    info: &mal::SeriesInfo,
-    list: &[EntryInfo],
-) -> Result<EntryInfo, Error> {
-    let found = list.iter().find(|e| e.series == *info);
+fn find_list_entry(list: &AnimeList, info: &mal::SeriesInfo) -> Result<ListEntry, Error> {
+    let entries = list.read_entries().context("MAL list retrieval failed")?;
+    let found = entries.into_iter().find(|e| e.series_info == *info);
 
     match found {
-        Some(entry) => {
-            let mut entry = entry.clone();
-
+        Some(mut entry) => {
             if entry.status == Status::Completed && !entry.rewatching {
-                prompt::rewatch(mal, &mut entry)?;
+                prompt::rewatch(list, &mut entry)?;
             }
 
             Ok(entry)
         }
-        None => prompt::add_to_anime_list(mal, info),
+        None => prompt::add_to_anime_list(list, info),
     }
 }
 

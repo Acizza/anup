@@ -9,9 +9,7 @@ extern crate chrono;
 extern crate minidom;
 extern crate reqwest;
 
-use chrono::NaiveDate;
 use failure::{Error, SyncFailure};
-use list::{EntryInfo, EntryTag, Status};
 use minidom::Element;
 use request::RequestURL;
 use reqwest::StatusCode;
@@ -55,6 +53,7 @@ impl MAL {
     /// Creates a new instance of the MAL struct for interacting with the MyAnimeList API.
     ///
     /// If you only need to call `MAL::get_anime_list`, then the `password` field can be an empty string.
+    #[inline]
     pub fn new<S: Into<String>>(username: S, password: S) -> MAL {
         MAL {
             username: username.into(),
@@ -100,93 +99,6 @@ impl MAL {
 
         Ok(entries)
     }
-
-    /// Retrieves the user's anime list and returns every entry as an AnimeEntry.
-    ///
-    /// If this is the only function you need to call in `MAL`, you don't need
-    /// to provide a valid password when calling `MAL::new`.
-    pub fn get_anime_list(&self) -> Result<Vec<EntryInfo>, Error> {
-        let resp = request::get_verify(&self, RequestURL::AnimeList(&self.username))?.text()?;
-        let root: Element = resp.parse().map_err(SyncFailure::new)?;
-
-        let mut entries = Vec::new();
-
-        for child in root.children().skip(1) {
-            let get_child = |name| get_xml_child_text(child, name);
-
-            let entry = EntryInfo {
-                series: SeriesInfo {
-                    id: get_child("series_animedb_id")?.parse()?,
-                    title: get_child("series_title")?,
-                    episodes: get_child("series_episodes")?.parse()?,
-                },
-                watched_episodes: get_child("my_watched_episodes")?.parse()?,
-                start_date: parse_str_date(&get_child("my_start_date")?),
-                end_date: parse_str_date(&get_child("my_finish_date")?),
-                status: Status::from_i32(get_child("my_status")?.parse()?)?,
-                score: get_child("my_score")?.parse()?,
-                rewatching: get_child("my_rewatching")?.parse::<u8>()? == 1,
-            };
-
-            entries.push(entry);
-        }
-
-        Ok(entries)
-    }
-
-    /// Adds an anime to the user's list.
-    /// If the specified anime is already on the user's list, the function will return an HTTP 400 error.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The MyAnimeList ID for the anime to add
-    /// * `tags` - The values to set on the specified anime
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use mal::MAL;
-    /// use mal::list::{EntryTag, Status};
-    ///
-    /// // ID for Cowboy Bebop
-    /// let id = 1;
-    ///
-    /// let mal = MAL::new("username", "password");
-    /// mal.add_anime(id, &[EntryTag::Status(Status::Watching)]).unwrap();
-    /// ```
-    pub fn add_anime(&self, id: u32, tags: &[EntryTag]) -> Result<(), Error> {
-        let body = EntryTag::build_xml_resp(tags)?;
-        request::auth_post_verify(&self, RequestURL::Add(id), body)?;
-
-        Ok(())
-    }
-
-    /// Updates an existing anime on the user's list.
-    /// Note that if the specified anime isn't already on the user's list, nothing will happen.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The MyAnimeList ID for the anime to update
-    /// * `tags` - The values to set on the specified anime
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use mal::MAL;
-    /// use mal::list::{EntryTag, Status};
-    ///
-    /// // ID for Cowboy Bebop
-    /// let id = 1;
-    ///
-    /// let mal = MAL::new("username", "password");
-    /// mal.update_anime(id, &[EntryTag::Episode(5)]).unwrap();
-    /// ```
-    pub fn update_anime(&self, id: u32, tags: &[EntryTag]) -> Result<(), Error> {
-        let body = EntryTag::build_xml_resp(tags)?;
-        request::auth_post_verify(&self, RequestURL::Update(id), body)?;
-
-        Ok(())
-    }
 }
 
 fn get_xml_child_text(elem: &minidom::Element, name: &str) -> Result<String, MissingXMLNode> {
@@ -194,12 +106,4 @@ fn get_xml_child_text(elem: &minidom::Element, name: &str) -> Result<String, Mis
         .find(|c| c.name() == name)
         .map(|c| c.text())
         .ok_or(MissingXMLNode(name.into()))
-}
-
-fn parse_str_date(date: &str) -> Option<NaiveDate> {
-    if date != "0000-00-00" {
-        NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()
-    } else {
-        None
-    }
 }
