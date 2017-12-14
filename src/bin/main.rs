@@ -7,17 +7,21 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
 
+extern crate base64;
 extern crate chrono;
 extern crate mal;
 extern crate regex;
 extern crate serde;
 extern crate serde_json;
+extern crate toml;
 
+mod config;
 mod input;
 mod prompt;
 mod process;
 mod series;
 
+use config::Config;
 use failure::{Error, ResultExt};
 use mal::MAL;
 use mal::list::{AnimeList, ListEntry, Status};
@@ -45,9 +49,10 @@ fn run() -> Result<(), Error> {
         (version: env!("CARGO_PKG_VERSION"))
         (author: env!("CARGO_PKG_AUTHORS"))
         (@arg PATH: "Specifies the directory to look for video files in")
-        (@arg USERNAME: -u --username +takes_value +required "Your MyAnimeList username")
-        (@arg PASSWORD: -p --password +takes_value +required "Your MyAnimeList password")
+        (@arg CONFIG_PATH: -c --config "Specifies the location of the configuration file")
+        (@arg USERNAME: -u --username +takes_value "Your MyAnimeList username")
         (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
+        (@arg DONT_SAVE_CONFIG: --nosave "Disables saving of your account information")
     ).get_matches();
 
     let path = match matches.value_of("PATH") {
@@ -55,11 +60,7 @@ fn run() -> Result<(), Error> {
         None => std::env::current_dir().context("failed to get current directory")?,
     };
 
-    let mal = {
-        let username = matches.value_of("USERNAME").unwrap();
-        let password = matches.value_of("PASSWORD").unwrap();
-        MAL::new(username, password)
-    };
+    let mal = init_mal(&matches)?;
 
     let season = matches
         .value_of("SEASON")
@@ -68,6 +69,46 @@ fn run() -> Result<(), Error> {
 
     let mut series = Series::from_path(&path)?;
     watch_season(&mal, season, &mut series)
+}
+
+fn init_mal(args: &clap::ArgMatches) -> Result<MAL, Error> {
+    let username = args.value_of("USERNAME").map(|u| u.to_string());
+
+    let mut config = load_config(args).context("failed to load config file")?;
+
+    let user = config
+        .load_user_prompt(username)
+        .context("failed to get config user information")?;
+
+    if !args.is_present("DONT_SAVE_CONFIG") {
+        config.save().context("failed to save config")?;
+    }
+
+    let password = user.decode_password()
+        .context("failed to decode config password")?;
+
+    let mal = MAL::new(user.name, password);
+    Ok(mal)
+}
+
+fn load_config(args: &clap::ArgMatches) -> Result<Config, Error> {
+    let config_path = match args.value_of("CONFIG_PATH") {
+        Some(p) => PathBuf::from(p),
+        None => {
+            let mut current = std::env::current_exe().context("failed to get current directory")?;
+            current.pop();
+            current.push("config.toml");
+            current
+        }
+    };
+
+    let config = if !config_path.exists() {
+        Config::new(config_path)
+    } else {
+        Config::from_path(&config_path)?
+    };
+
+    Ok(config)
 }
 
 fn watch_season(mal: &MAL, season: u32, series: &mut Series) -> Result<(), Error> {
