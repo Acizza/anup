@@ -1,10 +1,11 @@
 use failure::Error;
 use std::io;
 
-pub fn read_line() -> Result<String, Error> {
+pub fn read_line() -> io::Result<String> {
     let mut buffer = String::new();
     io::stdin().read_line(&mut buffer)?;
 
+    // We trim the end of the buffer to remove the newline character
     Ok(buffer[..buffer.len() - 1].to_string())
 }
 
@@ -35,12 +36,12 @@ impl Into<bool> for Answer {
     }
 }
 
-pub fn read_yn(default: Answer) -> Result<bool, Error> {
+pub fn read_yn(default: Answer) -> io::Result<bool> {
     let line = read_line()?;
 
     let answer = match line.as_str() {
-        "Y" | "y" => true,
-        "N" | "n" => false,
+        "y" | "Y" => true,
+        "n" | "N" => false,
         _ => default.into(),
     };
 
