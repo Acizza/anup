@@ -11,6 +11,7 @@ pub enum RequestURL<'a> {
     Search(&'a str),
     Add(ID),
     Update(ID),
+    VerifyCredentials,
 }
 
 impl<'a> RequestURL<'a> {
@@ -39,6 +40,9 @@ impl<'a> ToString for RequestURL<'a> {
             }
             RequestURL::Update(id) => {
                 url.set_path(&format!("/api/animelist/update/{}.xml", id));
+            }
+            RequestURL::VerifyCredentials => {
+                url.set_path("/api/account/verify_credentials.xml");
             }
         }
 

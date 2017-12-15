@@ -99,6 +99,27 @@ impl MAL {
 
         Ok(entries)
     }
+
+    /// Returns true if the provided account credentials are correct.
+    /// 
+    /// # Examples
+    /// 
+    /// ```no_run
+    /// use mal::MAL;
+    /// 
+    /// // Create a new MAL instance
+    /// let mal = MAL::new("username", "password");
+    /// 
+    /// // Verify that the username and password are valid
+    /// let valid = mal.verify_credentials().unwrap();
+    /// 
+    /// assert_eq!(valid, false);
+    /// ```
+    #[inline]
+    pub fn verify_credentials(&self) -> Result<bool, Error> {
+        let resp = request::auth_get(self, RequestURL::VerifyCredentials)?;
+        Ok(resp.status() == StatusCode::Ok)
+    }
 }
 
 fn get_xml_child_text(elem: &minidom::Element, name: &str) -> Result<String, MissingXMLNode> {
