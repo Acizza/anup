@@ -43,9 +43,10 @@ pub struct BadResponse(pub u16, pub String);
 /// Used to interact with the MyAnimeList API with authorization being handled automatically.
 #[derive(Debug)]
 pub struct MAL {
-    /// The user's name on MyAnimeList
+    /// The user's name on MyAnimeList.
     pub username: String,
-    password: String,
+    /// The user's password on MyAnimeList.
+    pub password: String,
     client: reqwest::Client,
 }
 
