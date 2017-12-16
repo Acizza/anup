@@ -168,12 +168,10 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut ListEntry) -> Result<(
             let score = input::read_usize_range(1, 10)? as u8;
             entry.changeset.score(score);
 
+            list.update(entry)?;
             next_episode_options(list, entry)?;
         },
-        "x" => {
-            list.update(entry)?;
-            std::process::exit(0)
-        },
+        "x" => std::process::exit(0),
         _ => (),
     }
 

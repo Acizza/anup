@@ -162,8 +162,8 @@ fn play_episode_loop(
             prompt::abnormal_player_exit(list, entry)?;
         }
 
-        prompt::next_episode_options(list, entry)?;
         list.update(entry)?;
+        prompt::next_episode_options(list, entry)?;
     }
 }
 
