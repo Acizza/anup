@@ -232,6 +232,7 @@ impl ListEntry {
     }
 
     /// Updates the `ListEntry`'s values with ones that are set in its changeset.
+    #[inline]
     pub fn sync_to_changeset(&mut self) {
         macro_rules! sync_fields {
             ($($field:ident),+) => {
@@ -253,6 +254,7 @@ impl ListEntry {
 }
 
 impl PartialEq for ListEntry {
+    #[inline]
     fn eq(&self, other: &ListEntry) -> bool {
         self.series_info == other.series_info
     }
@@ -422,6 +424,7 @@ impl Status {
 }
 
 impl Default for Status {
+    #[inline]
     fn default() -> Self {
         Status::PlanToWatch
     }

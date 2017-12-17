@@ -27,6 +27,7 @@ pub struct SeriesInfo {
 }
 
 impl PartialEq for SeriesInfo {
+    #[inline]
     fn eq(&self, other: &SeriesInfo) -> bool {
         self.id == other.id
     }
