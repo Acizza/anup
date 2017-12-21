@@ -228,15 +228,10 @@ pub struct ListEntry {
     /// The general series information.
     pub series_info: SeriesInfo,
     watched_episodes: ChangeTracker<u32>,
-    /// The date the user started watching the series.
     start_date: ChangeTracker<Option<NaiveDate>>,
-    /// The date the user finished watching the series.
     finish_date: ChangeTracker<Option<NaiveDate>>,
-    /// The current watch status of the series.
     status: ChangeTracker<Status>,
-    /// The current rating given by the user.
     score: ChangeTracker<u8>,
-    /// Indicates whether or not the anime is currently being rewatched.
     rewatching: ChangeTracker<bool>,
 }
 
