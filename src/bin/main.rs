@@ -153,8 +153,9 @@ fn play_episode_loop(
     let season_offset = get_season_ep_offset(season, series)?;
 
     loop {
-        entry.watched_episodes += 1;
-        let real_ep_num = entry.watched_episodes + season_offset;
+        let watched = entry.watched_episodes() + 1;
+        entry.set_watched_episodes(watched);
+        let real_ep_num = watched + season_offset;
 
         if series.play_episode(real_ep_num)?.success() {
             prompt::update_watched(list, entry)?;
@@ -173,7 +174,7 @@ fn find_list_entry(list: &AnimeList, info: &mal::SeriesInfo) -> Result<ListEntry
 
     match found {
         Some(mut entry) => {
-            if entry.status == Status::Completed && !entry.rewatching {
+            if entry.status() == Status::Completed && !entry.rewatching() {
                 prompt::rewatch(list, &mut entry)?;
             }
 

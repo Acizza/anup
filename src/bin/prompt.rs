@@ -2,7 +2,7 @@ use chrono::{Local, NaiveDate};
 use failure::{Error, ResultExt};
 use input::{self, Answer};
 use mal::{SeriesInfo, MAL};
-use mal::list::{AnimeList, ListEntry, Changeset, Status};
+use mal::list::{AnimeList, ListEntry, Status};
 use std;
 
 // This code will be refactored and cleaned up soon™
@@ -62,9 +62,14 @@ pub fn add_to_anime_list(list: &AnimeList, info: &SeriesInfo) -> Result<ListEntr
 
     if input::read_yn(Answer::Yes)? {
         let today = get_today_naive();
-        let info = list.add(info.clone(), *Changeset::new().status(Status::Watching).start_date(Some(today)))?;
 
-        Ok(info)
+        let mut entry = ListEntry::new(info.clone());
+
+        entry.set_status(Status::Watching)
+             .set_start_date(Some(today));
+
+        list.add(&entry)?;
+        Ok(entry)
     } else {
         // No point in continuing in this case
         std::process::exit(0);
@@ -76,14 +81,14 @@ pub fn add_to_anime_list(list: &AnimeList, info: &SeriesInfo) -> Result<ListEntr
 fn add_finish_date(entry: &mut ListEntry, date: NaiveDate) -> Result<(), Error> {
     // Someone may want to keep the original start / finish date for an
     // anime they're rewatching
-    if entry.rewatching && entry.finish_date.is_some() {
+    if entry.rewatching() && entry.finish_date().is_some() {
         println!("do you want to override the finish date? (Y/n)");
 
         if input::read_yn(Answer::Yes)? {
-            entry.changeset.finish_date(Some(date));
+            entry.set_finish_date(Some(date));
         }
     } else {
-        entry.changeset.finish_date(Some(date));
+        entry.set_finish_date(Some(date));
     }
 
     Ok(())
@@ -92,7 +97,7 @@ fn add_finish_date(entry: &mut ListEntry, date: NaiveDate) -> Result<(), Error> 
 fn completed(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
     let today = get_today_naive();
 
-    entry.changeset.status(Status::Completed);
+    entry.set_status(Status::Completed);
 
     println!(
         "[{}] completed!\ndo you want to rate it? (Y/n)",
@@ -103,11 +108,11 @@ fn completed(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
         println!("enter your score between 1-10:");
         let score = input::read_usize_range(1, 10)? as u8;
 
-        entry.changeset.score(score);
+        entry.set_score(score);
     }
 
-    if entry.rewatching {
-        entry.changeset.rewatching(false);
+    if entry.rewatching() {
+        entry.set_rewatching(false);
     }
 
     add_finish_date(entry, today)?;
@@ -118,23 +123,24 @@ fn completed(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
 }
 
 pub fn update_watched(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
-    entry.changeset.watched(entry.watched_episodes);
+    let watched = entry.watched_episodes();
+    entry.set_watched_episodes(watched);
 
-    if entry.watched_episodes >= entry.series_info.episodes {
+    if entry.watched_episodes() >= entry.series_info.episodes {
         completed(list, entry)?;
     } else {
         println!(
             "[{}] episode {}/{} completed",
             entry.series_info.title,
-            entry.watched_episodes,
+            entry.watched_episodes(),
             entry.series_info.episodes
         );
 
-        if !entry.rewatching {
-            entry.changeset.status(Status::Watching);
+        if !entry.rewatching() {
+            entry.set_status(Status::Watching);
 
-            if entry.watched_episodes <= 1 {
-                entry.changeset.start_date(Some(get_today_naive()));
+            if entry.watched_episodes() <= 1 {
+                entry.set_start_date(Some(get_today_naive()));
             }
         }
     }
@@ -150,14 +156,14 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut ListEntry) -> Result<(
 
     match input.as_str() {
         "d" => {
-            entry.changeset.status(Status::Dropped);
+            entry.set_status(Status::Dropped);
             add_finish_date(entry, get_today_naive())?;
             list.update(entry)?;
 
             std::process::exit(0);
         },
         "h" => {
-            entry.changeset.status(Status::OnHold);
+            entry.set_status(Status::OnHold);
             list.update(entry)?;
 
             std::process::exit(0);
@@ -166,7 +172,7 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut ListEntry) -> Result<(
             println!("enter your score between 1-10:");
 
             let score = input::read_usize_range(1, 10)? as u8;
-            entry.changeset.score(score);
+            entry.set_score(score);
 
             list.update(entry)?;
             next_episode_options(list, entry)?;
@@ -195,16 +201,13 @@ pub fn rewatch(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
     println!("(note that you have to increase the rewatch count manually)");
 
     if input::read_yn(Answer::Yes)? {
-        entry.changeset
-             .rewatching(true)
-             .watched(0);
+        entry.set_rewatching(true).set_watched_episodes(0);
 
         println!("do you want to reset the start and end date? (Y/n)");
 
         if input::read_yn(Answer::Yes)? {
-            entry.changeset
-                 .start_date(Some(get_today_naive()))
-                 .finish_date(None);
+            entry.set_start_date(Some(get_today_naive()))
+                 .set_finish_date(None);
         }
 
         list.update(entry)?;
