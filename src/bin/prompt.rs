@@ -1,15 +1,12 @@
-use chrono::{Local, NaiveDate};
+use chrono::NaiveDate;
 use failure::{Error, ResultExt};
+use get_today;
 use input::{self, Answer};
 use mal::{SeriesInfo, MAL};
 use mal::list::{AnimeList, ListEntry, Status};
 use std;
 
 // This code will be refactored and cleaned up soon™
-
-fn get_today_naive() -> NaiveDate {
-    Local::today().naive_utc()
-}
 
 #[derive(Debug)]
 pub struct SearchResult {
@@ -54,28 +51,6 @@ pub fn find_and_select_series_info(mal: &MAL, name: &str) -> Result<SearchResult
     }
 }
 
-pub fn add_to_anime_list(list: &AnimeList, info: &SeriesInfo) -> Result<ListEntry, Error> {
-    println!(
-        "[{}] is not on your anime list\ndo you want to add it? (Y/n)",
-        info.title
-    );
-
-    if input::read_yn(Answer::Yes)? {
-        let today = get_today_naive();
-
-        let mut entry = ListEntry::new(info.clone());
-
-        entry.set_status(Status::Watching)
-             .set_start_date(Some(today));
-
-        list.add(&entry)?;
-        Ok(entry)
-    } else {
-        // No point in continuing in this case
-        std::process::exit(0);
-    }
-}
-
 /// Adds the `FinishDate` tag to the `tags` parameter.
 /// If the `entry` is being rewatched, it will ask the user before adding the tag.
 fn add_finish_date(entry: &mut ListEntry, date: NaiveDate) -> Result<(), Error> {
@@ -95,7 +70,7 @@ fn add_finish_date(entry: &mut ListEntry, date: NaiveDate) -> Result<(), Error> 
 }
 
 fn completed(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
-    let today = get_today_naive();
+    let today = get_today();
 
     entry.set_status(Status::Completed);
 
@@ -140,7 +115,7 @@ pub fn update_watched(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Err
             entry.set_status(Status::Watching);
 
             if entry.watched_episodes() <= 1 {
-                entry.set_start_date(Some(get_today_naive()));
+                entry.set_start_date(Some(get_today()));
             }
         }
     }
@@ -157,7 +132,7 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut ListEntry) -> Result<(
     match input.as_str() {
         "d" => {
             entry.set_status(Status::Dropped);
-            add_finish_date(entry, get_today_naive())?;
+            add_finish_date(entry, get_today())?;
             list.update(entry)?;
 
             std::process::exit(0);
@@ -206,7 +181,7 @@ pub fn rewatch(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
         println!("do you want to reset the start and end date? (Y/n)");
 
         if input::read_yn(Answer::Yes)? {
-            entry.set_start_date(Some(get_today_naive()))
+            entry.set_start_date(Some(get_today()))
                  .set_finish_date(None);
         }
 

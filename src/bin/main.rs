@@ -22,6 +22,7 @@ mod process;
 mod series;
 
 use config::Config;
+use chrono::{Local, NaiveDate};
 use failure::{Error, ResultExt};
 use mal::MAL;
 use mal::list::{AnimeList, ListEntry, Status};
@@ -69,6 +70,10 @@ fn run() -> Result<(), Error> {
 
     let mut series = Series::from_path(&path)?;
     watch_season(&mal, season, &mut series)
+}
+
+pub fn get_today() -> NaiveDate {
+    Local::today().naive_utc()
 }
 
 fn init_mal(args: &clap::ArgMatches) -> Result<MAL, Error> {
@@ -127,7 +132,7 @@ fn watch_season(mal: &MAL, season: u32, series: &mut Series) -> Result<(), Error
     }
 
     let anime_list = AnimeList::new(mal);
-    let mut list_entry = find_list_entry(&anime_list, &series_info)?;
+    let mut list_entry = get_list_entry(&anime_list, &series_info)?;
 
     play_episode_loop(season, series, &anime_list, &mut list_entry)
 }
@@ -168,7 +173,7 @@ fn play_episode_loop(
     }
 }
 
-fn find_list_entry(list: &AnimeList, info: &mal::SeriesInfo) -> Result<ListEntry, Error> {
+fn get_list_entry(list: &AnimeList, info: &mal::SeriesInfo) -> Result<ListEntry, Error> {
     let entries = list.read_entries().context("MAL list retrieval failed")?;
     let found = entries.into_iter().find(|e| e.series_info == *info);
 
@@ -180,7 +185,15 @@ fn find_list_entry(list: &AnimeList, info: &mal::SeriesInfo) -> Result<ListEntry
 
             Ok(entry)
         }
-        None => prompt::add_to_anime_list(list, info),
+        None => {
+            let mut entry = ListEntry::new(info.clone());
+
+            entry.set_status(Status::Watching)
+                .set_start_date(Some(get_today()));
+
+            list.add(&entry)?;
+            Ok(entry)
+        },
     }
 }
 
