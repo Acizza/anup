@@ -109,7 +109,7 @@ pub struct SeasonInfo {
 }
 
 impl SeasonInfo {
-    pub fn create_basic(id: u32, episodes: u32, search_title: String) -> SeasonInfo {
+    pub fn new(id: u32, episodes: u32, search_title: String) -> SeasonInfo {
         SeasonInfo {
             series_id: id,
             episodes,

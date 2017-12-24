@@ -121,7 +121,7 @@ fn watch_season(mal: &MAL, season: u32, series: &mut Series) -> Result<(), Error
     let series_info = find_result.info;
 
     if !series.has_season_data(season) {
-        let info = SeasonInfo::create_basic(
+        let info = SeasonInfo::new(
             series_info.id,
             series_info.episodes,
             find_result.search_term,
