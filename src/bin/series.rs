@@ -184,7 +184,7 @@ impl EpisodeInfo {
         }
 
         lazy_static! {
-            static ref EP_FORMAT: Regex = Regex::new(r"(?:\[.+?\]\s*)?(?P<series>.+?)\s*-?\s*(?P<episode>\d+).*?\..+?")
+            static ref EP_FORMAT: Regex = Regex::new(r"(?:\[.+?\]\s*)?(?P<series>.+?)\s*(?:-\s*)?(?P<episode>\d+).*?\..+?")
                 .unwrap();
         }
 
