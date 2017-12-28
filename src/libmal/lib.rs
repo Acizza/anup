@@ -77,7 +77,7 @@ impl MAL {
     /// assert!(found.len() > 0);
     /// ```
     pub fn search(&self, name: &str) -> Result<Vec<SeriesInfo>, Error> {
-        let mut resp = request::auth_get(&self, RequestURL::Search(name))?;
+        let mut resp = request::auth_get(self, RequestURL::Search(name))?;
 
         if resp.status() == StatusCode::NoContent {
             return Ok(Vec::new());

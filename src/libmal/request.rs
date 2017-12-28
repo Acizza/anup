@@ -18,22 +18,22 @@ impl<'a> RequestURL<'a> {
     pub const BASE_URL: &'static str = "https://myanimelist.net";
 }
 
-impl<'a> ToString for RequestURL<'a> {
-    fn to_string(&self) -> String {
+impl<'a> Into<Url> for RequestURL<'a> {
+    fn into(self) -> Url {
         let mut url = Url::parse(RequestURL::BASE_URL).unwrap();
 
-        match *self {
-            RequestURL::AnimeList(ref uname) => {
+        match self {
+            RequestURL::AnimeList(uname) => {
                 url.set_path("/malappinfo.php");
 
                 url.query_pairs_mut()
-                    .append_pair("u", &uname)
+                    .append_pair("u", uname)
                     .append_pair("status", "all")
                     .append_pair("type", "anime");
             }
-            RequestURL::Search(ref name) => {
+            RequestURL::Search(name) => {
                 url.set_path("/api/anime/search.xml");
-                url.query_pairs_mut().append_pair("q", &name);
+                url.query_pairs_mut().append_pair("q", name);
             }
             RequestURL::Add(id) => {
                 url.set_path(&format!("/api/animelist/add/{}.xml", id));
@@ -46,12 +46,13 @@ impl<'a> ToString for RequestURL<'a> {
             }
         }
 
-        url.into_string()
+        url
     }
 }
 
 pub fn get(mal: &MAL, req_type: RequestURL) -> Result<Response, Error> {
-    Ok(mal.client.get(&req_type.to_string()).send()?)
+    let url: Url = req_type.into();
+    Ok(mal.client.get(url).send()?)
 }
 
 pub fn get_verify(mal: &MAL, req_type: RequestURL) -> Result<Response, Error> {
@@ -62,23 +63,26 @@ pub fn get_verify(mal: &MAL, req_type: RequestURL) -> Result<Response, Error> {
 }
 
 pub fn auth_get(mal: &MAL, req_type: RequestURL) -> Result<Response, Error> {
-    send_auth_req(mal, &mut mal.client.get(&req_type.to_string()))
+    let url: Url = req_type.into();
+    send_auth_req(mal, &mut mal.client.get(url))
 }
 
-pub fn auth_post(mal: &MAL, req_type: RequestURL, body: String) -> Result<Response, Error> {
+pub fn auth_post(mal: &MAL, req_type: RequestURL, body: &str) -> Result<Response, Error> {
     let mut headers = Headers::new();
     headers.set(ContentType::form_url_encoded());
+
+    let url: Url = req_type.into();
 
     send_auth_req(
         mal,
         mal.client
-            .post(&req_type.to_string())
+            .post(url)
             .body(format!("data={}", body))
             .headers(headers),
     )
 }
 
-pub fn auth_post_verify(mal: &MAL, req_type: RequestURL, body: String) -> Result<Response, Error> {
+pub fn auth_post_verify(mal: &MAL, req_type: RequestURL, body: &str) -> Result<Response, Error> {
     let resp = auth_post(mal, req_type, body)?;
     verify_good_response(&resp)?;
 
@@ -101,7 +105,7 @@ pub fn verify_good_response(resp: &Response) -> Result<(), BadResponse> {
         StatusCode::Ok | StatusCode::Created => Ok(()),
         status => {
             let reason = status.canonical_reason().unwrap_or("Unknown Error").into();
-            Err(BadResponse(status.as_u16(), reason).into())
+            Err(BadResponse(status.as_u16(), reason))
         }
     }
 }

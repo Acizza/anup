@@ -26,7 +26,7 @@ impl SearchResult {
 pub fn find_and_select_series_info(mal: &MAL, name: &str) -> Result<SearchResult, Error> {
     let mut series = mal.search(name).context("MAL search failed")?;
 
-    if series.len() > 0 {
+    if !series.is_empty() {
         println!("MAL results for [{}]:", name);
         println!("enter the number next to the desired series:\n");
 

@@ -43,7 +43,7 @@ impl Series {
 
     pub fn play_episode(&self, ep_num: u32) -> Result<ExitStatus, Error> {
         let path = self.episodes.get(&ep_num)
-            .ok_or(SeriesError::EpisodeNotFound(ep_num))?;
+            .ok_or_else(|| SeriesError::EpisodeNotFound(ep_num))?;
 
         let output = process::open_with_default(path).output()?;
         Ok(output.status)
@@ -54,7 +54,7 @@ impl Series {
     }
 
     pub fn get_season_data(&self, season: u32) -> Result<&SeasonInfo, SeriesError> {
-        self.data.seasons.get(&season).ok_or(SeriesError::SeasonInfoNotFound(season))
+        self.data.seasons.get(&season).ok_or_else(|| SeriesError::SeasonInfoNotFound(season))
     }
 
     pub fn has_season_data(&self, season: u32) -> bool {
@@ -122,7 +122,7 @@ impl SeasonInfo {
             .context("MAL search failed")?
             .into_iter()
             .find(|i| i.id == self.series_id)
-            .ok_or(SeasonInfoError::UnknownAnimeID(self.series_id, self.search_title.clone()).into())
+            .ok_or_else(|| SeasonInfoError::UnknownAnimeID(self.series_id, self.search_title.clone()).into())
     }
 }
 

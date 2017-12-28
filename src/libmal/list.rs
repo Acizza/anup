@@ -79,7 +79,7 @@ impl<'a> AnimeList<'a> {
             };
 
             let entry = ListEntry {
-                series_info: info.into(),
+                series_info: info,
                 watched_episodes: get_child("my_watched_episodes")?.parse::<u32>()?.into(),
                 start_date: parse_str_date(&get_child("my_start_date")?).into(),
                 finish_date: parse_str_date(&get_child("my_finish_date")?).into(),
@@ -131,7 +131,7 @@ impl<'a> AnimeList<'a> {
 
         request::auth_post_verify(self.mal,
             RequestURL::Add(entry.series_info.id),
-            body)?;
+            &body)?;
 
         Ok(())
     }
@@ -177,7 +177,7 @@ impl<'a> AnimeList<'a> {
         
         request::auth_post_verify(self.mal,
             RequestURL::Update(entry.series_info.id),
-            body)?;
+            &body)?;
 
         entry.reset_changed_status();
         Ok(())
@@ -325,7 +325,7 @@ impl ListEntry {
 
     /// Sets the watched episode count.
     #[inline]
-    pub fn set_watched_episodes<'a>(&'a mut self, watched: u32) -> &'a mut ListEntry {
+    pub fn set_watched_episodes(&mut self, watched: u32) -> &mut ListEntry {
         self.watched_episodes.set(watched);
         self
     }
@@ -333,12 +333,12 @@ impl ListEntry {
     /// Returns the date the anime started being watched.
     #[inline]
     pub fn start_date(&self) -> &Option<NaiveDate> {
-        &self.start_date.get()
+        self.start_date.get()
     }
 
     /// Sets the date the user started watching the anime.
     #[inline]
-    pub fn set_start_date<'a>(&'a mut self, date: Option<NaiveDate>) -> &'a mut ListEntry {
+    pub fn set_start_date(&mut self, date: Option<NaiveDate>) -> &mut ListEntry {
         self.start_date.set(date);
         self
     }
@@ -346,12 +346,12 @@ impl ListEntry {
     /// Returns the date the anime finished being watched.
     #[inline]
     pub fn finish_date(&self) -> &Option<NaiveDate> {
-        &self.finish_date.get()
+        self.finish_date.get()
     }
 
     /// Sets the date the user finished watching the anime.
     #[inline]
-    pub fn set_finish_date<'a>(&'a mut self, date: Option<NaiveDate>) -> &'a mut ListEntry {
+    pub fn set_finish_date(&mut self, date: Option<NaiveDate>) -> &mut ListEntry {
         self.finish_date.set(date);
         self
     }
@@ -364,7 +364,7 @@ impl ListEntry {
 
     /// Sets the current watch status for the anime.
     #[inline]
-    pub fn set_status<'a>(&'a mut self, status: Status) -> &'a mut ListEntry {
+    pub fn set_status(&mut self, status: Status) -> &mut ListEntry {
         self.status.set(status);
         self
     }
@@ -377,7 +377,7 @@ impl ListEntry {
 
     /// Sets the user's score for the anime.
     #[inline]
-    pub fn set_score<'a>(&'a mut self, score: u8) -> &'a mut ListEntry {
+    pub fn set_score(&mut self, score: u8) -> &mut ListEntry {
         self.score.set(score);
         self
     }
@@ -390,7 +390,7 @@ impl ListEntry {
 
     /// Sets whether or not the user is currently rewatching the anime.
     #[inline]
-    pub fn set_rewatching<'a>(&'a mut self, rewatching: bool) -> &'a mut ListEntry {
+    pub fn set_rewatching(&mut self, rewatching: bool) -> &mut ListEntry {
         self.rewatching.set(rewatching);
         self
     }

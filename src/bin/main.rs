@@ -188,12 +188,13 @@ fn get_list_entry(list: &AnimeList, info: &mal::SeriesInfo) -> Result<ListEntry,
         None => {
             let mut entry = ListEntry::new(info.clone());
 
-            entry.set_status(Status::Watching)
+            entry
+                .set_status(Status::Watching)
                 .set_start_date(Some(get_today()));
 
             list.add(&entry)?;
             Ok(entry)
-        },
+        }
     }
 }
 
