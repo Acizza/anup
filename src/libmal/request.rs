@@ -20,7 +20,11 @@ impl<'a> RequestURL<'a> {
 
 impl<'a> Into<Url> for RequestURL<'a> {
     fn into(self) -> Url {
-        let mut url = Url::parse(RequestURL::BASE_URL).unwrap();
+        lazy_static! {
+            static ref BASE_URL: Url = Url::parse(RequestURL::BASE_URL).unwrap();
+        }
+
+        let mut url = BASE_URL.clone();
 
         match self {
             RequestURL::AnimeList(uname) => {
