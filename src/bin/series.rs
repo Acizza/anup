@@ -11,7 +11,6 @@ use std::process::ExitStatus;
 
 #[derive(Fail, Debug)]
 pub enum SeriesError {
-    #[fail(display = "multiple series found")] MultipleSeriesFound,
     #[fail(display = "episode {} not found", _0)] EpisodeNotFound(u32),
     #[fail(display = "season {} information not found", _0)] SeasonInfoNotFound(u32),
 }
@@ -128,8 +127,8 @@ impl SeasonInfo {
 
 #[derive(Fail, Debug)]
 pub enum EpisodeDataError {
-    #[fail(display = "no episodes found")]
-    NoEpisodesFound,
+    #[fail(display = "multiple series found")] MultipleSeriesFound,
+    #[fail(display = "no episodes found")] NoEpisodesFound,
 }
 
 #[derive(Debug)]
@@ -153,7 +152,7 @@ impl EpisodeData {
 
             if let Some(ref series) = series {
                 if series != &info.series {
-                    bail!(SeriesError::MultipleSeriesFound);
+                    bail!(EpisodeDataError::MultipleSeriesFound);
                 }
             } else {
                 series = Some(info.series);
