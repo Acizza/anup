@@ -64,7 +64,7 @@ impl<'a> AnimeList<'a> {
     /// assert!(entries.len() > 0);
     /// ```
     pub fn read_entries(&self) -> Result<Vec<ListEntry>, Error> {
-        let resp = request::get_verify(self.mal, RequestURL::AnimeList(&self.mal.username))?.text()?;
+        let resp = request::get_verify(&self.mal.client, RequestURL::AnimeList(&self.mal.username))?.text()?;
         let root: Element = resp.parse().map_err(SyncFailure::new)?;
 
         let mut entries = Vec::new();

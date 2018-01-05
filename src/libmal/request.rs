@@ -1,6 +1,6 @@
 use failure::Error;
 use MAL;
-use reqwest::{RequestBuilder, Response, StatusCode, Url};
+use reqwest::{Client, RequestBuilder, Response, StatusCode, Url};
 use reqwest::header::{ContentType, Headers};
 
 pub type ID = u32;
@@ -54,13 +54,13 @@ impl<'a> Into<Url> for RequestURL<'a> {
     }
 }
 
-pub fn get(mal: &MAL, req_type: RequestURL) -> Result<Response, Error> {
+pub fn get(client: &Client, req_type: RequestURL) -> Result<Response, Error> {
     let url: Url = req_type.into();
-    Ok(mal.client.get(url).send()?)
+    Ok(client.get(url).send()?)
 }
 
-pub fn get_verify(mal: &MAL, req_type: RequestURL) -> Result<Response, Error> {
-    let resp = get(mal, req_type)?;
+pub fn get_verify(client: &Client, req_type: RequestURL) -> Result<Response, Error> {
+    let resp = get(client, req_type)?;
     verify_good_response(&resp)?;
 
     Ok(resp)
