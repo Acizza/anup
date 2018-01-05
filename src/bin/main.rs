@@ -76,14 +76,34 @@ pub fn get_today() -> NaiveDate {
 }
 
 fn init_mal_client(args: &clap::ArgMatches) -> Result<MAL, Error> {
-    let config = load_config(args).context("failed to load config file")?;
+    let mut config = load_config(args).context("failed to load config file")?;
 
-    let password = config
+    let decoded_password = config
         .user
         .decode_password()
         .context("failed to decode config password")?;
 
-    let mal = MAL::new(config.user.name, password);
+    let mut mal = MAL::new(config.user.name.clone(), decoded_password);
+    let mut credentials_changed = false;
+
+    while !mal.verify_credentials()? {
+        println!(
+            "invalid password for [{}], please try again:",
+            config.user.name
+        );
+
+        mal.password = input::read_line()?;
+        credentials_changed = true;
+    }
+
+    if credentials_changed {
+        config.user.encode_password(&mal.password);
+    }
+
+    if !args.is_present("DONT_SAVE_CONFIG") {
+        config.save().context("failed to save config")?;
+    }
+
     Ok(mal)
 }
 
@@ -109,10 +129,6 @@ fn load_config(args: &clap::ArgMatches) -> Result<Config, Error> {
 
             let user = User::new(name, &pass);
             let config = Config::new(user, config_path);
-
-            if !args.is_present("DONT_SAVE_CONFIG") {
-                config.save().context("failed to save config")?;
-            }
 
             Ok(config)
         }

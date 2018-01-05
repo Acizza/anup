@@ -39,7 +39,7 @@ impl Config {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct User {
     pub name: String,
-    pub password: String,
+    password: String,
 }
 
 impl User {
@@ -48,6 +48,10 @@ impl User {
             name: username.into(),
             password: base64::encode(password),
         }
+    }
+
+    pub fn encode_password(&mut self, password: &str) {
+        self.password = base64::encode(password);
     }
 
     pub fn decode_password(&self) -> Result<String, Error> {
