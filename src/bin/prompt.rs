@@ -6,9 +6,6 @@ use mal::{SeriesInfo, MAL};
 use mal::list::{AnimeList, ListEntry, Status};
 use std;
 
-// This code will be refactored and cleaned up soon™
-
-#[derive(Debug)]
 pub struct SearchResult {
     pub info: SeriesInfo,
     pub search_term: String,
@@ -23,7 +20,7 @@ impl SearchResult {
     }
 }
 
-pub fn find_and_select_series_info(mal: &MAL, name: &str) -> Result<SearchResult, Error> {
+pub fn select_series_info(mal: &MAL, name: &str) -> Result<SearchResult, Error> {
     let mut series = mal.search(name).context("MAL search failed")?;
 
     if !series.is_empty() {
@@ -42,7 +39,7 @@ pub fn find_and_select_series_info(mal: &MAL, name: &str) -> Result<SearchResult
             println!("enter the name you want to search for:");
             let name = input::read_line()?;
 
-            find_and_select_series_info(mal, &name)
+            select_series_info(mal, &name)
         } else {
             Ok(SearchResult::new(series.swap_remove(index - 1), name))
         }
@@ -51,9 +48,7 @@ pub fn find_and_select_series_info(mal: &MAL, name: &str) -> Result<SearchResult
     }
 }
 
-/// Adds the `FinishDate` tag to the `tags` parameter.
-/// If the `entry` is being rewatched, it will ask the user before adding the tag.
-fn add_finish_date(entry: &mut ListEntry, date: NaiveDate) -> Result<(), Error> {
+fn prompt_to_add_finish_date(entry: &mut ListEntry, date: NaiveDate) -> Result<(), Error> {
     // Someone may want to keep the original start / finish date for an
     // anime they're rewatching
     if entry.rewatching() && entry.finish_date().is_some() {
@@ -69,9 +64,8 @@ fn add_finish_date(entry: &mut ListEntry, date: NaiveDate) -> Result<(), Error> 
     Ok(())
 }
 
-fn completed(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
+fn series_completed(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
     let today = get_today();
-
     entry.set_status(Status::Completed);
 
     println!(
@@ -90,19 +84,19 @@ fn completed(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
         entry.set_rewatching(false);
     }
 
-    add_finish_date(entry, today)?;
-
+    prompt_to_add_finish_date(entry, today)?;
     list.update(entry)?;
+
     // Nothing to do now
     std::process::exit(0);
 }
 
-pub fn update_watched(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
+pub fn update_watched_eps(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
     let watched = entry.watched_episodes();
     entry.set_watched_episodes(watched);
 
     if entry.watched_episodes() >= entry.series_info.episodes {
-        completed(list, entry)?;
+        series_completed(list, entry)?;
     } else {
         println!(
             "[{}] episode {}/{} completed",
@@ -132,7 +126,8 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut ListEntry) -> Result<(
     match input.as_str() {
         "d" => {
             entry.set_status(Status::Dropped);
-            add_finish_date(entry, get_today())?;
+            prompt_to_add_finish_date(entry, get_today())?;
+
             list.update(entry)?;
 
             std::process::exit(0);
@@ -164,13 +159,13 @@ pub fn abnormal_player_exit(list: &AnimeList, entry: &mut ListEntry) -> Result<(
     println!("do you still want to count the episode as watched? (y/N)");
 
     if input::read_yn(Answer::No)? {
-        update_watched(list, entry)?;
+        update_watched_eps(list, entry)?;
     }
 
     Ok(())
 }
 
-pub fn rewatch(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
+pub fn rewatch_series(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
     println!("[{}] already completed", entry.series_info.title);
     println!("do you want to rewatch it? (Y/n)");
     println!("(note that you have to increase the rewatch count manually)");

@@ -182,7 +182,7 @@ fn play_episode_loop(
         let real_ep_num = watched + season_offset;
 
         if series.play_episode(real_ep_num)?.success() {
-            prompt::update_watched(list, entry)?;
+            prompt::update_watched_eps(list, entry)?;
         } else {
             prompt::abnormal_player_exit(list, entry)?;
         }
@@ -199,7 +199,7 @@ fn get_list_entry(list: &AnimeList, info: &mal::SeriesInfo) -> Result<ListEntry,
     match found {
         Some(mut entry) => {
             if entry.status() == Status::Completed && !entry.rewatching() {
-                prompt::rewatch(list, &mut entry)?;
+                prompt::rewatch_series(list, &mut entry)?;
             }
 
             Ok(entry)
@@ -225,6 +225,6 @@ fn find_season_series_info(mal: &MAL, season: u32, series: &Series) -> Result<Se
 
             Ok(SearchResult::new(info, name))
         }
-        Err(_) => prompt::find_and_select_series_info(mal, &series.name),
+        Err(_) => prompt::select_series_info(mal, &series.name),
     }
 }
