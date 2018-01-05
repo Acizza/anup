@@ -130,5 +130,5 @@ fn get_xml_child_text(elem: &minidom::Element, name: &str) -> Result<String, Mis
     elem.children()
         .find(|c| c.name() == name)
         .map(|c| c.text())
-        .ok_or(MissingXMLNode(name.into()))
+        .ok_or_else(|| MissingXMLNode(name.into()))
 }
