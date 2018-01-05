@@ -21,7 +21,7 @@ mod prompt;
 mod process;
 mod series;
 
-use config::Config;
+use config::{Config, User};
 use chrono::{Local, NaiveDate};
 use failure::{Error, ResultExt};
 use mal::MAL;
@@ -51,7 +51,6 @@ fn run() -> Result<(), Error> {
         (author: env!("CARGO_PKG_AUTHORS"))
         (@arg PATH: "Specifies the directory to look for video files in")
         (@arg CONFIG_PATH: -c --config "Specifies the location of the configuration file")
-        (@arg USERNAME: -u --username +takes_value "Your MyAnimeList username")
         (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
         (@arg DONT_SAVE_CONFIG: --nosave "Disables saving of your account information")
     ).get_matches();
@@ -61,7 +60,7 @@ fn run() -> Result<(), Error> {
         None => std::env::current_dir().context("failed to get current directory")?,
     };
 
-    let mal = init_mal(&matches)?;
+    let mal = init_mal_client(&matches)?;
 
     let season = matches
         .value_of("SEASON")
@@ -76,23 +75,15 @@ pub fn get_today() -> NaiveDate {
     Local::today().naive_utc()
 }
 
-fn init_mal(args: &clap::ArgMatches) -> Result<MAL, Error> {
-    let username = args.value_of("USERNAME").map(|u| u.to_string());
+fn init_mal_client(args: &clap::ArgMatches) -> Result<MAL, Error> {
+    let config = load_config(args).context("failed to load config file")?;
 
-    let mut config = load_config(args).context("failed to load config file")?;
-
-    let user = config
-        .load_user_prompt(username)
-        .context("failed to get config user information")?;
-
-    if !args.is_present("DONT_SAVE_CONFIG") {
-        config.save().context("failed to save config")?;
-    }
-
-    let password = user.decode_password()
+    let password = config
+        .user
+        .decode_password()
         .context("failed to decode config password")?;
 
-    let mal = MAL::new(user.name, password);
+    let mal = MAL::new(config.user.name, password);
     Ok(mal)
 }
 
@@ -100,20 +91,32 @@ fn load_config(args: &clap::ArgMatches) -> Result<Config, Error> {
     let config_path = match args.value_of("CONFIG_PATH") {
         Some(p) => PathBuf::from(p),
         None => {
-            let mut current = std::env::current_exe().context("failed to get current directory")?;
+            let mut current = std::env::current_exe().context("failed to get executable path")?;
             current.pop();
             current.push("config.toml");
             current
         }
     };
 
-    let config = if !config_path.exists() {
-        Config::new(config_path)
-    } else {
-        Config::from_path(&config_path)?
-    };
+    match Config::from_path(&config_path) {
+        Ok(config) => Ok(config),
+        Err(_) => {
+            println!("please enter your MAL username:");
+            let name = input::read_line()?;
 
-    Ok(config)
+            println!("please enter your MAL password:");
+            let pass = input::read_line()?;
+
+            let user = User::new(name, &pass);
+            let config = Config::new(user, config_path);
+
+            if !args.is_present("DONT_SAVE_CONFIG") {
+                config.save().context("failed to save config")?;
+            }
+
+            Ok(config)
+        }
+    }
 }
 
 fn watch_season(mal: &MAL, season: u32, series: &mut Series) -> Result<(), Error> {
