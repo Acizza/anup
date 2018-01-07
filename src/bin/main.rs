@@ -25,9 +25,8 @@ use config::{Config, User};
 use chrono::{Local, NaiveDate};
 use failure::{Error, ResultExt};
 use mal::MAL;
-use mal::list::{AnimeList, ListEntry, Status};
-use prompt::SearchResult;
-use series::{SeasonInfo, Series};
+use mal::list::AnimeList;
+use series::Series;
 use std::path::PathBuf;
 
 fn main() {
@@ -60,15 +59,16 @@ fn run() -> Result<(), Error> {
         None => std::env::current_dir().context("failed to get current directory")?,
     };
 
-    let mal = init_mal_client(&matches)?;
-
     let season = matches
         .value_of("SEASON")
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
 
+    let mal = init_mal_client(&matches)?;
+    let anime_list = AnimeList::new(&mal);
+
     let mut series = Series::from_path(&path)?;
-    watch_season(&mal, season, &mut series)
+    series.watch_season(season, &anime_list)
 }
 
 pub fn get_today() -> NaiveDate {
@@ -132,99 +132,5 @@ fn load_config(args: &clap::ArgMatches) -> Result<Config, Error> {
 
             Ok(config)
         }
-    }
-}
-
-fn watch_season(mal: &MAL, season: u32, series: &mut Series) -> Result<(), Error> {
-    let find_result = find_season_series_info(mal, season, series)?;
-    let series_info = find_result.info;
-
-    if !series.has_season_data(season) {
-        let info = SeasonInfo::new(
-            series_info.id,
-            series_info.episodes,
-            find_result.search_term,
-        );
-
-        series.set_season_data(season, info);
-        series.save_data()?;
-    }
-
-    let anime_list = AnimeList::new(mal);
-    let mut list_entry = get_list_entry(&anime_list, &series_info)?;
-
-    play_episode_loop(season, series, &anime_list, &mut list_entry)
-}
-
-fn get_season_ep_offset(season: u32, series: &Series) -> Result<u32, Error> {
-    let mut ep_offset = 0;
-
-    for cur_season in 1..season {
-        // TODO: handle case where previous season info doesn't exist?
-        let season = series.get_season_data(cur_season)?;
-        ep_offset += season.episodes;
-    }
-
-    Ok(ep_offset)
-}
-
-fn play_episode_loop(
-    season: u32,
-    series: &Series,
-    list: &AnimeList,
-    entry: &mut ListEntry,
-) -> Result<(), Error> {
-    let season_offset = get_season_ep_offset(season, series)?;
-
-    loop {
-        let watched = entry.watched_episodes() + 1;
-        entry.set_watched_episodes(watched);
-        let real_ep_num = watched + season_offset;
-
-        if series.play_episode(real_ep_num)?.success() {
-            prompt::update_watched_eps(list, entry)?;
-        } else {
-            prompt::abnormal_player_exit(list, entry)?;
-        }
-
-        list.update(entry)?;
-        prompt::next_episode_options(list, entry)?;
-    }
-}
-
-fn get_list_entry(list: &AnimeList, info: &mal::SeriesInfo) -> Result<ListEntry, Error> {
-    let entries = list.read_entries().context("MAL list retrieval failed")?;
-    let found = entries.into_iter().find(|e| e.series_info == *info);
-
-    match found {
-        Some(mut entry) => {
-            if entry.status() == Status::Completed && !entry.rewatching() {
-                prompt::rewatch_series(list, &mut entry)?;
-            }
-
-            Ok(entry)
-        }
-        None => {
-            let mut entry = ListEntry::new(info.clone());
-
-            entry
-                .set_status(Status::Watching)
-                .set_start_date(Some(get_today()));
-
-            list.add(&entry)?;
-            Ok(entry)
-        }
-    }
-}
-
-fn find_season_series_info(mal: &MAL, season: u32, series: &Series) -> Result<SearchResult, Error> {
-    match series.get_season_data(season) {
-        Ok(season) => {
-            let info = season.request_mal_info(mal)?;
-            let name = series.name.clone();
-
-            Ok(SearchResult::new(info, name))
-        }
-        Err(_) => prompt::select_series_info(mal, &series.name),
     }
 }
