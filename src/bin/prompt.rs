@@ -131,13 +131,13 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut ListEntry) -> Result<(
             list.update(entry)?;
 
             std::process::exit(0);
-        },
+        }
         "h" => {
             entry.set_status(Status::OnHold);
             list.update(entry)?;
 
             std::process::exit(0);
-        },
+        }
         "r" => {
             println!("enter your score between 1-10:");
 
@@ -146,7 +146,7 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut ListEntry) -> Result<(
 
             list.update(entry)?;
             next_episode_options(list, entry)?;
-        },
+        }
         "x" => std::process::exit(0),
         _ => (),
     }
