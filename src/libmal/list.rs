@@ -15,7 +15,8 @@ use std::fmt::Debug;
 /// 
 /// [MAL]: ../struct.MAL.html
 pub struct AnimeList<'a> {
-    mal: &'a MAL,
+    /// A reference to the MyAnimeList client used to add and update anime on a user's list.
+    pub mal: &'a MAL,
 }
 
 impl<'a> AnimeList<'a> {
