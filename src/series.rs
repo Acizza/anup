@@ -54,15 +54,15 @@ impl Series {
         Ok(output.status)
     }
 
-    pub fn watch_season(&mut self, season: u32, anime_list: &AnimeList) -> Result<(), Error> {
+    pub fn watch_season(&mut self, mal: &MAL, season: u32) -> Result<(), Error> {
         let (season_info, search_term) = match self.seasons().get(&season) {
             Some(season) => {
-                let info = season.request_mal_info(anime_list.mal)?;
+                let info = season.request_mal_info(mal)?;
                 let name = self.name.clone();
                 (info, name)
             }
             None => {
-                let result = prompt::select_series_info(anime_list.mal, &self.name)?;
+                let result = prompt::select_series_info(mal, &self.name)?;
                 (result.info, result.search_term)
             }
         };
@@ -75,9 +75,10 @@ impl Series {
             self.save_data()?;
         }
 
-        let mut list_entry = Series::get_list_entry(anime_list, &season_info)?;
+        let anime_list = mal.anime_list();
+        let mut list_entry = Series::get_list_entry(&anime_list, &season_info)?;
 
-        self.play_all_episodes(season, anime_list, &mut list_entry)
+        self.play_all_episodes(&anime_list, season, &mut list_entry)
     }
 
     fn get_season_ep_offset(&self, season: u32) -> Result<u32, Error> {
@@ -92,7 +93,7 @@ impl Series {
         Ok(ep_offset)
     }
 
-    fn play_all_episodes(&self, season: u32, list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
+    fn play_all_episodes(&self, list: &AnimeList, season: u32, entry: &mut ListEntry) -> Result<(), Error> {
         let season_offset = self.get_season_ep_offset(season)?;
 
         loop {

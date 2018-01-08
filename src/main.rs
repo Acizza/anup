@@ -25,7 +25,6 @@ use config::{Config, User};
 use chrono::{Local, NaiveDate};
 use failure::{Error, ResultExt};
 use mal::MAL;
-use mal::list::AnimeList;
 use series::Series;
 use std::path::PathBuf;
 
@@ -65,10 +64,9 @@ fn run() -> Result<(), Error> {
         .unwrap_or(1);
 
     let mal = init_mal_client(&matches)?;
-    let anime_list = AnimeList::new(&mal);
 
     let mut series = Series::from_path(&path)?;
-    series.watch_season(season, &anime_list)
+    series.watch_season(&mal, season)
 }
 
 pub fn get_today() -> NaiveDate {
