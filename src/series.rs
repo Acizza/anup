@@ -1,7 +1,8 @@
 use failure::{Error, ResultExt};
 use get_today;
 use mal::{self, MAL};
-use mal::list::{AnimeList, ListEntry, Status};
+use mal::list::List;
+use mal::list::anime::{AnimeList, AnimeEntry, WatchStatus};
 use regex::Regex;
 use process;
 use prompt;
@@ -93,7 +94,7 @@ impl Series {
         Ok(ep_offset)
     }
 
-    fn play_all_episodes(&self, list: &AnimeList, season: u32, entry: &mut ListEntry) -> Result<(), Error> {
+    fn play_all_episodes(&self, list: &AnimeList, season: u32, entry: &mut AnimeEntry) -> Result<(), Error> {
         let season_offset = self.get_season_ep_offset(season)?;
 
         loop {
@@ -112,22 +113,22 @@ impl Series {
         }
     }
 
-    fn get_list_entry(list: &AnimeList, info: &mal::SeriesInfo) -> Result<ListEntry, Error> {
+    fn get_list_entry(list: &AnimeList, info: &mal::AnimeInfo) -> Result<AnimeEntry, Error> {
         let entries = list.read_entries().context("MAL list retrieval failed")?;
         let found = entries.into_iter().find(|e| e.series_info == *info);
 
         match found {
             Some(mut entry) => {
-                if entry.status() == Status::Completed && !entry.rewatching() {
+                if entry.status() == WatchStatus::Completed && !entry.rewatching() {
                     prompt::rewatch_series(list, &mut entry)?;
                 }
 
                 Ok(entry)
             }
             None => {
-                let mut entry = ListEntry::new(info.clone());
+                let mut entry = AnimeEntry::new(info.clone());
 
-                entry.set_status(Status::Watching).set_start_date(
+                entry.set_status(WatchStatus::Watching).set_start_date(
                     Some(get_today()),
                 );
 
@@ -207,8 +208,8 @@ impl SeasonInfo {
         }
     }
 
-    pub fn request_mal_info(&self, mal: &MAL) -> Result<mal::SeriesInfo, Error> {
-        mal.search(&self.search_title)
+    pub fn request_mal_info(&self, mal: &MAL) -> Result<mal::AnimeInfo, Error> {
+        mal.search_anime(&self.search_title)
             .context("MAL search failed")?
             .into_iter()
             .find(|i| i.id == self.series_id)

@@ -2,17 +2,18 @@ use chrono::NaiveDate;
 use failure::{Error, ResultExt};
 use get_today;
 use input::{self, Answer};
-use mal::{SeriesInfo, MAL};
-use mal::list::{AnimeList, ListEntry, Status};
+use mal::{AnimeInfo, MAL};
+use mal::list::List;
+use mal::list::anime::{AnimeList, AnimeEntry, WatchStatus};
 use std;
 
 pub struct SearchResult {
-    pub info: SeriesInfo,
+    pub info: AnimeInfo,
     pub search_term: String,
 }
 
 impl SearchResult {
-    pub fn new<S: Into<String>>(info: SeriesInfo, search_term: S) -> SearchResult {
+    pub fn new<S: Into<String>>(info: AnimeInfo, search_term: S) -> SearchResult {
         SearchResult {
             info,
             search_term: search_term.into(),
@@ -21,7 +22,7 @@ impl SearchResult {
 }
 
 pub fn select_series_info(mal: &MAL, name: &str) -> Result<SearchResult, Error> {
-    let mut series = mal.search(name).context("MAL search failed")?;
+    let mut series = mal.search_anime(name).context("MAL search failed")?;
 
     if !series.is_empty() {
         println!("MAL results for [{}]:", name);
@@ -48,7 +49,7 @@ pub fn select_series_info(mal: &MAL, name: &str) -> Result<SearchResult, Error> 
     }
 }
 
-fn prompt_to_add_finish_date(entry: &mut ListEntry, date: NaiveDate) -> Result<(), Error> {
+fn prompt_to_add_finish_date(entry: &mut AnimeEntry, date: NaiveDate) -> Result<(), Error> {
     // Someone may want to keep the original start / finish date for an
     // anime they're rewatching
     if entry.rewatching() && entry.finish_date().is_some() {
@@ -64,9 +65,9 @@ fn prompt_to_add_finish_date(entry: &mut ListEntry, date: NaiveDate) -> Result<(
     Ok(())
 }
 
-fn series_completed(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
+fn series_completed(list: &AnimeList, entry: &mut AnimeEntry) -> Result<(), Error> {
     let today = get_today();
-    entry.set_status(Status::Completed);
+    entry.set_status(WatchStatus::Completed);
 
     println!(
         "[{}] completed!\ndo you want to rate it? (Y/n)",
@@ -91,7 +92,7 @@ fn series_completed(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error
     std::process::exit(0);
 }
 
-pub fn update_watched_eps(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
+pub fn update_watched_eps(list: &AnimeList, entry: &mut AnimeEntry) -> Result<(), Error> {
     let watched = entry.watched_episodes();
     entry.set_watched_episodes(watched);
 
@@ -106,7 +107,7 @@ pub fn update_watched_eps(list: &AnimeList, entry: &mut ListEntry) -> Result<(),
         );
 
         if !entry.rewatching() {
-            entry.set_status(Status::Watching);
+            entry.set_status(WatchStatus::Watching);
 
             if entry.watched_episodes() <= 1 {
                 entry.set_start_date(Some(get_today()));
@@ -117,7 +118,7 @@ pub fn update_watched_eps(list: &AnimeList, entry: &mut ListEntry) -> Result<(),
     Ok(())
 }
 
-pub fn next_episode_options(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
+pub fn next_episode_options(list: &AnimeList, entry: &mut AnimeEntry) -> Result<(), Error> {
     println!("options:");
     println!("\t[d] drop series\n\t[h] put series on hold\n\t[r] rate series\n\t[x] exit\n\t[n] watch next episode (default)");
 
@@ -125,7 +126,7 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut ListEntry) -> Result<(
 
     match input.as_str() {
         "d" => {
-            entry.set_status(Status::Dropped);
+            entry.set_status(WatchStatus::Dropped);
             prompt_to_add_finish_date(entry, get_today())?;
 
             list.update(entry)?;
@@ -133,7 +134,7 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut ListEntry) -> Result<(
             std::process::exit(0);
         }
         "h" => {
-            entry.set_status(Status::OnHold);
+            entry.set_status(WatchStatus::OnHold);
             list.update(entry)?;
 
             std::process::exit(0);
@@ -154,7 +155,7 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut ListEntry) -> Result<(
     Ok(())
 }
 
-pub fn abnormal_player_exit(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
+pub fn abnormal_player_exit(list: &AnimeList, entry: &mut AnimeEntry) -> Result<(), Error> {
     println!("video player not exited normally");
     println!("do you still want to count the episode as watched? (y/N)");
 
@@ -165,7 +166,7 @@ pub fn abnormal_player_exit(list: &AnimeList, entry: &mut ListEntry) -> Result<(
     Ok(())
 }
 
-pub fn rewatch_series(list: &AnimeList, entry: &mut ListEntry) -> Result<(), Error> {
+pub fn rewatch_series(list: &AnimeList, entry: &mut AnimeEntry) -> Result<(), Error> {
     println!("[{}] already completed", entry.series_info.title);
     println!("do you want to rewatch it? (Y/n)");
     println!("(note that you have to increase the rewatch count manually)");
