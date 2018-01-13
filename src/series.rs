@@ -132,7 +132,7 @@ impl Series {
                     Some(get_today()),
                 );
 
-                list.add(&entry)?;
+                list.add(&mut entry)?;
                 Ok(entry)
             }
         }
