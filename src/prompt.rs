@@ -4,7 +4,7 @@ use get_today;
 use input::{self, Answer};
 use mal::{AnimeInfo, MAL};
 use mal::list::List;
-use mal::list::anime::{AnimeList, AnimeEntry, WatchStatus};
+use mal::list::anime::{AnimeEntry, WatchStatus};
 use std;
 
 pub struct SearchResult {
@@ -52,22 +52,22 @@ pub fn select_series_info(mal: &MAL, name: &str) -> Result<SearchResult, Error> 
 fn prompt_to_add_finish_date(entry: &mut AnimeEntry, date: NaiveDate) -> Result<(), Error> {
     // Someone may want to keep the original start / finish date for an
     // anime they're rewatching
-    if entry.rewatching() && entry.finish_date().is_some() {
+    if entry.values.rewatching() && entry.values.finish_date().is_some() {
         println!("do you want to override the finish date? (Y/n)");
 
         if input::read_yn(Answer::Yes)? {
-            entry.set_finish_date(Some(date));
+            entry.values.set_finish_date(Some(date));
         }
     } else {
-        entry.set_finish_date(Some(date));
+        entry.values.set_finish_date(Some(date));
     }
 
     Ok(())
 }
 
-fn series_completed(list: &AnimeList, entry: &mut AnimeEntry) -> Result<(), Error> {
+fn series_completed(list: &List<AnimeEntry>, entry: &mut AnimeEntry) -> Result<(), Error> {
     let today = get_today();
-    entry.set_status(WatchStatus::Completed);
+    entry.values.set_status(WatchStatus::Completed);
 
     println!(
         "[{}] completed!\ndo you want to rate it? (Y/n)",
@@ -78,11 +78,11 @@ fn series_completed(list: &AnimeList, entry: &mut AnimeEntry) -> Result<(), Erro
         println!("enter your score between 1-10:");
         let score = input::read_usize_range(1, 10)? as u8;
 
-        entry.set_score(score);
+        entry.values.set_score(score);
     }
 
-    if entry.rewatching() {
-        entry.set_rewatching(false);
+    if entry.values.rewatching() {
+        entry.values.set_rewatching(false);
     }
 
     prompt_to_add_finish_date(entry, today)?;
@@ -92,25 +92,25 @@ fn series_completed(list: &AnimeList, entry: &mut AnimeEntry) -> Result<(), Erro
     std::process::exit(0);
 }
 
-pub fn update_watched_eps(list: &AnimeList, entry: &mut AnimeEntry) -> Result<(), Error> {
-    let watched = entry.watched_episodes();
-    entry.set_watched_episodes(watched);
+pub fn update_watched_eps(list: &List<AnimeEntry>, entry: &mut AnimeEntry) -> Result<(), Error> {
+    let watched = entry.values.watched_episodes();
+    entry.values.set_watched_episodes(watched);
 
-    if entry.watched_episodes() >= entry.series_info.episodes {
+    if entry.values.watched_episodes() >= entry.series_info.episodes {
         series_completed(list, entry)?;
     } else {
         println!(
             "[{}] episode {}/{} completed",
             entry.series_info.title,
-            entry.watched_episodes(),
+            entry.values.watched_episodes(),
             entry.series_info.episodes
         );
 
-        if !entry.rewatching() {
-            entry.set_status(WatchStatus::Watching);
+        if !entry.values.rewatching() {
+            entry.values.set_status(WatchStatus::Watching);
 
-            if entry.watched_episodes() <= 1 {
-                entry.set_start_date(Some(get_today()));
+            if entry.values.watched_episodes() <= 1 {
+                entry.values.set_start_date(Some(get_today()));
             }
         }
     }
@@ -118,7 +118,7 @@ pub fn update_watched_eps(list: &AnimeList, entry: &mut AnimeEntry) -> Result<()
     Ok(())
 }
 
-pub fn next_episode_options(list: &AnimeList, entry: &mut AnimeEntry) -> Result<(), Error> {
+pub fn next_episode_options(list: &List<AnimeEntry>, entry: &mut AnimeEntry) -> Result<(), Error> {
     println!("options:");
     println!("\t[d] drop series\n\t[h] put series on hold\n\t[r] rate series\n\t[x] exit\n\t[n] watch next episode (default)");
 
@@ -126,7 +126,7 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut AnimeEntry) -> Result<
 
     match input.as_str() {
         "d" => {
-            entry.set_status(WatchStatus::Dropped);
+            entry.values.set_status(WatchStatus::Dropped);
             prompt_to_add_finish_date(entry, get_today())?;
 
             list.update(entry)?;
@@ -134,7 +134,7 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut AnimeEntry) -> Result<
             std::process::exit(0);
         }
         "h" => {
-            entry.set_status(WatchStatus::OnHold);
+            entry.values.set_status(WatchStatus::OnHold);
             list.update(entry)?;
 
             std::process::exit(0);
@@ -143,7 +143,7 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut AnimeEntry) -> Result<
             println!("enter your score between 1-10:");
 
             let score = input::read_usize_range(1, 10)? as u8;
-            entry.set_score(score);
+            entry.values.set_score(score);
 
             list.update(entry)?;
             next_episode_options(list, entry)?;
@@ -155,7 +155,7 @@ pub fn next_episode_options(list: &AnimeList, entry: &mut AnimeEntry) -> Result<
     Ok(())
 }
 
-pub fn abnormal_player_exit(list: &AnimeList, entry: &mut AnimeEntry) -> Result<(), Error> {
+pub fn abnormal_player_exit(list: &List<AnimeEntry>, entry: &mut AnimeEntry) -> Result<(), Error> {
     println!("video player not exited normally");
     println!("do you still want to count the episode as watched? (y/N)");
 
@@ -166,18 +166,19 @@ pub fn abnormal_player_exit(list: &AnimeList, entry: &mut AnimeEntry) -> Result<
     Ok(())
 }
 
-pub fn rewatch_series(list: &AnimeList, entry: &mut AnimeEntry) -> Result<(), Error> {
+pub fn rewatch_series(list: &List<AnimeEntry>, entry: &mut AnimeEntry) -> Result<(), Error> {
     println!("[{}] already completed", entry.series_info.title);
     println!("do you want to rewatch it? (Y/n)");
     println!("(note that you have to increase the rewatch count manually)");
 
     if input::read_yn(Answer::Yes)? {
-        entry.set_rewatching(true).set_watched_episodes(0);
+        entry.values.set_rewatching(true).set_watched_episodes(0);
 
         println!("do you want to reset the start and end date? (Y/n)");
 
         if input::read_yn(Answer::Yes)? {
-            entry.set_start_date(Some(get_today()))
+            entry.values
+                 .set_start_date(Some(get_today()))
                  .set_finish_date(None);
         }
 

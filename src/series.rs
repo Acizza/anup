@@ -2,7 +2,7 @@ use failure::{Error, ResultExt};
 use get_today;
 use mal::{self, MAL};
 use mal::list::List;
-use mal::list::anime::{AnimeList, AnimeEntry, WatchStatus};
+use mal::list::anime::{AnimeEntry, WatchStatus};
 use regex::Regex;
 use process;
 use prompt;
@@ -94,12 +94,12 @@ impl Series {
         Ok(ep_offset)
     }
 
-    fn play_all_episodes(&self, list: &AnimeList, season: u32, entry: &mut AnimeEntry) -> Result<(), Error> {
+    fn play_all_episodes(&self, list: &List<AnimeEntry>, season: u32, entry: &mut AnimeEntry) -> Result<(), Error> {
         let season_offset = self.get_season_ep_offset(season)?;
 
         loop {
-            let watched = entry.watched_episodes() + 1;
-            entry.set_watched_episodes(watched);
+            let watched = entry.values.watched_episodes() + 1;
+            entry.values.set_watched_episodes(watched);
             let real_ep_num = watched + season_offset;
 
             if self.play_episode(real_ep_num)?.success() {
@@ -113,14 +113,14 @@ impl Series {
         }
     }
 
-    fn get_list_entry(list: &AnimeList, info: &mal::AnimeInfo) -> Result<AnimeEntry, Error> {
-        let entries = list.read_entries().context("MAL list retrieval failed")?;
-        let found = entries.into_iter().find(|e| e.series_info == *info);
+    fn get_list_entry(anime_list: &List<AnimeEntry>, info: &mal::AnimeInfo) -> Result<AnimeEntry, Error> {
+        let list = anime_list.read().context("MAL list retrieval failed")?;
+        let found = list.entries.into_iter().find(|e| e.series_info == *info);
 
         match found {
             Some(mut entry) => {
-                if entry.status() == WatchStatus::Completed && !entry.rewatching() {
-                    prompt::rewatch_series(list, &mut entry)?;
+                if entry.values.status() == WatchStatus::Completed && !entry.values.rewatching() {
+                    prompt::rewatch_series(anime_list, &mut entry)?;
                 }
 
                 Ok(entry)
@@ -128,11 +128,11 @@ impl Series {
             None => {
                 let mut entry = AnimeEntry::new(info.clone());
 
-                entry.set_status(WatchStatus::Watching).set_start_date(
-                    Some(get_today()),
-                );
+                entry.values
+                     .set_status(WatchStatus::Watching)
+                     .set_start_date(Some(get_today()));
 
-                list.add(&mut entry)?;
+                anime_list.add(&mut entry)?;
                 Ok(entry)
             }
         }
