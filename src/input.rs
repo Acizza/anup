@@ -5,8 +5,8 @@ pub fn read_line() -> io::Result<String> {
     let mut buffer = String::new();
     io::stdin().read_line(&mut buffer)?;
 
-    // We trim the end of the buffer to remove the newline character
-    Ok(buffer[..buffer.len() - 1].to_string())
+    // Trim the right side of the buffer to remove the newline character
+    Ok(buffer.trim_right().to_string())
 }
 
 pub fn read_usize_range(min: usize, max: usize) -> Result<usize, Error> {
