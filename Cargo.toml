@@ -3,6 +3,9 @@ name = "anitrack"
 version = "0.1.0"
 authors = ["Acizza <jonathanmce@gmail.com>"]
 
+[profile.release]
+lto = true
+
 [dependencies]
 base64       = "0.9"
 chrono       = "0.4"
