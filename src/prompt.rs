@@ -2,9 +2,9 @@ use chrono::NaiveDate;
 use failure::{Error, ResultExt};
 use get_today;
 use input::{self, Answer};
-use mal::{AnimeInfo, MAL};
+use mal::MAL;
 use mal::list::List;
-use mal::list::anime::{AnimeEntry, WatchStatus};
+use mal::list::anime::{AnimeInfo, AnimeEntry, WatchStatus};
 use std;
 
 pub struct SearchResult {

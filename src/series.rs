@@ -1,8 +1,8 @@
 use failure::{Error, ResultExt};
 use get_today;
-use mal::{self, MAL};
+use mal::MAL;
 use mal::list::List;
-use mal::list::anime::{AnimeEntry, WatchStatus};
+use mal::list::anime::{AnimeInfo, AnimeEntry, WatchStatus};
 use regex::Regex;
 use process;
 use prompt;
@@ -113,7 +113,7 @@ impl Series {
         }
     }
 
-    fn get_list_entry(anime_list: &List<AnimeEntry>, info: &mal::AnimeInfo) -> Result<AnimeEntry, Error> {
+    fn get_list_entry(anime_list: &List<AnimeEntry>, info: &AnimeInfo) -> Result<AnimeEntry, Error> {
         let list = anime_list.read().context("MAL list retrieval failed")?;
         let found = list.entries.into_iter().find(|e| e.series_info == *info);
 
@@ -208,7 +208,7 @@ impl SeasonInfo {
         }
     }
 
-    pub fn request_mal_info(&self, mal: &MAL) -> Result<mal::AnimeInfo, Error> {
+    pub fn request_mal_info(&self, mal: &MAL) -> Result<AnimeInfo, Error> {
         mal.search_anime(&self.search_title)
             .context("MAL search failed")?
             .into_iter()
