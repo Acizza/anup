@@ -73,7 +73,7 @@ pub fn get_today() -> NaiveDate {
     Local::today().naive_utc()
 }
 
-fn init_mal_client(args: &clap::ArgMatches) -> Result<MAL, Error> {
+fn init_mal_client<'a>(args: &clap::ArgMatches) -> Result<MAL<'a>, Error> {
     let mut config = load_config(args).context("failed to load config file")?;
 
     let decoded_password = config

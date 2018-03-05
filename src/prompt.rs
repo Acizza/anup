@@ -2,9 +2,8 @@ use chrono::NaiveDate;
 use failure::{Error, ResultExt};
 use get_today;
 use input::{self, Answer};
-use mal::MAL;
-use mal::list::List;
-use mal::list::anime::{AnimeInfo, AnimeEntry, WatchStatus};
+use mal::list::{List, Status};
+use mal::list::anime::{AnimeEntry, AnimeInfo};
 use std;
 
 pub struct SearchResult {
@@ -21,8 +20,8 @@ impl SearchResult {
     }
 }
 
-pub fn select_series_info(mal: &MAL, name: &str) -> Result<SearchResult, Error> {
-    let mut series = mal.search_anime(name).context("MAL search failed")?;
+pub fn select_series_info(list: &List<AnimeEntry>, name: &str) -> Result<SearchResult, Error> {
+    let mut series = list.search_for(name).context("MAL search failed")?;
 
     if !series.is_empty() {
         println!("MAL results for [{}]:", name);
@@ -40,7 +39,7 @@ pub fn select_series_info(mal: &MAL, name: &str) -> Result<SearchResult, Error> 
             println!("enter the name you want to search for:");
             let name = input::read_line()?;
 
-            select_series_info(mal, &name)
+            select_series_info(list, &name)
         } else {
             Ok(SearchResult::new(series.swap_remove(index - 1), name))
         }
@@ -67,7 +66,7 @@ fn prompt_to_add_finish_date(entry: &mut AnimeEntry, date: NaiveDate) -> Result<
 
 fn series_completed(list: &List<AnimeEntry>, entry: &mut AnimeEntry) -> Result<(), Error> {
     let today = get_today();
-    entry.values.set_status(WatchStatus::Completed);
+    entry.values.set_status(Status::Completed);
 
     println!(
         "[{}] completed!\ndo you want to rate it? (Y/n)",
@@ -107,7 +106,7 @@ pub fn update_watched_eps(list: &List<AnimeEntry>, entry: &mut AnimeEntry) -> Re
         );
 
         if !entry.values.rewatching() {
-            entry.values.set_status(WatchStatus::Watching);
+            entry.values.set_status(Status::WatchingOrReading);
 
             if entry.values.watched_episodes() <= 1 {
                 entry.values.set_start_date(Some(get_today()));
@@ -126,7 +125,7 @@ pub fn next_episode_options(list: &List<AnimeEntry>, entry: &mut AnimeEntry) -> 
 
     match input.as_str() {
         "d" => {
-            entry.values.set_status(WatchStatus::Dropped);
+            entry.values.set_status(Status::Dropped);
             prompt_to_add_finish_date(entry, get_today())?;
 
             list.update(entry)?;
@@ -134,7 +133,7 @@ pub fn next_episode_options(list: &List<AnimeEntry>, entry: &mut AnimeEntry) -> 
             std::process::exit(0);
         }
         "h" => {
-            entry.values.set_status(WatchStatus::OnHold);
+            entry.values.set_status(Status::OnHold);
             list.update(entry)?;
 
             std::process::exit(0);
@@ -177,9 +176,10 @@ pub fn rewatch_series(list: &List<AnimeEntry>, entry: &mut AnimeEntry) -> Result
         println!("do you want to reset the start and end date? (Y/n)");
 
         if input::read_yn(Answer::Yes)? {
-            entry.values
-                 .set_start_date(Some(get_today()))
-                 .set_finish_date(None);
+            entry
+                .values
+                .set_start_date(Some(get_today()))
+                .set_finish_date(None);
         }
 
         list.update(entry)?;
