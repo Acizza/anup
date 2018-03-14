@@ -22,12 +22,11 @@ mod prompt;
 mod process;
 mod series;
 
-use config::{Config, User};
 use chrono::{Local, NaiveDate};
-use error::{ConfigError, Error};
+use error::Error;
 use mal::MAL;
 use series::Series;
-use std::io::ErrorKind;
+use std::path::Path;
 use std::path::PathBuf;
 
 fn main() {
@@ -58,7 +57,7 @@ fn run() -> Result<(), Error> {
 
     let path = match matches.value_of("PATH") {
         Some(p) => PathBuf::from(p),
-        None => std::env::current_dir().map_err(|e| Error::FailedToGetDir("current directory", e))?,
+        None => std::env::current_dir().map_err(Error::FailedToGetCWD)?,
     };
 
     let season = matches
@@ -79,7 +78,10 @@ pub fn get_today() -> NaiveDate {
 }
 
 fn init_mal_client<'a>(args: &clap::ArgMatches) -> Result<MAL<'a>, Error> {
-    let mut config = load_config(args)?;
+    let mut config = {
+        let path = args.value_of("CONFIG_PATH").map(Path::new);
+        config::load(path)?
+    };
 
     let decoded_password = config.user.decode_password()?;
 
@@ -105,38 +107,4 @@ fn init_mal_client<'a>(args: &clap::ArgMatches) -> Result<MAL<'a>, Error> {
     }
 
     Ok(mal)
-}
-
-fn load_config(args: &clap::ArgMatches) -> Result<Config, Error> {
-    let config_path = match args.value_of("CONFIG_PATH") {
-        Some(p) => PathBuf::from(p),
-        None => {
-            let mut current =
-                std::env::current_exe().map_err(|e| Error::FailedToGetDir("executable", e))?;
-
-            current.pop();
-            current.push("config.toml");
-            current
-        }
-    };
-
-    match Config::from_path(&config_path) {
-        Ok(config) => Ok(config),
-        Err(ConfigError::Io(e)) => match e.kind() {
-            ErrorKind::NotFound => {
-                println!("please enter your MAL username:");
-                let name = input::read_line()?;
-
-                println!("please enter your MAL password:");
-                let pass = input::read_line()?;
-
-                let user = User::new(name, &pass);
-                let config = Config::new(user, config_path);
-
-                Ok(config)
-            }
-            _ => Err(Error::ConfigError(ConfigError::Io(e))),
-        },
-        Err(e) => Err(Error::ConfigError(e)),
-    }
 }

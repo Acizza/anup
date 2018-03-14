@@ -24,8 +24,8 @@ pub enum Error {
     #[fail(display = "config error")]
     ConfigError(#[cause] ConfigError),
 
-    #[fail(display = "failed to get {} path", _0)]
-    FailedToGetDir(&'static str, #[cause] ::std::io::Error),
+    #[fail(display = "failed to get current working directory")]
+    FailedToGetCWD(#[cause] ::std::io::Error),
 }
 
 impl_error_conversion!(Error,
@@ -121,6 +121,9 @@ pub enum ConfigError {
 
     #[fail(display = "password decode failed")]
     FailedPasswordDecode(#[cause] ::base64::DecodeError),
+
+    #[fail(display = "failed to get executable path")]
+    FailedToGetExePath(#[cause] ::std::io::Error),
 }
 
 impl_error_conversion!(ConfigError,

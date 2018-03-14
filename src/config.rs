@@ -1,7 +1,9 @@
 use base64;
 use error::ConfigError;
+use input;
+use std::env;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use toml;
 
@@ -60,5 +62,38 @@ impl User {
         let string = String::from_utf8(bytes)?;
 
         Ok(string)
+    }
+}
+
+pub fn load(path: Option<&Path>) -> Result<Config, ConfigError> {
+    let path = match path {
+        Some(path) => PathBuf::from(path),
+        None => {
+            let mut current = env::current_exe().map_err(ConfigError::FailedToGetExePath)?;
+
+            current.pop();
+            current.push("config.toml");
+            current
+        }
+    };
+
+    match Config::from_path(&path) {
+        Ok(config) => Ok(config),
+        Err(ConfigError::Io(e)) => match e.kind() {
+            ErrorKind::NotFound => {
+                println!("please enter your MAL username:");
+                let name = input::read_line()?;
+
+                println!("please enter your MAL password:");
+                let pass = input::read_line()?;
+
+                let user = User::new(name, &pass);
+                let config = Config::new(user, path);
+
+                Ok(config)
+            }
+            _ => Err(ConfigError::Io(e)),
+        },
+        Err(e) => Err(e),
     }
 }
