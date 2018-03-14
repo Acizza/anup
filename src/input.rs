@@ -1,4 +1,4 @@
-use failure::Error;
+use error::InputError;
 use std::io;
 
 pub fn read_line() -> io::Result<String> {
@@ -9,9 +9,12 @@ pub fn read_line() -> io::Result<String> {
     Ok(buffer.trim_right().to_string())
 }
 
-pub fn read_usize_range(min: usize, max: usize) -> Result<usize, Error> {
+pub fn read_usize_range(min: usize, max: usize) -> Result<usize, InputError> {
     loop {
-        let input = read_line()?.parse()?;
+        let input = read_line()
+            .map_err(InputError::ReadFailed)?
+            .parse()
+            .map_err(InputError::IntParseFailed)?;
 
         if input >= min && input <= max {
             return Ok(input);

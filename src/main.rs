@@ -16,6 +16,7 @@ extern crate serde_json;
 extern crate toml;
 
 mod config;
+mod error;
 mod input;
 mod prompt;
 mod process;
@@ -23,15 +24,17 @@ mod series;
 
 use config::{Config, User};
 use chrono::{Local, NaiveDate};
-use failure::{Error, ResultExt};
+use error::{ConfigError, Error};
 use mal::MAL;
 use series::Series;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 
 fn main() {
     match run() {
         Ok(_) => (),
         Err(e) => {
+            let e: failure::Error = e.into();
             eprintln!("fatal error: {}", e.cause());
 
             for cause in e.causes().skip(1) {
@@ -55,7 +58,7 @@ fn run() -> Result<(), Error> {
 
     let path = match matches.value_of("PATH") {
         Some(p) => PathBuf::from(p),
-        None => std::env::current_dir().context("failed to get current directory")?,
+        None => std::env::current_dir().map_err(|e| Error::FailedToGetDir("current directory", e))?,
     };
 
     let season = matches
@@ -66,7 +69,9 @@ fn run() -> Result<(), Error> {
     let mal = init_mal_client(&matches)?;
 
     let mut series = Series::from_path(&path)?;
-    series.watch_season(&mal, season)
+    series.watch_season(&mal, season)?;
+
+    Ok(())
 }
 
 pub fn get_today() -> NaiveDate {
@@ -74,12 +79,9 @@ pub fn get_today() -> NaiveDate {
 }
 
 fn init_mal_client<'a>(args: &clap::ArgMatches) -> Result<MAL<'a>, Error> {
-    let mut config = load_config(args).context("failed to load config file")?;
+    let mut config = load_config(args)?;
 
-    let decoded_password = config
-        .user
-        .decode_password()
-        .context("failed to decode config password")?;
+    let decoded_password = config.user.decode_password()?;
 
     let mut mal = MAL::new(config.user.name.clone(), decoded_password);
     let mut credentials_changed = false;
@@ -99,7 +101,7 @@ fn init_mal_client<'a>(args: &clap::ArgMatches) -> Result<MAL<'a>, Error> {
     }
 
     if !args.is_present("DONT_SAVE_CONFIG") {
-        config.save().context("failed to save config")?;
+        config.save()?;
     }
 
     Ok(mal)
@@ -109,7 +111,9 @@ fn load_config(args: &clap::ArgMatches) -> Result<Config, Error> {
     let config_path = match args.value_of("CONFIG_PATH") {
         Some(p) => PathBuf::from(p),
         None => {
-            let mut current = std::env::current_exe().context("failed to get executable path")?;
+            let mut current =
+                std::env::current_exe().map_err(|e| Error::FailedToGetDir("executable", e))?;
+
             current.pop();
             current.push("config.toml");
             current
@@ -118,17 +122,21 @@ fn load_config(args: &clap::ArgMatches) -> Result<Config, Error> {
 
     match Config::from_path(&config_path) {
         Ok(config) => Ok(config),
-        Err(_) => {
-            println!("please enter your MAL username:");
-            let name = input::read_line()?;
+        Err(ConfigError::Io(e)) => match e.kind() {
+            ErrorKind::NotFound => {
+                println!("please enter your MAL username:");
+                let name = input::read_line()?;
 
-            println!("please enter your MAL password:");
-            let pass = input::read_line()?;
+                println!("please enter your MAL password:");
+                let pass = input::read_line()?;
 
-            let user = User::new(name, &pass);
-            let config = Config::new(user, config_path);
+                let user = User::new(name, &pass);
+                let config = Config::new(user, config_path);
 
-            Ok(config)
-        }
+                Ok(config)
+            }
+            _ => Err(Error::ConfigError(ConfigError::Io(e))),
+        },
+        Err(e) => Err(Error::ConfigError(e)),
     }
 }

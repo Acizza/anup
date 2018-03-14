@@ -1,5 +1,5 @@
 use base64;
-use failure::Error;
+use error::ConfigError;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -16,7 +16,7 @@ impl Config {
         Config { user, path }
     }
 
-    pub fn from_path(path: &Path) -> Result<Config, Error> {
+    pub fn from_path(path: &Path) -> Result<Config, ConfigError> {
         let mut file = File::open(path)?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
@@ -27,11 +27,12 @@ impl Config {
         Ok(config)
     }
 
-    pub fn save(&self) -> Result<(), Error> {
+    pub fn save(&self) -> Result<(), ConfigError> {
         let mut file = File::create(&self.path)?;
         let toml = toml::to_string_pretty(self)?;
 
         write!(file, "{}", toml)?;
+
         Ok(())
     }
 }
@@ -54,8 +55,8 @@ impl User {
         self.password = base64::encode(password);
     }
 
-    pub fn decode_password(&self) -> Result<String, Error> {
-        let bytes = base64::decode(&self.password)?;
+    pub fn decode_password(&self) -> Result<String, ConfigError> {
+        let bytes = base64::decode(&self.password).map_err(ConfigError::FailedPasswordDecode)?;
         let string = String::from_utf8(bytes)?;
 
         Ok(string)
