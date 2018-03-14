@@ -83,10 +83,12 @@ fn init_mal_client<'a>(args: &clap::ArgMatches) -> Result<MAL<'a>, Error> {
         config::load(path)?
     };
 
-    let decoded_password = config.user.decode_password()?;
+    let mut mal = {
+        let decoded_password = config.user.decode_password()?;
+        MAL::new(config.user.name.clone(), decoded_password)
+    };
 
-    let mut mal = MAL::new(config.user.name.clone(), decoded_password);
-    let mut credentials_changed = false;
+    let mut password_changed = false;
 
     while !mal.verify_credentials()? {
         println!(
@@ -95,15 +97,17 @@ fn init_mal_client<'a>(args: &clap::ArgMatches) -> Result<MAL<'a>, Error> {
         );
 
         mal.password = input::read_line()?;
-        credentials_changed = true;
-    }
-
-    if credentials_changed {
-        config.user.encode_password(&mal.password);
+        password_changed = true;
     }
 
     if !args.is_present("DONT_SAVE_CONFIG") {
-        config.save()?;
+        if password_changed {
+            config.user.encode_password(&mal.password);
+        }
+
+        if password_changed || !config.path.exists() {
+            config.save()?;
+        }
     }
 
     Ok(mal)
