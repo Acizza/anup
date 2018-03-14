@@ -29,6 +29,10 @@ use series::Series;
 use std::path::Path;
 use std::path::PathBuf;
 
+pub fn get_today() -> NaiveDate {
+    Local::today().naive_utc()
+}
+
 fn main() {
     match run() {
         Ok(_) => (),
@@ -67,14 +71,10 @@ fn run() -> Result<(), Error> {
 
     let mal = init_mal_client(&matches)?;
 
-    let mut series = Series::from_path(&path)?;
-    series.watch_season(&mal, season)?;
+    let mut series = Series::from_dir(&path, &mal)?;
+    series.load_season(season)?.play_all_episodes()?;
 
     Ok(())
-}
-
-pub fn get_today() -> NaiveDate {
-    Local::today().naive_utc()
 }
 
 fn init_mal_client<'a>(args: &clap::ArgMatches) -> Result<MAL<'a>, Error> {

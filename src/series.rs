@@ -14,32 +14,162 @@ use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 
 #[derive(Debug)]
-pub struct Series {
-    pub name: String,
+pub struct Series<'a> {
+    pub mal: &'a MAL<'a>,
     pub data: SeriesData,
-    pub episodes: HashMap<u32, PathBuf>,
-    data_path: PathBuf,
+    pub save_data: SaveData,
+    pub save_path: PathBuf,
 }
 
-impl Series {
+impl<'a> Series<'a> {
     pub const DATA_FILE_NAME: &'static str = ".anitrack";
 
-    pub fn from_path(path: &Path) -> Result<Series, SeriesError> {
-        let data_path = PathBuf::from(path).join(Series::DATA_FILE_NAME);
-        let data = SeriesData::from_path_or_default(&data_path)?;
+    pub fn from_dir(dir: &Path, mal: &'a MAL) -> Result<Series<'a>, SeriesError> {
+        if !dir.is_dir() {
+            return Err(SeriesError::NotADirectory(
+                dir.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "err".into()),
+            ));
+        }
 
-        let ep_data = EpisodeData::parse(path)?;
+        let series_data = SeriesData::parse_dir(dir)?;
+        let save_path = PathBuf::from(dir).join(Series::DATA_FILE_NAME);
+        let save_data = SaveData::from_path_or_default(&save_path)?;
 
-        Ok(Series {
-            name: ep_data.series_name,
-            data,
-            episodes: ep_data.paths,
-            data_path,
-        })
+        let series = Series {
+            mal,
+            data: series_data,
+            save_data,
+            save_path,
+        };
+
+        Ok(series)
     }
 
-    pub fn play_episode(&self, ep_num: u32) -> Result<ExitStatus, SeriesError> {
-        let path = self.episodes
+    pub fn load_season(&mut self, season_num: u32) -> Result<Season, SeriesError> {
+        let created_series_info = self.ensure_num_seasons(season_num)?;
+
+        let season_info = {
+            let index = season_num.saturating_sub(1);
+            &self.save_data.seasons[index as usize]
+        };
+
+        let series_info = match created_series_info {
+            Some(info) => info,
+            None => season_info.request_mal_info(&self.mal.anime_list())?,
+        };
+
+        let episode_offset = self.calculate_season_offset(season_num);
+        let list_entry = get_mal_list_entry(self.mal, &series_info)?;
+
+        Ok(Season::new(
+            self.mal,
+            list_entry,
+            &self.data.episodes,
+            episode_offset,
+        ))
+    }
+
+    fn ensure_num_seasons(&mut self, num_seasons: u32) -> Result<Option<AnimeInfo>, SeriesError> {
+        let mut created_series_info = None;
+        let existing_seasons = self.save_data.seasons.len();
+
+        if num_seasons as usize > existing_seasons {
+            let anime_list = self.mal.anime_list();
+
+            for cur_season in existing_seasons..(num_seasons as usize) {
+                println!(
+                    "select the correct series for season {} of [{}]:",
+                    1 + cur_season,
+                    self.data.name
+                );
+
+                let season_info = prompt::select_series_info(&anime_list, &self.data.name)?;
+
+                created_series_info = Some(season_info.info.clone());
+                self.save_data.seasons.push(season_info.into());
+            }
+
+            self.save_data()?;
+        }
+
+        Ok(created_series_info)
+    }
+
+    fn calculate_season_offset(&self, season: u32) -> u32 {
+        let mut offset = 0;
+
+        for cur_season in 1..(season as usize) {
+            offset += self.save_data.seasons[cur_season].episodes;
+        }
+
+        offset
+    }
+
+    pub fn save_data(&self) -> Result<(), SeriesError> {
+        self.save_data.write_to(&self.save_path)
+    }
+}
+
+fn get_mal_list_entry(mal: &MAL, info: &AnimeInfo) -> Result<AnimeEntry, SeriesError> {
+    let anime_list = mal.anime_list();
+
+    let found = anime_list
+        .read()?
+        .entries
+        .into_iter()
+        .find(|e| e.series_info == *info);
+
+    match found {
+        Some(mut entry) => {
+            if entry.values.status() == Status::Completed && !entry.values.rewatching() {
+                prompt::rewatch_series(&anime_list, &mut entry)?;
+            }
+
+            Ok(entry)
+        }
+        None => {
+            let mut entry = AnimeEntry::new(info.clone());
+
+            entry
+                .values
+                .set_status(Status::WatchingOrReading)
+                .set_start_date(Some(get_today()));
+
+            anime_list.add(&mut entry)?;
+            Ok(entry)
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Season<'a> {
+    pub mal: &'a MAL<'a>,
+    pub list_entry: AnimeEntry,
+    pub local_episodes: &'a HashMap<u32, PathBuf>,
+    pub ep_offset: u32,
+}
+
+impl<'a> Season<'a> {
+    pub fn new(
+        mal: &'a MAL<'a>,
+        list_entry: AnimeEntry,
+        local_episodes: &'a HashMap<u32, PathBuf>,
+        ep_offset: u32,
+    ) -> Season<'a> {
+        Season {
+            mal,
+            list_entry,
+            local_episodes,
+            ep_offset,
+        }
+    }
+
+    pub fn play_episode(&self, relative_ep: u32) -> Result<ExitStatus, SeriesError> {
+        let ep_num = self.ep_offset + relative_ep;
+
+        let path = self.local_episodes
             .get(&ep_num)
             .ok_or_else(|| SeriesError::EpisodeNotFound(ep_num))?;
 
@@ -50,136 +180,126 @@ impl Series {
         Ok(output.status)
     }
 
-    pub fn watch_season(&mut self, mal: &MAL, season: u32) -> Result<(), SeriesError> {
-        let list = mal.anime_list();
-
-        let (season_info, search_term) = match self.seasons().get(&season) {
-            Some(season) => {
-                let info = season.request_mal_info(&list)?;
-                let name = self.name.clone();
-                (info, name)
-            }
-            None => {
-                let result = prompt::select_series_info(&list, &self.name)?;
-                (result.info, result.search_term)
-            }
-        };
-
-        // TODO: use the HashMap's Entry API instead when NLL (https://git.io/vNkV1) is stable-ish
-        if !self.seasons().contains_key(&season) {
-            let info = SeasonInfo::new(season_info.id, season_info.episodes, search_term);
-
-            self.seasons_mut().insert(season, info);
-            self.save_data()?;
-        }
-
-        let mut list_entry = Series::get_list_entry(&list, &season_info)?;
-        self.play_all_episodes(&list, season, &mut list_entry)
-    }
-
-    fn get_season_ep_offset(&self, season: u32) -> Result<u32, SeriesError> {
-        let mut ep_offset = 0;
-
-        for cur_season in 1..season {
-            // TODO: handle case where previous season info doesn't exist?
-            let season = self.get_season_data(cur_season)?;
-            ep_offset += season.episodes;
-        }
-
-        Ok(ep_offset)
-    }
-
-    fn play_all_episodes(
-        &self,
-        list: &List<AnimeEntry>,
-        season: u32,
-        entry: &mut AnimeEntry,
-    ) -> Result<(), SeriesError> {
-        let season_offset = self.get_season_ep_offset(season)?;
+    pub fn play_all_episodes(&mut self) -> Result<(), SeriesError> {
+        let list = self.mal.anime_list();
 
         loop {
-            let watched = entry.values.watched_episodes() + 1;
-            entry.values.set_watched_episodes(watched);
-            let real_ep_num = watched + season_offset;
+            let next_ep_num = self.list_entry.values.watched_episodes() + 1;
+            self.list_entry.values.set_watched_episodes(next_ep_num);
 
-            if self.play_episode(real_ep_num)?.success() {
-                prompt::update_watched_eps(list, entry)?;
+            if self.play_episode(next_ep_num)?.success() {
+                prompt::update_watched_eps(&list, &mut self.list_entry)?;
             } else {
-                prompt::abnormal_player_exit(list, entry)?;
+                prompt::abnormal_player_exit(&list, &mut self.list_entry)?;
             }
 
-            list.update(entry)?;
-            prompt::next_episode_options(list, entry)?;
+            list.update(&mut self.list_entry)?;
+            prompt::next_episode_options(&list, &mut self.list_entry)?;
         }
     }
+}
 
-    fn get_list_entry(
-        anime_list: &List<AnimeEntry>,
-        info: &AnimeInfo,
-    ) -> Result<AnimeEntry, SeriesError> {
-        let list = anime_list.read()?;
-        let found = list.entries.into_iter().find(|e| e.series_info == *info);
+type SeriesName = String;
+type EpisodeNum = u32;
 
-        match found {
-            Some(mut entry) => {
-                if entry.values.status() == Status::Completed && !entry.values.rewatching() {
-                    prompt::rewatch_series(anime_list, &mut entry)?;
+#[derive(Debug)]
+pub struct SeriesData {
+    pub name: String,
+    pub episodes: HashMap<u32, PathBuf>,
+}
+
+impl SeriesData {
+    pub const EP_FORMAT_REGEX: &'static str =
+        r"(?:\[.+?\]\s*)?(?P<series>.+?)\s*(?:-\s*)?(?P<episode>\d+).*?\..+?";
+
+    fn parse_dir(dir: &Path) -> Result<SeriesData, SeriesError> {
+        let mut series_name = None;
+        let mut episodes = HashMap::new();
+
+        for entry in std::fs::read_dir(dir).map_err(SeriesError::Io)? {
+            let path = entry.map_err(SeriesError::Io)?.path();
+
+            if !path.is_file() {
+                continue;
+            }
+
+            match SeriesData::parse_filename(&path) {
+                Ok((ep_name, ep_num)) => {
+                    match series_name {
+                        Some(ref series_name) if &ep_name != series_name => {
+                            return Err(SeriesError::MultipleSeriesFound);
+                        }
+                        Some(_) => (),
+                        None => series_name = Some(ep_name),
+                    }
+
+                    episodes.insert(ep_num, path);
                 }
-
-                Ok(entry)
-            }
-            None => {
-                let mut entry = AnimeEntry::new(info.clone());
-
-                entry
-                    .values
-                    .set_status(Status::WatchingOrReading)
-                    .set_start_date(Some(get_today()));
-
-                anime_list.add(&mut entry)?;
-                Ok(entry)
+                Err(SeriesError::EpisodeRegexCaptureFailed) => continue,
+                Err(e) => return Err(e),
             }
         }
+
+        let series = series_name.ok_or(SeriesError::NoEpisodesFound)?;
+
+        Ok(SeriesData {
+            name: series,
+            episodes,
+        })
     }
 
-    pub fn seasons(&self) -> &HashMap<u32, SeasonInfo> {
-        &self.data.seasons
-    }
+    fn parse_filename(path: &Path) -> Result<(SeriesName, EpisodeNum), SeriesError> {
+        lazy_static! {
+            static ref EP_FORMAT: Regex = Regex::new(SeriesData::EP_FORMAT_REGEX)
+                .unwrap();
+        }
 
-    pub fn seasons_mut(&mut self) -> &mut HashMap<u32, SeasonInfo> {
-        &mut self.data.seasons
-    }
+        // Replace certain special characters with spaces since they can either
+        // affect parsing or prevent finding results on MAL
+        let filename = path.file_name()
+            .and_then(|path| path.to_str())
+            .ok_or(SeriesError::UnableToGetFilename)?
+            .replace('_', " ");
 
-    pub fn get_season_data(&self, season: u32) -> Result<&SeasonInfo, SeriesError> {
-        self.data
-            .seasons
-            .get(&season)
-            .ok_or_else(|| SeriesError::SeasonInfoNotFound(season))
-    }
+        let caps = EP_FORMAT
+            .captures(&filename)
+            .ok_or(SeriesError::EpisodeRegexCaptureFailed)?;
 
-    pub fn save_data(&self) -> Result<(), SeriesError> {
-        self.data.write_to(&self.data_path)
+        let series_name = {
+            let raw_name = &caps["series"];
+
+            raw_name.replace('.', " ")
+            .replace(" -", ":") // Dashes typically represent a colon in file names
+            .trim()
+            .to_string()
+        };
+
+        let episode = caps["episode"]
+            .parse()
+            .map_err(SeriesError::EpisodeNumParseFailed)?;
+
+        Ok((series_name, episode))
     }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub struct SeriesData {
-    pub seasons: HashMap<u32, SeasonInfo>,
+pub struct SaveData {
+    pub seasons: Vec<SeasonInfo>,
 }
 
-impl SeriesData {
-    fn from_path(path: &Path) -> Result<SeriesData, SeriesError> {
+impl SaveData {
+    fn from_path(path: &Path) -> Result<SaveData, SeriesError> {
         let file = File::open(path)?;
         let data = serde_json::from_reader(file)?;
 
         Ok(data)
     }
 
-    fn from_path_or_default(path: &Path) -> Result<SeriesData, SeriesError> {
+    fn from_path_or_default(path: &Path) -> Result<SaveData, SeriesError> {
         if path.exists() {
-            SeriesData::from_path(path)
+            SaveData::from_path(path)
         } else {
-            Ok(SeriesData::default())
+            Ok(SaveData::default())
         }
     }
 
@@ -199,14 +319,6 @@ pub struct SeasonInfo {
 }
 
 impl SeasonInfo {
-    pub fn new(id: u32, episodes: u32, search_title: String) -> SeasonInfo {
-        SeasonInfo {
-            series_id: id,
-            episodes,
-            search_title,
-        }
-    }
-
     pub fn request_mal_info(&self, list: &List<AnimeEntry>) -> Result<AnimeInfo, SeriesError> {
         list.search_for(&self.search_title)?
             .into_iter()
@@ -215,81 +327,12 @@ impl SeasonInfo {
     }
 }
 
-#[derive(Debug)]
-pub struct EpisodeData {
-    pub series_name: String,
-    pub paths: HashMap<u32, PathBuf>,
-}
-
-impl EpisodeData {
-    pub fn parse(path: &Path) -> Result<EpisodeData, SeriesError> {
-        let mut series = None;
-        let mut episodes = HashMap::new();
-
-        for entry in std::fs::read_dir(path).map_err(SeriesError::Io)? {
-            let path = entry.map_err(SeriesError::Io)?.path();
-
-            let info = match EpisodeInfo::parse(&path) {
-                Some(info) => info,
-                None => continue,
-            };
-
-            if let Some(ref series) = series {
-                if series != &info.series {
-                    return Err(SeriesError::MultipleSeriesFound);
-                }
-            } else {
-                series = Some(info.series);
-            }
-
-            episodes.insert(info.episode, path);
+impl From<prompt::SearchResult> for SeasonInfo {
+    fn from(result: prompt::SearchResult) -> SeasonInfo {
+        SeasonInfo {
+            series_id: result.info.id,
+            episodes: result.info.episodes,
+            search_title: result.search_term,
         }
-
-        let series = series.ok_or(SeriesError::NoEpisodesFound)?;
-
-        Ok(EpisodeData {
-            series_name: series,
-            paths: episodes,
-        })
-    }
-}
-
-#[derive(Debug)]
-struct EpisodeInfo {
-    series: String,
-    episode: u32,
-}
-
-impl EpisodeInfo {
-    fn parse(path: &Path) -> Option<EpisodeInfo> {
-        if !path.is_file() {
-            return None;
-        }
-
-        lazy_static! {
-            static ref EP_FORMAT: Regex = Regex::new(r"(?:\[.+?\]\s*)?(?P<series>.+?)\s*(?:-\s*)?(?P<episode>\d+).*?\..+?")
-                .unwrap();
-        }
-
-        // Replace certain special characters with spaces since they can either
-        // affect parsing or prevent finding results on MAL
-        let filename = path.file_name()?.to_str().unwrap().replace('_', " ");
-
-        let caps = EP_FORMAT.captures(&filename)?;
-
-        let clean_name = {
-            let raw = &caps["series"];
-            raw.replace('.', " ")
-               .replace(" -", ":") // Dashes typically represent a colon in file names
-               .trim()
-               .to_string()
-        };
-
-        let info = EpisodeInfo {
-            series: clean_name,
-            episode: caps["episode"].parse().ok()?,
-        };
-
-        Some(info)
     }
 }

@@ -52,17 +52,26 @@ pub enum SeriesError {
     #[fail(display = "failed to open video player")]
     FailedToOpenPlayer(#[cause] ::std::io::Error),
 
+    #[fail(display = "episode number parse failed")]
+    EpisodeNumParseFailed(#[cause] ::std::num::ParseIntError),
+
     #[fail(display = "no episodes found")]
     NoEpisodesFound,
 
-    #[fail(display = "episode {} not found", _0)]
-    EpisodeNotFound(u32),
-
-    #[fail(display = "season {} information not found", _0)]
-    SeasonInfoNotFound(u32),
-
     #[fail(display = "multiple series found")]
     MultipleSeriesFound,
+
+    #[fail(display = "unable to get filename")]
+    UnableToGetFilename,
+
+    #[fail(display = "failed to get regex captures on episode")]
+    EpisodeRegexCaptureFailed,
+
+    #[fail(display = "specified path is not a directory: {}", _0)]
+    NotADirectory(String),
+
+    #[fail(display = "episode {} not found", _0)]
+    EpisodeNotFound(u32),
 
     #[fail(display = "no anime with id {} found with name [{}] on MAL", _0, _1)]
     UnknownAnimeID(u32, String),
