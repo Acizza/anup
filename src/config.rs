@@ -7,6 +7,8 @@ use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use toml;
 
+pub const DEFAULT_CONFIG_NAME: &str = "config.toml";
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     pub user: User,
@@ -72,7 +74,7 @@ pub fn load(path: Option<&Path>) -> Result<Config, ConfigError> {
             let mut current = env::current_exe().map_err(ConfigError::FailedToGetExePath)?;
 
             current.pop();
-            current.push("config.toml");
+            current.push(DEFAULT_CONFIG_NAME);
             current
         }
     };
