@@ -40,9 +40,6 @@ pub enum SeriesError {
     #[fail(display = "io error")]
     Io(#[cause] ::std::io::Error),
 
-    #[fail(display = "input prompt error")]
-    PromptError(#[cause] PromptError),
-
     #[fail(display = "MAL error")]
     MALError(#[cause] ::mal::MALError),
 
@@ -82,28 +79,9 @@ pub enum SeriesError {
 
 impl_error_conversion!(SeriesError,
     ::std::io::Error => Io,
-    PromptError => PromptError,
     ::mal::MALError => MALError,
     InputError => InputError,
     ::serde_json::Error => Json,
-);
-
-#[derive(Fail, Debug)]
-pub enum PromptError {
-    #[fail(display = "io error")]
-    Io(#[cause] ::std::io::Error),
-
-    #[fail(display = "MAL error")]
-    MALError(#[cause] ::mal::MALError),
-
-    #[fail(display = "input error")]
-    InputError(#[cause] InputError),
-}
-
-impl_error_conversion!(PromptError,
-    ::std::io::Error => Io,
-    ::mal::MALError => MALError,
-    InputError => InputError,
 );
 
 #[derive(Fail, Debug)]

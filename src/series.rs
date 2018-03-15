@@ -1,18 +1,20 @@
-use chrono::NaiveDate;
+use chrono::{Local, NaiveDate};
 use error::SeriesError;
-use get_today;
 use input::{self, Answer};
 use mal::MAL;
 use mal::list::{List, Status};
 use mal::list::anime::{AnimeEntry, AnimeInfo};
 use regex::Regex;
 use process;
-use prompt;
 use serde_json;
 use std;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+
+fn get_today() -> NaiveDate {
+    Local::today().naive_utc()
+}
 
 #[derive(Debug)]
 pub struct Series<'a> {
@@ -271,13 +273,11 @@ impl<'a> Season<'a> {
     }
 
     pub fn play_all_episodes(&mut self) -> Result<(), SeriesError> {
-        let list = self.mal.anime_list();
-
         loop {
             let next_ep_num = self.list_entry.values.watched_episodes() + 1;
-            self.play_episode(next_ep_num)?;
 
-            prompt::next_episode_options(&list, &mut self.list_entry)?;
+            self.play_episode(next_ep_num)?;
+            self.next_episode_options()?;
         }
     }
 
@@ -329,6 +329,42 @@ impl<'a> Season<'a> {
 
         // Nothing to do now
         std::process::exit(0);
+    }
+
+    fn next_episode_options(&mut self) -> Result<(), SeriesError> {
+        println!("options:");
+        println!("\t[d] drop series\n\t[h] put series on hold\n\t[r] rate series\n\t[x] exit\n\t[n] watch next episode (default)");
+
+        let input = input::read_line()?.to_lowercase();
+
+        match input.as_str() {
+            "d" => {
+                self.list_entry.values.set_status(Status::Dropped);
+                self.add_series_finish_date(get_today())?;
+                self.mal.anime_list().update(&mut self.list_entry)?;
+
+                std::process::exit(0);
+            }
+            "h" => {
+                self.list_entry.values.set_status(Status::OnHold);
+                self.mal.anime_list().update(&mut self.list_entry)?;
+
+                std::process::exit(0);
+            }
+            "r" => {
+                println!("enter your score between 1-10:");
+
+                let score = input::read_usize_range(1, 10)? as u8;
+                self.list_entry.values.set_score(score);
+
+                self.mal.anime_list().update(&mut self.list_entry)?;
+                self.next_episode_options()?;
+            }
+            "x" => std::process::exit(0),
+            _ => (),
+        }
+
+        Ok(())
     }
 
     fn add_series_finish_date(&mut self, date: NaiveDate) -> Result<(), SeriesError> {

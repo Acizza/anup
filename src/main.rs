@@ -18,20 +18,14 @@ extern crate toml;
 mod config;
 mod error;
 mod input;
-mod prompt;
 mod process;
 mod series;
 
-use chrono::{Local, NaiveDate};
 use error::Error;
 use mal::MAL;
 use series::Series;
 use std::path::Path;
 use std::path::PathBuf;
-
-pub fn get_today() -> NaiveDate {
-    Local::today().naive_utc()
-}
 
 fn main() {
     match run() {
