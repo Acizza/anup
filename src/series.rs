@@ -1,6 +1,6 @@
 use error::SeriesError;
 use get_today;
-use input;
+use input::{self, Answer};
 use mal::MAL;
 use mal::list::{List, Status};
 use mal::list::anime::{AnimeEntry, AnimeInfo};
@@ -62,7 +62,7 @@ impl<'a> Series<'a> {
         };
 
         let episode_offset = self.calculate_season_offset(season_num);
-        let list_entry = get_mal_list_entry(self.mal, &series_info)?;
+        let list_entry = self.get_mal_list_entry(&series_info)?;
 
         Ok(Season::new(
             self.mal,
@@ -133,6 +133,63 @@ impl<'a> Series<'a> {
             Ok(SeriesSelection::new(found.swap_remove(index - 1), name))
         }
     }
+
+    fn get_mal_list_entry(&self, info: &AnimeInfo) -> Result<AnimeEntry, SeriesError> {
+        let anime_list = self.mal.anime_list();
+
+        let found = anime_list
+            .read()?
+            .entries
+            .into_iter()
+            .find(|e| e.series_info == *info);
+
+        match found {
+            Some(mut entry) => {
+                if entry.values.status() == Status::Completed && !entry.values.rewatching() {
+                    self.prompt_to_rewatch(&mut entry)?;
+                }
+
+                Ok(entry)
+            }
+            None => {
+                let mut entry = AnimeEntry::new(info.clone());
+
+                entry
+                    .values
+                    .set_status(Status::WatchingOrReading)
+                    .set_start_date(Some(get_today()));
+
+                anime_list.add(&mut entry)?;
+                Ok(entry)
+            }
+        }
+    }
+
+    fn prompt_to_rewatch(&self, entry: &mut AnimeEntry) -> Result<(), SeriesError> {
+        println!("[{}] already completed", entry.series_info.title);
+        println!("do you want to rewatch it? (Y/n)");
+        println!("(note that you have to increase the rewatch count manually)");
+
+        if input::read_yn(Answer::Yes)? {
+            entry.values.set_rewatching(true).set_watched_episodes(0);
+
+            println!("do you want to reset the start and end date? (Y/n)");
+
+            if input::read_yn(Answer::Yes)? {
+                entry
+                    .values
+                    .set_start_date(Some(get_today()))
+                    .set_finish_date(None);
+            }
+
+            self.mal.anime_list().update(entry)?;
+        } else {
+            // No point in continuing in this case
+            std::process::exit(0);
+        }
+
+        Ok(())
+    }
 }
 
 struct SeriesSelection {
@@ -155,37 +212,6 @@ impl Into<SeasonInfo> for SeriesSelection {
             series_id: self.info.id,
             episodes: self.info.episodes,
             search_title: self.search_term,
-        }
-    }
-}
-
-fn get_mal_list_entry(mal: &MAL, info: &AnimeInfo) -> Result<AnimeEntry, SeriesError> {
-    let anime_list = mal.anime_list();
-
-    let found = anime_list
-        .read()?
-        .entries
-        .into_iter()
-        .find(|e| e.series_info == *info);
-
-    match found {
-        Some(mut entry) => {
-            if entry.values.status() == Status::Completed && !entry.values.rewatching() {
-                prompt::rewatch_series(&anime_list, &mut entry)?;
-            }
-
-            Ok(entry)
-        }
-        None => {
-            let mut entry = AnimeEntry::new(info.clone());
-
-            entry
-                .values
-                .set_status(Status::WatchingOrReading)
-                .set_start_date(Some(get_today()));
-
-            anime_list.add(&mut entry)?;
-            Ok(entry)
         }
     }
 }

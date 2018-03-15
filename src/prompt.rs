@@ -131,29 +131,3 @@ pub fn abnormal_player_exit(
 
     Ok(())
 }
-
-pub fn rewatch_series(list: &List<AnimeEntry>, entry: &mut AnimeEntry) -> Result<(), PromptError> {
-    println!("[{}] already completed", entry.series_info.title);
-    println!("do you want to rewatch it? (Y/n)");
-    println!("(note that you have to increase the rewatch count manually)");
-
-    if input::read_yn(Answer::Yes)? {
-        entry.values.set_rewatching(true).set_watched_episodes(0);
-
-        println!("do you want to reset the start and end date? (Y/n)");
-
-        if input::read_yn(Answer::Yes)? {
-            entry
-                .values
-                .set_start_date(Some(get_today()))
-                .set_finish_date(None);
-        }
-
-        list.update(entry)?;
-    } else {
-        // No point in continuing in this case
-        std::process::exit(0);
-    }
-
-    Ok(())
-}
