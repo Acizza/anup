@@ -22,62 +22,6 @@ fn prompt_to_add_finish_date(entry: &mut AnimeEntry, date: NaiveDate) -> Result<
     Ok(())
 }
 
-fn series_completed(list: &List<AnimeEntry>, entry: &mut AnimeEntry) -> Result<(), PromptError> {
-    let today = get_today();
-    entry.values.set_status(Status::Completed);
-
-    println!(
-        "[{}] completed!\ndo you want to rate it? (Y/n)",
-        entry.series_info.title
-    );
-
-    if input::read_yn(Answer::Yes)? {
-        println!("enter your score between 1-10:");
-        let score = input::read_usize_range(1, 10)? as u8;
-
-        entry.values.set_score(score);
-    }
-
-    if entry.values.rewatching() {
-        entry.values.set_rewatching(false);
-    }
-
-    prompt_to_add_finish_date(entry, today)?;
-    list.update(entry)?;
-
-    // Nothing to do now
-    std::process::exit(0);
-}
-
-pub fn update_watched_eps(
-    list: &List<AnimeEntry>,
-    entry: &mut AnimeEntry,
-) -> Result<(), PromptError> {
-    let watched = entry.values.watched_episodes();
-    entry.values.set_watched_episodes(watched);
-
-    if entry.values.watched_episodes() >= entry.series_info.episodes {
-        series_completed(list, entry)?;
-    } else {
-        println!(
-            "[{}] episode {}/{} completed",
-            entry.series_info.title,
-            entry.values.watched_episodes(),
-            entry.series_info.episodes
-        );
-
-        if !entry.values.rewatching() {
-            entry.values.set_status(Status::WatchingOrReading);
-
-            if entry.values.watched_episodes() <= 1 {
-                entry.values.set_start_date(Some(get_today()));
-            }
-        }
-    }
-
-    Ok(())
-}
-
 pub fn next_episode_options(
     list: &List<AnimeEntry>,
     entry: &mut AnimeEntry,
@@ -113,20 +57,6 @@ pub fn next_episode_options(
         }
         "x" => std::process::exit(0),
         _ => (),
-    }
-
-    Ok(())
-}
-
-pub fn abnormal_player_exit(
-    list: &List<AnimeEntry>,
-    entry: &mut AnimeEntry,
-) -> Result<(), PromptError> {
-    println!("video player not exited normally");
-    println!("do you still want to count the episode as watched? (y/N)");
-
-    if input::read_yn(Answer::No)? {
-        update_watched_eps(list, entry)?;
     }
 
     Ok(())

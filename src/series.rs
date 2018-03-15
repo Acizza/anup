@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use error::SeriesError;
 use get_today;
 use input::{self, Answer};
@@ -12,7 +13,6 @@ use std;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::process::ExitStatus;
 
 #[derive(Debug)]
 pub struct Series<'a> {
@@ -239,7 +239,7 @@ impl<'a> Season<'a> {
         }
     }
 
-    pub fn play_episode(&self, relative_ep: u32) -> Result<ExitStatus, SeriesError> {
+    pub fn play_episode(&mut self, relative_ep: u32) -> Result<(), SeriesError> {
         let ep_num = self.ep_offset + relative_ep;
 
         let path = self.local_episodes
@@ -250,7 +250,24 @@ impl<'a> Season<'a> {
             .output()
             .map_err(SeriesError::FailedToOpenPlayer)?;
 
-        Ok(output.status)
+        self.list_entry.values.set_watched_episodes(relative_ep);
+
+        if !output.status.success() {
+            println!("video player not exited normally");
+            println!("do you still want to count the episode as watched? (y/N)");
+
+            if !input::read_yn(Answer::No)? {
+                return Ok(());
+            }
+        }
+
+        if relative_ep >= self.list_entry.series_info.episodes {
+            self.series_completed()?;
+        } else {
+            self.episode_completed()?;
+        }
+
+        Ok(())
     }
 
     pub fn play_all_episodes(&mut self) -> Result<(), SeriesError> {
@@ -258,17 +275,78 @@ impl<'a> Season<'a> {
 
         loop {
             let next_ep_num = self.list_entry.values.watched_episodes() + 1;
-            self.list_entry.values.set_watched_episodes(next_ep_num);
+            self.play_episode(next_ep_num)?;
 
-            if self.play_episode(next_ep_num)?.success() {
-                prompt::update_watched_eps(&list, &mut self.list_entry)?;
-            } else {
-                prompt::abnormal_player_exit(&list, &mut self.list_entry)?;
-            }
-
-            list.update(&mut self.list_entry)?;
             prompt::next_episode_options(&list, &mut self.list_entry)?;
         }
+    }
+
+    fn episode_completed(&mut self) -> Result<(), SeriesError> {
+        let entry = &mut self.list_entry;
+
+        println!(
+            "[{}] episode {}/{} completed",
+            entry.series_info.title,
+            entry.values.watched_episodes(),
+            entry.series_info.episodes
+        );
+
+        if !entry.values.rewatching() {
+            entry.values.set_status(Status::WatchingOrReading);
+
+            if entry.values.watched_episodes() <= 1 {
+                entry.values.set_start_date(Some(get_today()));
+            }
+        }
+
+        self.mal.anime_list().update(entry)?;
+        Ok(())
+    }
+
+    fn series_completed(&mut self) -> Result<(), SeriesError> {
+        let today = get_today();
+
+        self.list_entry.values.set_status(Status::Completed);
+
+        println!(
+            "[{}] completed!\ndo you want to rate it? (Y/n)",
+            self.list_entry.series_info.title
+        );
+
+        if input::read_yn(Answer::Yes)? {
+            println!("enter your score between 1-10:");
+            let score = input::read_usize_range(1, 10)? as u8;
+
+            self.list_entry.values.set_score(score);
+        }
+
+        if self.list_entry.values.rewatching() {
+            self.list_entry.values.set_rewatching(false);
+        }
+
+        self.add_series_finish_date(today)?;
+        self.mal.anime_list().update(&mut self.list_entry)?;
+
+        // Nothing to do now
+        std::process::exit(0);
+    }
+
+    fn add_series_finish_date(&mut self, date: NaiveDate) -> Result<(), SeriesError> {
+        let entry = &mut self.list_entry;
+
+        // Someone may want to keep the original start / finish date for an
+        // anime they're rewatching
+        if entry.values.rewatching() && entry.values.finish_date().is_some() {
+            println!("do you want to override the finish date? (Y/n)");
+
+            if input::read_yn(Answer::Yes)? {
+                entry.values.set_finish_date(Some(date));
+            }
+        } else {
+            entry.values.set_finish_date(Some(date));
+        }
+
+        Ok(())
     }
 }
 
