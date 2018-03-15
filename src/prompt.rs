@@ -3,54 +3,8 @@ use error::PromptError;
 use get_today;
 use input::{self, Answer};
 use mal::list::{List, Status};
-use mal::list::anime::{AnimeEntry, AnimeInfo};
+use mal::list::anime::AnimeEntry;
 use std;
-
-pub struct SearchResult {
-    pub info: AnimeInfo,
-    pub search_term: String,
-}
-
-impl SearchResult {
-    pub fn new<S: Into<String>>(info: AnimeInfo, search_term: S) -> SearchResult {
-        SearchResult {
-            info,
-            search_term: search_term.into(),
-        }
-    }
-}
-
-pub fn select_series_info(
-    list: &List<AnimeEntry>,
-    name: &str,
-) -> Result<SearchResult, PromptError> {
-    let mut series = list.search_for(name)?;
-
-    if !series.is_empty() {
-        println!("MAL results for [{}]:", name);
-        println!("enter the number next to the desired series:\n");
-
-        println!("0 [custom search]");
-
-        for (i, s) in series.iter().enumerate() {
-            println!("{} [{}]", 1 + i, s.title);
-        }
-
-        let index = input::read_usize_range(0, series.len())?;
-
-        if index == 0 {
-            println!("enter the name you want to search for:");
-            let name = input::read_line()?;
-
-            select_series_info(list, &name)
-        } else {
-            Ok(SearchResult::new(series.swap_remove(index - 1), name))
-        }
-    } else {
-        // TODO: prompt the user to search for a different series
-        Err(PromptError::NoSeriesFound(name.into()))
-    }
-}
 
 fn prompt_to_add_finish_date(entry: &mut AnimeEntry, date: NaiveDate) -> Result<(), PromptError> {
     // Someone may want to keep the original start / finish date for an

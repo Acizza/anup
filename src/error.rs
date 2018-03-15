@@ -46,6 +46,9 @@ pub enum SeriesError {
     #[fail(display = "MAL error")]
     MALError(#[cause] ::mal::MALError),
 
+    #[fail(display = "input error")]
+    InputError(#[cause] InputError),
+
     #[fail(display = "json error")]
     Json(#[cause] ::serde_json::Error),
 
@@ -79,9 +82,10 @@ pub enum SeriesError {
 
 impl_error_conversion!(SeriesError,
     ::std::io::Error => Io,
-    ::serde_json::Error => Json,
-    ::mal::MALError => MALError,
     PromptError => PromptError,
+    ::mal::MALError => MALError,
+    InputError => InputError,
+    ::serde_json::Error => Json,
 );
 
 #[derive(Fail, Debug)]
@@ -94,9 +98,6 @@ pub enum PromptError {
 
     #[fail(display = "input error")]
     InputError(#[cause] InputError),
-
-    #[fail(display = "no series named [{}] found", _0)]
-    NoSeriesFound(String),
 }
 
 impl_error_conversion!(PromptError,

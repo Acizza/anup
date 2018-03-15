@@ -1,5 +1,6 @@
 use error::SeriesError;
 use get_today;
+use input;
 use mal::MAL;
 use mal::list::{List, Status};
 use mal::list::anime::{AnimeEntry, AnimeInfo};
@@ -76,8 +77,6 @@ impl<'a> Series<'a> {
         let existing_seasons = self.save_data.seasons.len();
 
         if num_seasons as usize > existing_seasons {
-            let anime_list = self.mal.anime_list();
-
             for cur_season in existing_seasons..(num_seasons as usize) {
                 println!(
                     "select the correct series for season {} of [{}]:",
@@ -85,7 +84,7 @@ impl<'a> Series<'a> {
                     self.data.name
                 );
 
-                let season_info = prompt::select_series_info(&anime_list, &self.data.name)?;
+                let season_info = self.select_series_from_mal(&self.data.name)?;
 
                 created_series_info = Some(season_info.info.clone());
                 self.save_data.seasons.push(season_info.into());
@@ -109,6 +108,54 @@ impl<'a> Series<'a> {
 
     pub fn save_data(&self) -> Result<(), SeriesError> {
         self.save_data.write_to(&self.save_path)
+    }
+
+    fn select_series_from_mal(&self, name: &str) -> Result<SeriesSelection, SeriesError> {
+        let mut found = self.mal.anime_list().search_for(name)?;
+
+        println!("MAL results for [{}]:", name);
+        println!("enter the number next to the desired series:\n");
+
+        println!("0 [custom search]");
+
+        for (i, series) in found.iter().enumerate() {
+            println!("{} [{}]", 1 + i, series.title);
+        }
+
+        let index = input::read_usize_range(0, found.len())?;
+
+        if index == 0 {
+            println!("enter the name you want to search for:");
+
+            let name = input::read_line()?;
+            self.select_series_from_mal(&name)
+        } else {
+            Ok(SeriesSelection::new(found.swap_remove(index - 1), name))
+        }
+    }
+}
+
+struct SeriesSelection {
+    pub info: AnimeInfo,
+    pub search_term: String,
+}
+
+impl SeriesSelection {
+    fn new<S: Into<String>>(info: AnimeInfo, search_term: S) -> SeriesSelection {
+        SeriesSelection {
+            info,
+            search_term: search_term.into(),
+        }
+    }
+}
+
+impl Into<SeasonInfo> for SeriesSelection {
+    fn into(self) -> SeasonInfo {
+        SeasonInfo {
+            series_id: self.info.id,
+            episodes: self.info.episodes,
+            search_title: self.search_term,
+        }
     }
 }
 
@@ -324,15 +371,5 @@ impl SeasonInfo {
             .into_iter()
             .find(|i| i.id == self.series_id)
             .ok_or_else(|| SeriesError::UnknownAnimeID(self.series_id, self.search_title.clone()))
-    }
-}
-
-impl From<prompt::SearchResult> for SeasonInfo {
-    fn from(result: prompt::SearchResult) -> SeasonInfo {
-        SeasonInfo {
-            series_id: result.info.id,
-            episodes: result.info.episodes,
-            search_title: result.search_term,
-        }
     }
 }
