@@ -2,6 +2,7 @@
 name = "anitrack"
 version = "0.1.0"
 authors = ["Acizza <jonathanmce@gmail.com>"]
+build = "build.rs"
 
 [profile.release]
 lto = true
