@@ -115,6 +115,9 @@ pub enum ConfigError {
 
     #[fail(display = "failed to get executable path")]
     FailedToGetExePath(#[cause] ::std::io::Error),
+
+    #[fail(display = "MAL account password not set")]
+    PasswordNotSet,
 }
 
 impl_error_conversion!(ConfigError,

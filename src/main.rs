@@ -52,16 +52,14 @@ fn run() -> Result<(), Error> {
         (@arg PATH: -p --path +takes_value "Specifies the directory to look for video files in")
         (@arg CONFIG_PATH: -c --config "Specifies the location of the configuration file")
         (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
-        (@arg DONT_SAVE_CONFIG: --nosave "Disables saving of your account information")
+        (@arg DONT_SAVE_PASS: --dontsavepass "Disables saving of your account password")
     ).get_matches();
 
     let mut config = load_config(&matches)?;
     let path = get_series_path(&mut config, &matches)?;
     let mal = init_mal_client(&matches, &mut config)?;
 
-    if !matches.is_present("DONT_SAVE_CONFIG") {
-        config.save()?;
-    }
+    config.save(!matches.is_present("DONT_SAVE_PASS"))?;
 
     let season = matches
         .value_of("SEASON")
@@ -77,7 +75,7 @@ fn run() -> Result<(), Error> {
 fn load_config(args: &clap::ArgMatches) -> Result<Config, Error> {
     let path = args.value_of("CONFIG_PATH").map(Path::new);
     let mut config = config::load(path)?;
-    
+
     config.remove_invalid_series();
 
     Ok(config)

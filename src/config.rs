@@ -37,12 +37,19 @@ impl Config {
         Ok(config)
     }
 
-    pub fn save(&self) -> Result<(), ConfigError> {
+    pub fn save(&mut self, save_password: bool) -> Result<(), ConfigError> {
+        let password = self.user.password.clone();
+
+        if !save_password {
+            self.user.password = None;
+        }
+
         let mut file = File::create(&self.path)?;
         let toml = toml::to_string_pretty(self)?;
 
         write!(file, "{}", toml)?;
 
+        self.user.password = password;
         Ok(())
     }
 
@@ -54,23 +61,24 @@ impl Config {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct User {
     pub name: String,
-    password: String,
+    password: Option<String>,
 }
 
 impl User {
     pub fn new<S: Into<String>>(username: S, password: &str) -> User {
         User {
             name: username.into(),
-            password: base64::encode(password),
+            password: Some(base64::encode(password)),
         }
     }
 
     pub fn encode_password(&mut self, password: &str) {
-        self.password = base64::encode(password);
+        self.password = Some(base64::encode(password));
     }
 
     pub fn decode_password(&self) -> Result<String, ConfigError> {
-        let bytes = base64::decode(&self.password).map_err(ConfigError::FailedPasswordDecode)?;
+        let password = self.password.as_ref().ok_or(ConfigError::PasswordNotSet)?;
+        let bytes = base64::decode(password).map_err(ConfigError::FailedPasswordDecode)?;
         let string = String::from_utf8(bytes)?;
 
         Ok(string)
@@ -90,7 +98,16 @@ pub fn load(path: Option<&Path>) -> Result<Config, ConfigError> {
     };
 
     match Config::from_path(&path) {
-        Ok(config) => Ok(config),
+        Ok(mut config) => {
+            if config.user.password.is_none() {
+                println!("please enter your MAL password:");
+                let pass = input::read_line()?;
+
+                config.user.encode_password(&pass);
+            }
+
+            Ok(config)
+        },
         Err(ConfigError::Io(e)) => match e.kind() {
             ErrorKind::NotFound => {
                 println!("please enter your MAL username:");
