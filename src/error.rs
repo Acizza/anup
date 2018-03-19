@@ -24,8 +24,11 @@ pub enum Error {
     #[fail(display = "config error")]
     ConfigError(#[cause] ConfigError),
 
-    #[fail(display = "failed to get current working directory")]
-    FailedToGetCWD(#[cause] ::std::io::Error),
+    #[fail(display = "path to [{}] not found. Try setting it with -p", _0)]
+    SeriesNotFound(String),
+
+    #[fail(display = "no information about the series to watch was provided")]
+    NoSeriesInfoProvided,
 }
 
 impl_error_conversion!(Error,

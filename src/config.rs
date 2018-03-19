@@ -1,6 +1,7 @@
 use base64;
 use error::ConfigError;
 use input;
+use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::{ErrorKind, Read, Write};
@@ -12,12 +13,17 @@ pub const DEFAULT_CONFIG_NAME: &str = "config.toml";
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     pub user: User,
+    pub series: HashMap<String, PathBuf>,
     #[serde(skip)] pub path: PathBuf,
 }
 
 impl Config {
     pub fn new(user: User, path: PathBuf) -> Config {
-        Config { user, path }
+        Config {
+            user,
+            series: HashMap::new(),
+            path,
+        }
     }
 
     pub fn from_path(path: &Path) -> Result<Config, ConfigError> {
@@ -38,6 +44,10 @@ impl Config {
         write!(file, "{}", toml)?;
 
         Ok(())
+    }
+
+    pub fn remove_invalid_series(&mut self) {
+        self.series.retain(|_, path: &mut PathBuf| path.exists());
     }
 }
 
