@@ -7,22 +7,17 @@ mod unix {
     const LAUNCH_SCRIPT: &str = "anitrack.sh";
 
     pub fn run() {
-        move_to_output(LAUNCH_SCRIPT);
-    }
-
-    fn move_to_output(name: &str) {
         let profile = env::var("PROFILE").unwrap();
 
-        match profile.as_ref() {
-            "debug" | "release" => {
-                let mut out_path = PathBuf::from("target");
-                out_path.push(profile);
-                out_path.push(name);
-
-                fs::copy(name, out_path).unwrap();
-            }
-            _ => (),
+        if profile != "release" {
+            return;
         }
+
+        let mut out_path = PathBuf::from("target");
+        out_path.push(profile);
+        out_path.push(LAUNCH_SCRIPT);
+
+        fs::copy(LAUNCH_SCRIPT, out_path).unwrap();
     }
 }
 
