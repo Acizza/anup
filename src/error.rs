@@ -113,9 +113,6 @@ pub enum ConfigError {
     #[fail(display = "password decode failed")]
     FailedPasswordDecode(#[cause] ::base64::DecodeError),
 
-    #[fail(display = "failed to get executable path")]
-    FailedToGetExePath(#[cause] ::std::io::Error),
-
     #[fail(display = "MAL account password not set")]
     PasswordNotSet,
 }

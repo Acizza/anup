@@ -3,8 +3,8 @@ use error::ConfigError;
 use input;
 use std::collections::HashMap;
 use std::env;
-use std::fs::File;
-use std::io::{ErrorKind, Read, Write};
+use std::fs::{self, File};
+use std::io::{self, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use toml;
 
@@ -85,15 +85,34 @@ impl User {
     }
 }
 
+fn get_base_path() -> io::Result<PathBuf> {
+    if cfg!(target_os = "linux") {
+        if let Some(mut dir) = env::home_dir() {
+            dir.push(".config");
+            dir.push(env!("CARGO_PKG_NAME"));
+
+            if !dir.exists() {
+                fs::create_dir(&dir)?;
+            }
+
+            return Ok(dir);
+        }
+    }
+
+    let mut current = env::current_exe()?;
+    // Remove the name of executable from the path
+    current.pop();
+
+    Ok(current)
+}
+
 pub fn load(path: Option<&Path>) -> Result<Config, ConfigError> {
     let path = match path {
         Some(path) => PathBuf::from(path),
         None => {
-            let mut current = env::current_exe().map_err(ConfigError::FailedToGetExePath)?;
-
-            current.pop();
-            current.push(DEFAULT_CONFIG_NAME);
-            current
+            let mut config_path = get_base_path()?;
+            config_path.push(DEFAULT_CONFIG_NAME);
+            config_path
         }
     };
 
@@ -107,7 +126,7 @@ pub fn load(path: Option<&Path>) -> Result<Config, ConfigError> {
             }
 
             Ok(config)
-        },
+        }
         Err(ConfigError::Io(e)) => match e.kind() {
             ErrorKind::NotFound => {
                 println!("please enter your MAL username:");
