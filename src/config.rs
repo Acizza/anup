@@ -100,7 +100,7 @@ fn get_base_path() -> io::Result<PathBuf> {
     }
 
     let mut current = env::current_exe()?;
-    // Remove the name of executable from the path
+    // Remove executable name from the path
     current.pop();
 
     Ok(current)
