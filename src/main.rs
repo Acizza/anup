@@ -45,29 +45,55 @@ fn main() {
 }
 
 fn run() -> Result<(), Error> {
-    let matches = clap_app!(anitrack =>
+    let args = clap_app!(anitrack =>
         (version: env!("CARGO_PKG_VERSION"))
         (author: env!("CARGO_PKG_AUTHORS"))
         (@arg NAME: "The name of the series to watch")
         (@arg PATH: -p --path +takes_value "Specifies the directory to look for video files in")
-        (@arg CONFIG_PATH: -c --config "Specifies the location of the configuration file")
         (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
+        (@arg LIST: -l --list "Displays all saved series")
+        (@arg CONFIG_PATH: -c --config "Specifies the location of the configuration file")
         (@arg DONT_SAVE_PASS: --dontsavepass "Disables saving of your account password")
     ).get_matches();
 
-    let mut config = load_config(&matches)?;
-    let path = get_series_path(&mut config, &matches)?;
-    let mal = init_mal_client(&matches, &mut config)?;
+    if args.is_present("LIST") {
+        return print_series_list(&args);
+    }
 
-    config.save(!matches.is_present("DONT_SAVE_PASS"))?;
+    watch_series(&args)
+}
 
-    let season = matches
-        .value_of("SEASON")
+fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
+    let mut config = load_config(args)?;
+    let path = get_series_path(&mut config, args)?;
+    let mal = init_mal_client(args, &mut config)?;
+
+    config.save(!args.is_present("DONT_SAVE_PASS"))?;
+
+    let season = args.value_of("SEASON")
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
 
     let mut series = Series::from_dir(&path, &mal)?;
     series.load_season(season)?.play_all_episodes()?;
+
+    Ok(())
+}
+
+fn print_series_list(args: &clap::ArgMatches) -> Result<(), Error> {
+    let path = args.value_of("CONFIG_PATH").map(Path::new);
+    let config = config::load(path)?;
+
+    println!("{} series found", config.series.len());
+    println!(
+        "note that any series marked as invalid will be removed the next time you watch a series"
+    );
+    println!();
+
+    for (name, path) in config.series {
+        let status_str = if path.exists() { "valid" } else { "invalid" };
+        println!("[{}] {}: {}", status_str, name, path.to_string_lossy());
+    }
 
     Ok(())
 }
