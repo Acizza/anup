@@ -21,4 +21,8 @@ elif [ $TERM != "" ]; then
     LAUNCH_TERM=$TERM
 fi
 
-exec $LAUNCH_TERM -e "$EXE_NAME "$@""
+if [ $LAUNCH_TERM == "gnome-terminal" ]; then
+    exec $LAUNCH_TERM -- bash -c "$EXE_NAME "$@" && read"
+else
+    exec $LAUNCH_TERM -e "$EXE_NAME "$@""
+fi
