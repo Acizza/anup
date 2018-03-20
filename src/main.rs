@@ -25,7 +25,6 @@ use config::Config;
 use error::Error;
 use mal::MAL;
 use series::Series;
-use std::path::Path;
 use std::path::PathBuf;
 
 fn main() {
@@ -52,19 +51,20 @@ fn run() -> Result<(), Error> {
         (@arg PATH: -p --path +takes_value "Specifies the directory to look for video files in")
         (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
         (@arg LIST: -l --list "Displays all saved series")
-        (@arg CONFIG_PATH: -c --config "Specifies the location of the configuration file")
         (@arg DONT_SAVE_PASS: --dontsavepass "Disables saving of your account password")
     ).get_matches();
 
     if args.is_present("LIST") {
-        return print_series_list(&args);
+        return print_series_list();
     }
 
     watch_series(&args)
 }
 
 fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
-    let mut config = load_config(args)?;
+    let mut config = config::load()?;
+    config.remove_invalid_series();
+
     let path = get_series_path(&mut config, args)?;
     let mal = init_mal_client(args, &mut config)?;
 
@@ -80,9 +80,8 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
     Ok(())
 }
 
-fn print_series_list(args: &clap::ArgMatches) -> Result<(), Error> {
-    let path = args.value_of("CONFIG_PATH").map(Path::new);
-    let config = config::load(path)?;
+fn print_series_list() -> Result<(), Error> {
+    let config = config::load()?;
 
     println!("{} series found", config.series.len());
     println!(
@@ -96,15 +95,6 @@ fn print_series_list(args: &clap::ArgMatches) -> Result<(), Error> {
     }
 
     Ok(())
-}
-
-fn load_config(args: &clap::ArgMatches) -> Result<Config, Error> {
-    let path = args.value_of("CONFIG_PATH").map(Path::new);
-    let mut config = config::load(path)?;
-
-    config.remove_invalid_series();
-
-    Ok(config)
 }
 
 fn get_series_path(config: &mut Config, args: &clap::ArgMatches) -> Result<PathBuf, Error> {

@@ -106,15 +106,9 @@ fn get_base_path() -> io::Result<PathBuf> {
     Ok(current)
 }
 
-pub fn load(path: Option<&Path>) -> Result<Config, ConfigError> {
-    let path = match path {
-        Some(path) => PathBuf::from(path),
-        None => {
-            let mut config_path = get_base_path()?;
-            config_path.push(DEFAULT_CONFIG_NAME);
-            config_path
-        }
-    };
+pub fn load() -> Result<Config, ConfigError> {
+    let mut path = get_base_path()?;
+    path.push(DEFAULT_CONFIG_NAME);
 
     match Config::from_path(&path) {
         Ok(mut config) => {
