@@ -24,5 +24,5 @@ fi
 if [ $LAUNCH_TERM == "gnome-terminal" ]; then
     exec $LAUNCH_TERM -- bash -c "$EXE_NAME "$@" && read"
 else
-    exec $LAUNCH_TERM -e "$EXE_NAME "$@""
+    exec $LAUNCH_TERM --hold -e "$EXE_NAME "$@""
 fi
