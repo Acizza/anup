@@ -90,17 +90,15 @@ fn get_series_path(config: &mut Config, args: &clap::ArgMatches) -> Result<PathB
 
             Ok(path.into())
         }
-        None => match args.value_of("NAME") {
-            Some(series_name) => {
-                let found = config.series.iter().find(|&(name, _)| name == series_name);
+        None => {
+            let name = args.value_of("NAME").ok_or(Error::NoSeriesInfoProvided)?;
 
-                match found {
-                    Some((_, path)) => Ok(path.into()),
-                    None => Err(Error::SeriesNotFound(series_name.into())),
-                }
-            }
-            None => Err(Error::NoSeriesInfoProvided),
-        },
+            config
+                .series
+                .get(name)
+                .ok_or_else(|| Error::SeriesNotFound(name.into()))
+                .map(|path| path.into())
+        }
     }
 }
 
