@@ -249,13 +249,12 @@ impl<'a> Season<'a> {
             .get(&ep_num)
             .ok_or_else(|| SeriesError::EpisodeNotFound(ep_num))?;
 
-        let output = process::open_with_default(path)
-            .output()
+        let status = process::open_with_default(path)
             .map_err(SeriesError::FailedToOpenPlayer)?;
 
         self.list_entry.values.set_watched_episodes(relative_ep);
 
-        if !output.status.success() {
+        if !status.success() {
             println!("video player not exited normally");
             println!("do you still want to count the episode as watched? (y/N)");
 
