@@ -67,5 +67,5 @@ pub fn open_with_default(file: &Path) -> io::Result<ExitStatus> {
 
     let mut cmd = Command::new(start_program);
     cmd.arg(file);
-    cmd.status()
+    cmd.output().map(|output| output.status)
 }
