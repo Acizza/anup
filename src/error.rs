@@ -49,8 +49,11 @@ pub enum SeriesError {
     #[fail(display = "input error")]
     InputError(#[cause] InputError),
 
-    #[fail(display = "json error")]
-    Json(#[cause] ::serde_json::Error),
+    #[fail(display = "error serializing toml")]
+    TomlSerialize(#[cause] ::toml::ser::Error),
+
+    #[fail(display = "error deserializing toml")]
+    TomlDeserialize(#[cause] ::toml::de::Error),
 
     #[fail(display = "failed to open video player")]
     FailedToOpenPlayer(#[cause] ::std::io::Error),
@@ -84,7 +87,8 @@ impl_error_conversion!(SeriesError,
     ::std::io::Error => Io,
     ::mal::MALError => MALError,
     InputError => InputError,
-    ::serde_json::Error => Json,
+    ::toml::ser::Error => TomlSerialize,
+    ::toml::de::Error => TomlDeserialize,
 );
 
 #[derive(Fail, Debug)]

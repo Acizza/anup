@@ -5,9 +5,10 @@ use mal::MAL;
 use mal::list::{List, Status};
 use mal::list::anime::{AnimeEntry, AnimeInfo};
 use regex::Regex;
+use toml;
 use process;
-use serde_json;
 use std;
+use std::io::{Read, Write};
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -476,9 +477,11 @@ pub struct SaveData {
 
 impl SaveData {
     fn from_path(path: &Path) -> Result<SaveData, SeriesError> {
-        let file = File::open(path)?;
-        let data = serde_json::from_reader(file)?;
+        let mut file = File::open(path)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
 
+        let data = toml::from_str(&contents)?;
         Ok(data)
     }
 
@@ -491,9 +494,10 @@ impl SaveData {
     }
 
     fn write_to(&self, path: &Path) -> Result<(), SeriesError> {
-        let file = File::create(path)?;
-        serde_json::to_writer_pretty(file, self)?;
+        let mut file = File::create(path)?;
+        let toml = toml::to_string_pretty(self)?;
 
+        write!(file, "{}", toml)?;
         Ok(())
     }
 }

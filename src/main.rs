@@ -12,7 +12,6 @@ extern crate chrono;
 extern crate mal;
 extern crate regex;
 extern crate serde;
-extern crate serde_json;
 extern crate toml;
 
 mod config;
