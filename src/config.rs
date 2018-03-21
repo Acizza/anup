@@ -1,14 +1,18 @@
 use base64;
+use directories::ProjectDirs;
 use error::ConfigError;
 use input;
 use std::collections::HashMap;
-use std::env;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use toml;
 
 pub const DEFAULT_CONFIG_NAME: &str = "config.toml";
+
+lazy_static! {
+    static ref PROJECT_DIRS: ProjectDirs = ProjectDirs::from("", "", env!("CARGO_PKG_NAME"));
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
@@ -85,30 +89,8 @@ impl User {
     }
 }
 
-fn get_base_path() -> io::Result<PathBuf> {
-    if cfg!(target_os = "linux") {
-        if let Some(mut dir) = env::home_dir() {
-            dir.push(".config");
-            dir.push(env!("CARGO_PKG_NAME"));
-
-            if !dir.exists() {
-                fs::create_dir(&dir)?;
-            }
-
-            return Ok(dir);
-        }
-    }
-
-    let mut current = env::current_exe()?;
-    // Remove executable name from the path
-    current.pop();
-
-    Ok(current)
-}
-
 pub fn load() -> Result<Config, ConfigError> {
-    let mut path = get_base_path()?;
-    path.push(DEFAULT_CONFIG_NAME);
+    let path = get_config_file_path()?;
 
     match Config::from_path(&path) {
         Ok(mut config) => {
@@ -138,4 +120,17 @@ pub fn load() -> Result<Config, ConfigError> {
         },
         Err(e) => Err(e),
     }
+}
+
+fn get_config_file_path() -> io::Result<PathBuf> {
+    let path = PROJECT_DIRS.config_dir();
+
+    if !path.exists() {
+        fs::create_dir(path)?;
+    }
+
+    let mut path = PathBuf::from(path);
+    path.push(DEFAULT_CONFIG_NAME);
+
+    Ok(path)
 }

@@ -12,6 +12,7 @@ extern crate serde_derive;
 
 extern crate base64;
 extern crate chrono;
+extern crate directories;
 extern crate mal;
 extern crate regex;
 extern crate serde;
