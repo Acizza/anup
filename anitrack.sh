@@ -1,6 +1,6 @@
 #!/bin/bash
 
-EXE_NAME="$(dirname "$0")/anitrack"
+EXE_NAME=$(realpath "$(dirname "$0")/anitrack")
 
 # Check if the script is being ran in a terminal
 tty -s
@@ -21,8 +21,10 @@ elif [ $TERM != "" ]; then
     LAUNCH_TERM=$TERM
 fi
 
+LAUNCH_FLAGS="-e"
+
 if [ $LAUNCH_TERM == "gnome-terminal" ]; then
-    exec $LAUNCH_TERM -- bash -c "$EXE_NAME "$@" && read"
-else
-    exec $LAUNCH_TERM --hold -e "$EXE_NAME "$@""
+    LAUNCH_FLAGS="-- bash -c "
 fi
+
+exec $LAUNCH_TERM $LAUNCH_FLAGS "$EXE_NAME "$@""
