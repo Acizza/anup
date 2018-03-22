@@ -27,4 +27,10 @@ For series that have multiple seasons and groups that don't split them up, you c
 
 # Configuration
 
-At the moment, there aren't a lot of things to be configured, but if you'd like to remove the program's configuration file (which contains your MAL account information), it is located in the `~/.config/anitrack/` folder on Linux, and in the same folder as the executable on other platforms.
+The program's configuration file (which contains your MAL account information) is located in one of the following locations, depending on your platform:
+
+* Linux: `~/.config/anitrack/`
+* Windows: `C:\Users\{USERNAME}\AppData\Roaming\anitrack`
+* MacOS: `~/Library/Preferences/anitrack/`
+
+If you need to change your saved MAL account password (or wish to simply delete it), you can remove the `password` field under the `[user]` tag and the program will prompt you for your new password the next time you launch it. Remember to use the `--dontsavepass` flag if you simply no longer wish to store your password.
