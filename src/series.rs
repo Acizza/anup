@@ -397,7 +397,7 @@ pub struct SeriesData {
 
 impl SeriesData {
     pub const EP_FORMAT_REGEX: &'static str =
-        r"(?:\[.+?\]\s*)?(?P<series>.+?)\s*(?:-\s*)?(?P<episode>\d+).*?\..+?";
+        r"(?:\[.+?\]\s*)?(?P<series>.+?)\s*-\s*(?P<episode>\d+).*?\..+?";
 
     fn parse_dir(dir: &Path) -> Result<SeriesData, SeriesError> {
         let mut series_name = None;
