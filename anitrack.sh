@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 EXE_NAME=$(realpath "$(dirname "$0")/anitrack")
 
