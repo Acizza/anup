@@ -53,7 +53,7 @@ fn main() {
 }
 
 fn run() -> Result<(), Error> {
-    let args = clap_app!(anitrack =>
+    let args = clap_app!(tranim =>
         (version: env!("CARGO_PKG_VERSION"))
         (author: env!("CARGO_PKG_AUTHORS"))
         (@arg NAME: "The name of the series to watch")

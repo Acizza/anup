@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-EXE_NAME=$(realpath "$(dirname "$0")/anitrack")
+EXE_NAME=$(realpath "$(dirname "$0")/tranim")
 
 # Check if the script is being ran in a terminal
 tty -s
