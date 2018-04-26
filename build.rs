@@ -4,7 +4,7 @@ mod unix {
     use std::fs;
     use std::path::PathBuf;
 
-    const LAUNCH_SCRIPT: &str = "tranim.sh";
+    const LAUNCH_SCRIPT: &str = "anup.sh";
 
     pub fn run() {
         let profile = env::var("PROFILE").unwrap();

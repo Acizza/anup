@@ -1,4 +1,4 @@
-# tranim
+# anup
 This is a command line application to automatically play downloaded anime and update the watched episode count on [MyAnimeList](https://myanimelist.net/).
 
 # Usage
@@ -11,15 +11,15 @@ First, please ensure the names of your legally obtained episodes resemble that o
 
 The first time you watch a series, you will need to specify the path to it with the `-p` flag. Since you can specify a name for the series, you will not have to provide the path again. For example, to save a newly obtained series as "toradora", with "~/anime/Toradora" as the path, you can launch the program like so:
 
-`tranim.sh toradora -p ~/anime/Toradora`
+`anup.sh toradora -p ~/anime/Toradora`
 
 The next time you want to watch the series, you can simply launch the program with the saved series name. For example, to watch the saved series "toradora" again:
 
-`tranim.sh toradora`
+`anup.sh toradora`
 
 The first time you launch the program, it will ask you for your MyAnimeList username and password, and save it by default. If you do not want your password to be saved, you can launch the program with the `--dontsavepass` flag. If you do want your password saved, please keep in mind that it is **NOT** securely encrypted.
 
-When you play a series for the first time, the program will search MyAnimeList for the name detected in the episode files, and prompt you to select which series you are actually watching. It will then create a file in the same directory called `.tranim` that will save your selection so you do not have to enter it again.
+When you play a series for the first time, the program will search MyAnimeList for the name detected in the episode files, and prompt you to select which series you are actually watching. It will then create a file in the same directory called `.anup` that will save your selection so you do not have to enter it again.
 
 After you select the series you want to watch (or play the series again later), the program will open the next unwatched episode of the series in your default video player. Once you exit the video player, the program will automatically increment the watched episode count on your MyAnimeList profile and prompt you to either rate the series, drop it, put it on hold, play the next episode, or exit the program.
 
@@ -29,8 +29,8 @@ For series that have multiple seasons and groups that don't split them up, you c
 
 The program's configuration file (which contains your MAL account information) is located in one of the following locations, depending on your platform:
 
-* Linux: `~/.config/tranim/`
-* Windows: `C:\Users\{USERNAME}\AppData\Roaming\tranim`
-* MacOS: `~/Library/Preferences/tranim/`
+* Linux: `~/.config/anup/`
+* Windows: `C:\Users\{USERNAME}\AppData\Roaming\anup`
+* MacOS: `~/Library/Preferences/anup/`
 
 If you need to change your saved MAL account password (or wish to simply delete it), you can remove the `password` field under the `[user]` tag and the program will prompt you for your new password the next time you launch it. Remember to use the `--dontsavepass` flag if you simply no longer wish to store your password.

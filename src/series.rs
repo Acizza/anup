@@ -26,7 +26,7 @@ pub struct Series<'a> {
 }
 
 impl<'a> Series<'a> {
-    pub const DATA_FILE_NAME: &'static str = ".tranim";
+    pub const DATA_FILE_NAME: &'static str = ".anup";
 
     pub fn from_dir(dir: &Path, mal: &'a MAL) -> Result<Series<'a>, SeriesError> {
         if !dir.is_dir() {
