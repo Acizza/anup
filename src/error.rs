@@ -16,7 +16,7 @@ pub enum Error {
     Io(#[cause] ::std::io::Error),
 
     #[fail(display = "MAL error")]
-    MALError(#[cause] ::mal::MALError),
+    MALError(#[cause] ::mal::error::MALError),
 
     #[fail(display = "error processing series")]
     SeriesError(#[cause] SeriesError),
@@ -33,7 +33,7 @@ pub enum Error {
 
 impl_error_conversion!(Error,
     ::std::io::Error => Io,
-    ::mal::MALError => MALError,
+    ::mal::error::MALError => MALError,
     SeriesError => SeriesError,
     ConfigError => ConfigError,
 );
@@ -44,7 +44,7 @@ pub enum SeriesError {
     Io(#[cause] ::std::io::Error),
 
     #[fail(display = "MAL error")]
-    MALError(#[cause] ::mal::MALError),
+    MALError(#[cause] ::mal::error::MALError),
 
     #[fail(display = "input error")]
     InputError(#[cause] InputError),
@@ -85,7 +85,7 @@ pub enum SeriesError {
 
 impl_error_conversion!(SeriesError,
     ::std::io::Error => Io,
-    ::mal::MALError => MALError,
+    ::mal::error::MALError => MALError,
     InputError => InputError,
     ::toml::ser::Error => TomlSerialize,
     ::toml::de::Error => TomlDeserialize,

@@ -20,7 +20,7 @@ serde_derive = "1.0"
 toml         = "0.4"
 
 [dependencies.mal]
-version = "0.7"
+version = "0.8"
 default-features = false
 
 features = ["anime"]
