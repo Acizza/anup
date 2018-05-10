@@ -4,7 +4,7 @@ use error::ConfigError;
 use input;
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{self, ErrorKind, Read, Write};
+use std::io::{self, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use toml;
 
@@ -18,7 +18,8 @@ lazy_static! {
 pub struct Config {
     pub user: User,
     pub series: HashMap<String, PathBuf>,
-    #[serde(skip)] pub path: PathBuf,
+    #[serde(skip)]
+    pub path: PathBuf,
 }
 
 impl Config {
@@ -31,11 +32,9 @@ impl Config {
     }
 
     pub fn from_path(path: &Path) -> Result<Config, ConfigError> {
-        let mut file = File::open(path)?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
+        let file_contents = fs::read_to_string(path)?;
 
-        let mut config: Config = toml::from_str(&contents)?;
+        let mut config: Config = toml::from_str(&file_contents)?;
         config.path = path.into();
 
         Ok(config)

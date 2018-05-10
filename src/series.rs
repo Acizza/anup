@@ -2,16 +2,15 @@ use chrono::{Local, NaiveDate};
 use error::SeriesError;
 use input::{self, Answer};
 use mal::MAL;
-use mal::list::{List, Status};
 use mal::list::anime::{AnimeEntry, AnimeInfo};
-use regex::Regex;
-use toml;
+use mal::list::{List, Status};
 use process;
+use regex::Regex;
 use std;
-use std::io::{Read, Write};
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs;
 use std::path::{Path, PathBuf};
+use toml;
 
 fn get_today() -> NaiveDate {
     Local::today().naive_utc()
@@ -249,8 +248,7 @@ impl<'a> Season<'a> {
             .get(&ep_num)
             .ok_or_else(|| SeriesError::EpisodeNotFound(ep_num))?;
 
-        let status = process::open_with_default(path)
-            .map_err(SeriesError::FailedToOpenPlayer)?;
+        let status = process::open_with_default(path).map_err(SeriesError::FailedToOpenPlayer)?;
 
         self.list_entry.values.set_watched_episodes(relative_ep);
 
@@ -437,8 +435,7 @@ impl SeriesData {
 
     fn parse_filename(path: &Path) -> Result<(SeriesName, EpisodeNum), SeriesError> {
         lazy_static! {
-            static ref EP_FORMAT: Regex = Regex::new(SeriesData::EP_FORMAT_REGEX)
-                .unwrap();
+            static ref EP_FORMAT: Regex = Regex::new(SeriesData::EP_FORMAT_REGEX).unwrap();
         }
 
         // Replace certain special characters with spaces since they can either
@@ -476,11 +473,9 @@ pub struct SaveData {
 
 impl SaveData {
     fn from_path(path: &Path) -> Result<SaveData, SeriesError> {
-        let mut file = File::open(path)?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
+        let file_contents = fs::read_to_string(path)?;
+        let data = toml::from_str(&file_contents)?;
 
-        let data = toml::from_str(&contents)?;
         Ok(data)
     }
 
@@ -493,10 +488,9 @@ impl SaveData {
     }
 
     fn write_to(&self, path: &Path) -> Result<(), SeriesError> {
-        let mut file = File::create(path)?;
         let toml = toml::to_string_pretty(self)?;
+        fs::write(path, toml)?;
 
-        write!(file, "{}", toml)?;
         Ok(())
     }
 }
