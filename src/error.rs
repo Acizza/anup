@@ -18,6 +18,9 @@ pub enum Error {
     #[fail(display = "MAL error")]
     MALError(#[cause] ::mal::error::MALError),
 
+    #[fail(display = "sync service error")]
+    BackendError(#[cause] BackendError),
+
     #[fail(display = "error processing series")]
     SeriesError(#[cause] SeriesError),
 
@@ -34,6 +37,7 @@ pub enum Error {
 impl_error_conversion!(Error,
     ::std::io::Error => Io,
     ::mal::error::MALError => MALError,
+    BackendError => BackendError,
     SeriesError => SeriesError,
     ConfigError => ConfigError,
 );
@@ -114,11 +118,11 @@ pub enum ConfigError {
     #[fail(display = "error deserializing toml")]
     TomlDeserialize(#[cause] ::toml::de::Error),
 
-    #[fail(display = "password decode failed")]
-    FailedPasswordDecode(#[cause] ::base64::DecodeError),
+    #[fail(display = "access token decode failed")]
+    FailedTokenDecode(#[cause] ::base64::DecodeError),
 
-    #[fail(display = "MAL account password not set")]
-    PasswordNotSet,
+    #[fail(display = "access token not set for sync service")]
+    TokenNotSet,
 }
 
 impl_error_conversion!(ConfigError,
@@ -127,3 +131,9 @@ impl_error_conversion!(ConfigError,
     ::toml::ser::Error => TomlSerialize,
     ::toml::de::Error => TomlDeserialize,
 );
+
+#[derive(Fail, Debug)]
+pub enum BackendError {
+    #[fail(display = "io error")]
+    Io(#[cause] ::std::io::Error),
+}
