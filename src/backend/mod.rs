@@ -11,6 +11,9 @@ where
     fn find_series_by_name(&self, name: &str) -> Result<Vec<AnimeInfo>, BackendError>;
 }
 
+#[derive(Debug, Deserialize)]
 pub struct AnimeInfo {
     pub id: u32,
+    pub title: String,
+    pub episodes: u32,
 }
