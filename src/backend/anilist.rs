@@ -2,7 +2,9 @@ use super::{AnimeInfo, SyncBackend};
 use config::Config;
 use error::BackendError;
 use input;
-use reqwest::Client;
+use reqwest::header::{Authorization, Bearer, ContentType, Headers};
+use reqwest::{Client, Response};
+use serde_json;
 use std::io;
 use std::process::{Command, ExitStatus};
 
@@ -14,6 +16,33 @@ const API_URL: &str = "https://graphql.anilist.co";
 pub struct Anilist {
     client: Client,
     access_token: String,
+}
+
+impl Anilist {
+    fn send_request(
+        &self,
+        query_str: &str,
+        variables: &serde_json::Value,
+    ) -> Result<Response, BackendError> {
+        let body = json!({
+            "query": query_str,
+            "variables": variables,
+        }).to_string();
+
+        let mut headers = Headers::new();
+        headers.set(ContentType::json());
+        headers.set(Authorization(Bearer {
+            token: self.access_token.to_owned(),
+        }));
+
+        let response = self
+            .client
+            .post(API_URL)
+            .header(ContentType::json())
+            .body(body)
+            .send()?;
+        Ok(response)
+    }
 }
 
 impl SyncBackend for Anilist {
@@ -41,7 +70,63 @@ impl SyncBackend for Anilist {
     }
 
     fn find_series_by_name(&self, name: &str) -> Result<Vec<AnimeInfo>, BackendError> {
-        Ok(Vec::new())
+        let query = r#"
+            query ($name: String) {
+                Page (page: 1, perPage: 30) {
+                    media (search: $name, type: ANIME) {
+                        id
+                        title {
+                            romaji
+                        }
+                        episodes
+                    }
+                }
+            }
+        "#;
+
+        let vars = json!({ "name": name });
+
+        let resp: serde_json::Value = {
+            let text = self.send_request(query, &vars)?.text()?;
+            serde_json::from_str(&text)?
+        };
+
+        use serde_json::Value;
+        let mut series = Vec::new();
+
+        match resp["data"]["Page"]["media"] {
+            Value::Array(ref entries) => {
+                for entry in entries {
+                    let series_info: MediaData = serde_json::from_value(entry.clone())?;
+                    series.push(series_info.into());
+                }
+            }
+            _ => return Err(BackendError::InvalidJsonResponse),
+        }
+
+        Ok(series)
+    }
+}
+
+#[derive(Deserialize)]
+struct MediaData {
+    id: u32,
+    title: Title,
+    episodes: u32,
+}
+
+#[derive(Deserialize)]
+struct Title {
+    romaji: String,
+}
+
+impl Into<AnimeInfo> for MediaData {
+    fn into(self) -> AnimeInfo {
+        AnimeInfo {
+            id: self.id,
+            title: self.title.romaji,
+            episodes: self.episodes,
+        }
     }
 }
 
