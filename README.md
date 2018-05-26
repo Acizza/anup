@@ -1,5 +1,7 @@
 # anup
-This is a command line application to automatically play downloaded anime and update the watched episode count on [MyAnimeList](https://myanimelist.net/).
+This is a command line application to automatically play downloaded anime and update the watched episode count on [MyAnimeList](https://myanimelist.net/) or [AniList](https://anilist.co).
+
+**NOTE:** Since the MyAnimeList API was suddenly shut down, the program is currently only usable with the `anilist` branch on Linux. Until MyAnimeList makes it clear what they're doing with the API, the usage documentation will not cover using AniList. Authorizing yourself with AniList is very simple, though, and the program will automatically open the url to login with your AniList account the first time you launch it.
 
 # Usage
 First, please ensure the names of your legally obtained episodes resemble that of a \*cough\* torrent \*cough\*. The program can detect multiple layouts that are commonly used, such as:
