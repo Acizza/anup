@@ -15,9 +15,6 @@ pub enum Error {
     #[fail(display = "io error")]
     Io(#[cause] ::std::io::Error),
 
-    #[fail(display = "MAL error")]
-    MALError(#[cause] ::mal::error::MALError),
-
     #[fail(display = "sync service error")]
     BackendError(#[cause] BackendError),
 
@@ -36,7 +33,6 @@ pub enum Error {
 
 impl_error_conversion!(Error,
     ::std::io::Error => Io,
-    ::mal::error::MALError => MALError,
     BackendError => BackendError,
     SeriesError => SeriesError,
     ConfigError => ConfigError,
@@ -46,9 +42,6 @@ impl_error_conversion!(Error,
 pub enum SeriesError {
     #[fail(display = "io error")]
     Io(#[cause] ::std::io::Error),
-
-    #[fail(display = "MAL error")]
-    MALError(#[cause] ::mal::error::MALError),
 
     #[fail(display = "input error")]
     InputError(#[cause] InputError),
@@ -89,7 +82,6 @@ pub enum SeriesError {
 
 impl_error_conversion!(SeriesError,
     ::std::io::Error => Io,
-    ::mal::error::MALError => MALError,
     InputError => InputError,
     ::toml::ser::Error => TomlSerialize,
     ::toml::de::Error => TomlDeserialize,

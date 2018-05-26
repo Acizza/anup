@@ -15,7 +15,6 @@ extern crate serde_json;
 extern crate base64;
 extern crate chrono;
 extern crate directories;
-extern crate mal;
 extern crate regex;
 extern crate reqwest;
 extern crate serde;
