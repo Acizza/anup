@@ -65,6 +65,9 @@ pub enum SeriesError {
     #[fail(display = "episode number parse failed")]
     EpisodeNumParseFailed(#[cause] ::std::num::ParseIntError),
 
+    #[fail(display = "sync service error")]
+    Backend(#[cause] BackendError),
+
     #[fail(display = "no episodes found")]
     NoEpisodesFound,
 
@@ -82,9 +85,6 @@ pub enum SeriesError {
 
     #[fail(display = "episode {} not found", _0)]
     EpisodeNotFound(u32),
-
-    #[fail(display = "no anime with id {} found with name [{}] on MAL", _0, _1)]
-    UnknownAnimeID(u32, String),
 }
 
 impl_error_conversion!(SeriesError,
@@ -93,6 +93,7 @@ impl_error_conversion!(SeriesError,
     InputError => InputError,
     ::toml::ser::Error => TomlSerialize,
     ::toml::de::Error => TomlDeserialize,
+    BackendError => Backend,
 );
 
 #[derive(Fail, Debug)]
@@ -136,4 +137,26 @@ impl_error_conversion!(ConfigError,
 pub enum BackendError {
     #[fail(display = "io error")]
     Io(#[cause] ::std::io::Error),
+
+    #[fail(display = "config error")]
+    ConfigError(#[cause] ConfigError),
+
+    #[fail(display = "HTTP error")]
+    HttpError(#[cause] ::reqwest::Error),
+
+    #[fail(display = "json error")]
+    Json(#[cause] ::serde_json::Error),
+
+    #[fail(display = "received invalid JSON response")]
+    InvalidJsonResponse,
+
+    #[fail(display = "list update failed: {}", _0)]
+    ListUpdate(String),
 }
+
+impl_error_conversion!(BackendError,
+    ::std::io::Error => Io,
+    ConfigError => ConfigError,
+    ::reqwest::Error => HttpError,
+    ::serde_json::Error => Json,
+);
