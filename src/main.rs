@@ -9,24 +9,28 @@ extern crate failure;
 extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate serde_json;
 
 extern crate base64;
 extern crate chrono;
 extern crate directories;
 extern crate mal;
 extern crate regex;
+extern crate reqwest;
 extern crate serde;
 extern crate toml;
 
+mod backend;
 mod config;
 mod error;
 mod input;
 mod process;
 mod series;
 
+use backend::{anilist::Anilist, SyncBackend};
 use config::Config;
 use error::Error;
-use mal::MAL;
 use series::Series;
 use std::io::Read;
 use std::path::PathBuf;
@@ -71,26 +75,27 @@ fn run() -> Result<(), Error> {
 }
 
 fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
-    let mut config = config::load()?;
+    let mut config = Config::load()?;
     config.remove_invalid_series();
 
     let path = get_series_path(&mut config, args)?;
-    let mal = init_mal_client(args, &mut config)?;
+    let sync_backend = Anilist::init(&mut config)?;
 
     config.save(!args.is_present("DONT_SAVE_PASS"))?;
 
-    let season = args.value_of("SEASON")
+    let season = args
+        .value_of("SEASON")
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
 
-    let mut series = Series::from_dir(&path, &mal)?;
+    let mut series = Series::from_dir(&path, sync_backend)?;
     series.load_season(season)?.play_all_episodes()?;
 
     Ok(())
 }
 
 fn print_series_list() -> Result<(), Error> {
-    let config = config::load()?;
+    let config = Config::load()?;
 
     println!("{} series found", config.series.len());
     println!(
@@ -125,29 +130,4 @@ fn get_series_path(config: &mut Config, args: &clap::ArgMatches) -> Result<PathB
                 .map(|path| path.into())
         }
     }
-}
-
-fn init_mal_client<'a>(args: &clap::ArgMatches, config: &mut Config) -> Result<MAL<'a>, Error> {
-    let mut mal = {
-        let decoded_password = config.user.decode_password()?;
-        MAL::new(config.user.name.clone(), decoded_password)
-    };
-
-    let mut password_changed = false;
-
-    while !mal.verify_credentials()? {
-        println!(
-            "invalid password for [{}], please try again:",
-            config.user.name
-        );
-
-        mal.password = input::read_line()?;
-        password_changed = true;
-    }
-
-    if !args.is_present("DONT_SAVE_CONFIG") && password_changed {
-        config.user.encode_password(&mal.password);
-    }
-
-    Ok(mal)
 }
