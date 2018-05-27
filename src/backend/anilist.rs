@@ -224,8 +224,17 @@ impl SyncBackend for Anilist {
 }
 
 fn open_url(url: &str) -> io::Result<ExitStatus> {
-    // TODO: add support for Windows / macOS
-    Command::new("xdg-open").arg(url).status()
+    #[cfg(target_os = "windows")]
+    const LAUNCH_PROGRAM: &str = "start";
+    #[cfg(target_os = "macos")]
+    const LAUNCH_PROGRAM: &str = "open";
+    #[cfg(target_os = "linux")]
+    const LAUNCH_PROGRAM: &str = "xdg-open";
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    compile_error!("support for opening URL's not implemented for this platform");
+
+    Command::new(LAUNCH_PROGRAM).arg(url).status()
 }
 
 #[derive(Deserialize)]
