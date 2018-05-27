@@ -83,8 +83,16 @@ impl SyncBackend for Anilist {
         let access_token = match config.user.access_token {
             Some(_) => config.user.decode_access_token()?,
             None => {
-                // TODO: add better error reporting
-                open_url(LOGIN_URL)?;
+                match open_url(LOGIN_URL) {
+                    Ok(status) if status.success() => (),
+                    result => {
+                        eprintln!("failed to open URL in default browser. please open it manually: {}", LOGIN_URL);
+
+                        if let Err(err) = result {
+                            eprintln!("error message: {}", err);
+                        }
+                    }
+                }
 
                 println!("please authorize your account in the opened browser tab and paste the code below:");
                 let token = input::read_line()?;
