@@ -1,9 +1,7 @@
+use backend::{AnimeEntry, AnimeInfo, Status, SyncBackend};
 use chrono::{Local, NaiveDate};
 use error::SeriesError;
 use input::{self, Answer};
-use mal::MAL;
-use mal::list::anime::{AnimeEntry, AnimeInfo};
-use mal::list::{List, Status};
 use process;
 use regex::Regex;
 use std;
@@ -17,17 +15,23 @@ fn get_today() -> NaiveDate {
 }
 
 #[derive(Debug)]
-pub struct Series<'a> {
-    pub mal: &'a MAL<'a>,
+pub struct Series<B>
+where
+    B: SyncBackend,
+{
+    pub sync_backend: B,
     pub data: SeriesData,
     pub save_data: SaveData,
     pub save_path: PathBuf,
 }
 
-impl<'a> Series<'a> {
+impl<B> Series<B>
+where
+    B: SyncBackend,
+{
     pub const DATA_FILE_NAME: &'static str = ".anup";
 
-    pub fn from_dir(dir: &Path, mal: &'a MAL) -> Result<Series<'a>, SeriesError> {
+    pub fn from_dir(dir: &Path, sync_backend: B) -> Result<Series<B>, SeriesError> {
         if !dir.is_dir() {
             return Err(SeriesError::NotADirectory(
                 dir.file_name()
@@ -37,11 +41,11 @@ impl<'a> Series<'a> {
         }
 
         let series_data = SeriesData::parse_dir(dir)?;
-        let save_path = PathBuf::from(dir).join(Series::DATA_FILE_NAME);
+        let save_path = PathBuf::from(dir).join(Series::<B>::DATA_FILE_NAME);
         let save_data = SaveData::from_path_or_default(&save_path)?;
 
         let series = Series {
-            mal,
+            sync_backend,
             data: series_data,
             save_data,
             save_path,
@@ -50,7 +54,7 @@ impl<'a> Series<'a> {
         Ok(series)
     }
 
-    pub fn load_season(&mut self, season_num: u32) -> Result<Season, SeriesError> {
+    pub fn load_season(&mut self, season_num: u32) -> Result<Season<B>, SeriesError> {
         let created_series_info = self.ensure_num_seasons(season_num)?;
 
         let season_info = {
@@ -60,14 +64,16 @@ impl<'a> Series<'a> {
 
         let series_info = match created_series_info {
             Some(info) => info,
-            None => season_info.request_mal_info(&self.mal.anime_list())?,
+            None => self
+                .sync_backend
+                .get_series_info_by_id(season_info.series_id)?,
         };
 
         let episode_offset = self.calculate_season_offset(season_num);
-        let list_entry = self.get_mal_list_entry(&series_info)?;
+        let list_entry = self.get_list_entry(&series_info)?;
 
         Ok(Season::new(
-            self.mal,
+            &self.sync_backend,
             list_entry,
             &self.data.episodes,
             episode_offset,
@@ -86,7 +92,7 @@ impl<'a> Series<'a> {
                     self.data.name
                 );
 
-                let season_info = self.select_series_from_mal(&self.data.name)?;
+                let season_info = self.search_and_select_series(&self.data.name)?;
 
                 created_series_info = Some(season_info.info.clone());
                 self.save_data.seasons.push(season_info.into());
@@ -112,8 +118,8 @@ impl<'a> Series<'a> {
         self.save_data.write_to(&self.save_path)
     }
 
-    fn select_series_from_mal(&self, name: &str) -> Result<SeriesSelection, SeriesError> {
-        let mut found = self.mal.anime_list().search_for(name)?;
+    fn search_and_select_series(&self, name: &str) -> Result<SeriesSelection, SeriesError> {
+        let mut found = self.sync_backend.search_by_name(name)?;
 
         println!("MAL results for [{}]:", name);
         println!("enter the number next to the desired series:\n");
@@ -130,24 +136,18 @@ impl<'a> Series<'a> {
             println!("enter the name you want to search for:");
 
             let name = input::read_line()?;
-            self.select_series_from_mal(&name)
+            self.search_and_select_series(&name)
         } else {
             Ok(SeriesSelection::new(found.swap_remove(index - 1), name))
         }
     }
 
-    fn get_mal_list_entry(&self, info: &AnimeInfo) -> Result<AnimeEntry, SeriesError> {
-        let anime_list = self.mal.anime_list();
-
-        let found = anime_list
-            .read()?
-            .entries
-            .into_iter()
-            .find(|e| e.series_info == *info);
+    fn get_list_entry(&self, info: &AnimeInfo) -> Result<AnimeEntry, SeriesError> {
+        let found = self.sync_backend.get_list_entry(info.clone())?;
 
         match found {
             Some(mut entry) => {
-                if entry.values.status() == Status::Completed && !entry.values.rewatching() {
+                if entry.status == Status::Completed {
                     self.prompt_to_rewatch(&mut entry)?;
                 }
 
@@ -155,36 +155,32 @@ impl<'a> Series<'a> {
             }
             None => {
                 let mut entry = AnimeEntry::new(info.clone());
+                entry.status = Status::Watching;
+                entry.start_date = Some(get_today());
 
-                entry
-                    .values
-                    .set_status(Status::WatchingOrReading)
-                    .set_start_date(Some(get_today()));
-
-                anime_list.add(&mut entry)?;
+                self.sync_backend.update_list_entry(&entry)?;
                 Ok(entry)
             }
         }
     }
 
     fn prompt_to_rewatch(&self, entry: &mut AnimeEntry) -> Result<(), SeriesError> {
-        println!("[{}] already completed", entry.series_info.title);
+        println!("[{}] already completed", entry.info.title);
         println!("do you want to rewatch it? (Y/n)");
         println!("(note that you have to increase the rewatch count manually)");
 
         if input::read_yn(Answer::Yes)? {
-            entry.values.set_rewatching(true).set_watched_episodes(0);
+            entry.status = Status::Rewatching;
+            entry.watched_episodes = 0;
 
             println!("do you want to reset the start and end date? (Y/n)");
 
             if input::read_yn(Answer::Yes)? {
-                entry
-                    .values
-                    .set_start_date(Some(get_today()))
-                    .set_finish_date(None);
+                entry.start_date = Some(get_today());
+                entry.finish_date = None;
             }
 
-            self.mal.anime_list().update(entry)?;
+            self.sync_backend.update_list_entry(entry)?;
         } else {
             // No point in continuing in this case
             std::process::exit(0);
@@ -219,22 +215,28 @@ impl Into<SeasonInfo> for SeriesSelection {
 }
 
 #[derive(Debug)]
-pub struct Season<'a> {
-    pub mal: &'a MAL<'a>,
+pub struct Season<'a, B>
+where
+    B: 'a + SyncBackend,
+{
+    pub sync_backend: &'a B,
     pub list_entry: AnimeEntry,
     pub local_episodes: &'a HashMap<u32, PathBuf>,
     pub ep_offset: u32,
 }
 
-impl<'a> Season<'a> {
+impl<'a, B> Season<'a, B>
+where
+    B: 'a + SyncBackend,
+{
     pub fn new(
-        mal: &'a MAL<'a>,
+        sync_backend: &'a B,
         list_entry: AnimeEntry,
         local_episodes: &'a HashMap<u32, PathBuf>,
         ep_offset: u32,
-    ) -> Season<'a> {
+    ) -> Season<'a, B> {
         Season {
-            mal,
+            sync_backend,
             list_entry,
             local_episodes,
             ep_offset,
@@ -244,13 +246,13 @@ impl<'a> Season<'a> {
     pub fn play_episode(&mut self, relative_ep: u32) -> Result<(), SeriesError> {
         let ep_num = self.ep_offset + relative_ep;
 
-        let path = self.local_episodes
+        let path = self
+            .local_episodes
             .get(&ep_num)
             .ok_or_else(|| SeriesError::EpisodeNotFound(ep_num))?;
 
         let status = process::open_with_default(path).map_err(SeriesError::FailedToOpenPlayer)?;
-
-        self.list_entry.values.set_watched_episodes(relative_ep);
+        self.list_entry.watched_episodes = relative_ep;
 
         if !status.success() {
             println!("video player not exited normally");
@@ -261,7 +263,7 @@ impl<'a> Season<'a> {
             }
         }
 
-        if relative_ep >= self.list_entry.series_info.episodes {
+        if relative_ep >= self.list_entry.info.episodes {
             self.series_completed()?;
         } else {
             self.episode_completed()?;
@@ -272,9 +274,9 @@ impl<'a> Season<'a> {
 
     pub fn play_all_episodes(&mut self) -> Result<(), SeriesError> {
         loop {
-            let next_ep_num = self.list_entry.values.watched_episodes() + 1;
+            let next_ep = self.list_entry.watched_episodes + 1;
 
-            self.play_episode(next_ep_num)?;
+            self.play_episode(next_ep)?;
             self.next_episode_options()?;
         }
     }
@@ -284,46 +286,38 @@ impl<'a> Season<'a> {
 
         println!(
             "[{}] episode {}/{} completed",
-            entry.series_info.title,
-            entry.values.watched_episodes(),
-            entry.series_info.episodes
+            entry.info.title, entry.watched_episodes, entry.info.episodes
         );
 
-        if !entry.values.rewatching() {
-            entry.values.set_status(Status::WatchingOrReading);
+        if entry.status != Status::Rewatching {
+            entry.status = Status::Watching;
 
-            if entry.values.watched_episodes() <= 1 {
-                entry.values.set_start_date(Some(get_today()));
+            if entry.watched_episodes <= 1 {
+                entry.start_date = Some(get_today());
             }
         }
 
-        self.mal.anime_list().update(entry)?;
+        self.sync_backend.update_list_entry(entry)?;
         Ok(())
     }
 
     fn series_completed(&mut self) -> Result<(), SeriesError> {
-        let today = get_today();
-
-        self.list_entry.values.set_status(Status::Completed);
-
         println!(
             "[{}] completed!\ndo you want to rate it? (Y/n)",
-            self.list_entry.series_info.title
+            self.list_entry.info.title
         );
 
         if input::read_yn(Answer::Yes)? {
+            // TODO: adjust for different scoring types
             println!("enter your score between 1-10:");
-            let score = input::read_usize_range(1, 10)? as u8;
-
-            self.list_entry.values.set_score(score);
+            let score = input::read_usize_range(1, 10)? as f32;
+            self.list_entry.score = score;
         }
 
-        if self.list_entry.values.rewatching() {
-            self.list_entry.values.set_rewatching(false);
-        }
+        self.list_entry.status = Status::Completed;
+        self.add_series_finish_date(get_today())?;
 
-        self.add_series_finish_date(today)?;
-        self.mal.anime_list().update(&mut self.list_entry)?;
+        self.sync_backend.update_list_entry(&self.list_entry)?;
 
         // Nothing to do now
         std::process::exit(0);
@@ -337,25 +331,26 @@ impl<'a> Season<'a> {
 
         match input.as_str() {
             "d" => {
-                self.list_entry.values.set_status(Status::Dropped);
+                self.list_entry.status = Status::Dropped;
                 self.add_series_finish_date(get_today())?;
-                self.mal.anime_list().update(&mut self.list_entry)?;
+                self.sync_backend.update_list_entry(&self.list_entry)?;
 
                 std::process::exit(0);
             }
             "h" => {
-                self.list_entry.values.set_status(Status::OnHold);
-                self.mal.anime_list().update(&mut self.list_entry)?;
+                self.list_entry.status = Status::OnHold;
+                self.sync_backend.update_list_entry(&self.list_entry)?;
 
                 std::process::exit(0);
             }
             "r" => {
+                // TODO: adjust for different scoring types
                 println!("enter your score between 1-10:");
 
-                let score = input::read_usize_range(1, 10)? as u8;
-                self.list_entry.values.set_score(score);
+                let score = input::read_usize_range(1, 10)? as f32;
+                self.list_entry.score = score;
 
-                self.mal.anime_list().update(&mut self.list_entry)?;
+                self.sync_backend.update_list_entry(&self.list_entry)?;
                 self.next_episode_options()?;
             }
             "x" => std::process::exit(0),
@@ -370,14 +365,14 @@ impl<'a> Season<'a> {
 
         // Someone may want to keep the original start / finish date for an
         // anime they're rewatching
-        if entry.values.rewatching() && entry.values.finish_date().is_some() {
+        if entry.status == Status::Rewatching && entry.finish_date.is_some() {
             println!("do you want to override the finish date? (Y/n)");
 
             if input::read_yn(Answer::Yes)? {
-                entry.values.set_finish_date(Some(date));
+                entry.finish_date = Some(date);
             }
         } else {
-            entry.values.set_finish_date(Some(date));
+            entry.finish_date = Some(date);
         }
 
         Ok(())
@@ -440,7 +435,8 @@ impl SeriesData {
 
         // Replace certain special characters with spaces since they can either
         // affect parsing or prevent finding results on MAL
-        let filename = path.file_name()
+        let filename = path
+            .file_name()
             .and_then(|path| path.to_str())
             .ok_or(SeriesError::UnableToGetFilename)?
             .replace('_', " ");
@@ -500,13 +496,4 @@ pub struct SeasonInfo {
     pub series_id: u32,
     pub episodes: u32,
     pub search_title: String,
-}
-
-impl SeasonInfo {
-    pub fn request_mal_info(&self, list: &List<AnimeEntry>) -> Result<AnimeInfo, SeriesError> {
-        list.search_for(&self.search_title)?
-            .into_iter()
-            .find(|i| i.id == self.series_id)
-            .ok_or_else(|| SeriesError::UnknownAnimeID(self.series_id, self.search_title.clone()))
-    }
 }

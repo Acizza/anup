@@ -15,8 +15,8 @@ pub enum Error {
     #[fail(display = "io error")]
     Io(#[cause] ::std::io::Error),
 
-    #[fail(display = "MAL error")]
-    MALError(#[cause] ::mal::error::MALError),
+    #[fail(display = "sync service error")]
+    BackendError(#[cause] BackendError),
 
     #[fail(display = "error processing series")]
     SeriesError(#[cause] SeriesError),
@@ -33,7 +33,7 @@ pub enum Error {
 
 impl_error_conversion!(Error,
     ::std::io::Error => Io,
-    ::mal::error::MALError => MALError,
+    BackendError => BackendError,
     SeriesError => SeriesError,
     ConfigError => ConfigError,
 );
@@ -42,9 +42,6 @@ impl_error_conversion!(Error,
 pub enum SeriesError {
     #[fail(display = "io error")]
     Io(#[cause] ::std::io::Error),
-
-    #[fail(display = "MAL error")]
-    MALError(#[cause] ::mal::error::MALError),
 
     #[fail(display = "input error")]
     InputError(#[cause] InputError),
@@ -60,6 +57,9 @@ pub enum SeriesError {
 
     #[fail(display = "episode number parse failed")]
     EpisodeNumParseFailed(#[cause] ::std::num::ParseIntError),
+
+    #[fail(display = "sync service error")]
+    Backend(#[cause] BackendError),
 
     #[fail(display = "no episodes found")]
     NoEpisodesFound,
@@ -78,17 +78,14 @@ pub enum SeriesError {
 
     #[fail(display = "episode {} not found", _0)]
     EpisodeNotFound(u32),
-
-    #[fail(display = "no anime with id {} found with name [{}] on MAL", _0, _1)]
-    UnknownAnimeID(u32, String),
 }
 
 impl_error_conversion!(SeriesError,
     ::std::io::Error => Io,
-    ::mal::error::MALError => MALError,
     InputError => InputError,
     ::toml::ser::Error => TomlSerialize,
     ::toml::de::Error => TomlDeserialize,
+    BackendError => Backend,
 );
 
 #[derive(Fail, Debug)]
@@ -114,11 +111,11 @@ pub enum ConfigError {
     #[fail(display = "error deserializing toml")]
     TomlDeserialize(#[cause] ::toml::de::Error),
 
-    #[fail(display = "password decode failed")]
-    FailedPasswordDecode(#[cause] ::base64::DecodeError),
+    #[fail(display = "access token decode failed")]
+    FailedTokenDecode(#[cause] ::base64::DecodeError),
 
-    #[fail(display = "MAL account password not set")]
-    PasswordNotSet,
+    #[fail(display = "access token not set for sync service")]
+    TokenNotSet,
 }
 
 impl_error_conversion!(ConfigError,
@@ -126,4 +123,32 @@ impl_error_conversion!(ConfigError,
     ::std::string::FromUtf8Error => FromUtf8Error,
     ::toml::ser::Error => TomlSerialize,
     ::toml::de::Error => TomlDeserialize,
+);
+
+#[derive(Fail, Debug)]
+pub enum BackendError {
+    #[fail(display = "io error")]
+    Io(#[cause] ::std::io::Error),
+
+    #[fail(display = "config error")]
+    ConfigError(#[cause] ConfigError),
+
+    #[fail(display = "HTTP error")]
+    HttpError(#[cause] ::reqwest::Error),
+
+    #[fail(display = "json error")]
+    Json(#[cause] ::serde_json::Error),
+
+    #[fail(display = "received invalid JSON response")]
+    InvalidJsonResponse,
+
+    #[fail(display = "list update failed: {}", _0)]
+    ListUpdate(String),
+}
+
+impl_error_conversion!(BackendError,
+    ::std::io::Error => Io,
+    ConfigError => ConfigError,
+    ::reqwest::Error => HttpError,
+    ::serde_json::Error => Json,
 );

@@ -1,11 +1,10 @@
 use base64;
 use directories::ProjectDirs;
 use error::ConfigError;
-use input;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use toml;
 
 pub const DEFAULT_CONFIG_NAME: &str = "config.toml";
@@ -18,106 +17,50 @@ lazy_static! {
 pub struct Config {
     pub user: User,
     pub series: HashMap<String, PathBuf>,
-    #[serde(skip)]
-    pub path: PathBuf,
 }
 
 impl Config {
-    pub fn new(user: User, path: PathBuf) -> Config {
+    pub fn new(user: User) -> Config {
         Config {
             user,
             series: HashMap::new(),
-            path,
         }
     }
 
-    pub fn from_path(path: &Path) -> Result<Config, ConfigError> {
-        let file_contents = fs::read_to_string(path)?;
+    pub fn load() -> Result<Config, ConfigError> {
+        let path = get_config_file_path()?;
 
-        let mut config: Config = toml::from_str(&file_contents)?;
-        config.path = path.into();
+        let file_contents = match fs::read_to_string(&path) {
+            Ok(contents) => contents,
+            Err(err) => match err.kind() {
+                ErrorKind::NotFound => return Ok(Config::new(User::new(None))),
+                _ => return Err(err.into()),
+            },
+        };
 
+        let config = toml::from_str(&file_contents)?;
         Ok(config)
     }
 
-    pub fn save(&mut self, save_password: bool) -> Result<(), ConfigError> {
-        let password = self.user.password.clone();
+    pub fn save(&mut self, save_access_token: bool) -> Result<(), ConfigError> {
+        let access_token = self.user.access_token.clone();
 
-        if !save_password {
-            self.user.password = None;
+        if !save_access_token {
+            self.user.access_token = None;
         }
 
-        let mut file = File::create(&self.path)?;
+        let path = get_config_file_path()?;
+        let mut file = File::create(path)?;
         let toml = toml::to_string_pretty(self)?;
 
         write!(file, "{}", toml)?;
 
-        self.user.password = password;
+        self.user.access_token = access_token;
         Ok(())
     }
 
     pub fn remove_invalid_series(&mut self) {
         self.series.retain(|_, path: &mut PathBuf| path.exists());
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct User {
-    pub name: String,
-    password: Option<String>,
-}
-
-impl User {
-    pub fn new<S: Into<String>>(username: S, password: &str) -> User {
-        User {
-            name: username.into(),
-            password: Some(base64::encode(password)),
-        }
-    }
-
-    pub fn encode_password(&mut self, password: &str) {
-        self.password = Some(base64::encode(password));
-    }
-
-    pub fn decode_password(&self) -> Result<String, ConfigError> {
-        let password = self.password.as_ref().ok_or(ConfigError::PasswordNotSet)?;
-        let bytes = base64::decode(password).map_err(ConfigError::FailedPasswordDecode)?;
-        let string = String::from_utf8(bytes)?;
-
-        Ok(string)
-    }
-}
-
-pub fn load() -> Result<Config, ConfigError> {
-    let path = get_config_file_path()?;
-
-    match Config::from_path(&path) {
-        Ok(mut config) => {
-            if config.user.password.is_none() {
-                println!("please enter your MAL password:");
-                let pass = input::read_line()?;
-
-                config.user.encode_password(&pass);
-            }
-
-            Ok(config)
-        }
-        Err(ConfigError::Io(e)) => match e.kind() {
-            ErrorKind::NotFound => {
-                println!("please enter your MAL username:");
-                let name = input::read_line()?;
-
-                println!("please enter your MAL password:");
-                let pass = input::read_line()?;
-
-                let user = User::new(name, &pass);
-                let config = Config::new(user, path);
-
-                Ok(config)
-            }
-            _ => Err(ConfigError::Io(e)),
-        },
-        Err(e) => Err(e),
     }
 }
 
@@ -132,4 +75,29 @@ fn get_config_file_path() -> io::Result<PathBuf> {
     path.push(DEFAULT_CONFIG_NAME);
 
     Ok(path)
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct User {
+    pub access_token: Option<String>,
+}
+
+impl User {
+    pub fn new(access_token: Option<&str>) -> User {
+        User {
+            access_token: access_token.map(|t| base64::encode(t)),
+        }
+    }
+
+    pub fn encode_access_token(&mut self, access_token: &str) {
+        self.access_token = Some(base64::encode(access_token));
+    }
+
+    pub fn decode_access_token(&self) -> Result<String, ConfigError> {
+        let access_token = self.access_token.as_ref().ok_or(ConfigError::TokenNotSet)?;
+        let bytes = base64::decode(access_token).map_err(ConfigError::FailedTokenDecode)?;
+        let string = String::from_utf8(bytes)?;
+
+        Ok(string)
+    }
 }

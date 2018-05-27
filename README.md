@@ -1,7 +1,5 @@
 # anup
-This is a command line application to automatically play downloaded anime and update the watched episode count on [MyAnimeList](https://myanimelist.net/) or [AniList](https://anilist.co).
-
-**NOTE:** Since the MyAnimeList API was suddenly shut down, the program is currently only usable with the `anilist` branch on Linux. Until MyAnimeList makes it clear what they're doing with the API, the usage documentation will not cover using AniList. Authorizing yourself with AniList is very simple, though, and the program will automatically open the url to login with your AniList account the first time you launch it.
+This is a command line application to automatically play downloaded anime and update the watched episode count on [AniList](https://anilist.co).
 
 # Usage
 First, please ensure the names of your legally obtained episodes resemble that of a \*cough\* torrent \*cough\*. The program can detect multiple layouts that are commonly used, such as:
@@ -11,28 +9,29 @@ First, please ensure the names of your legally obtained episodes resemble that o
 * `[Group] Series Title - 01 [1080p].mkv`
 * `Series Title - 01.mkv`
 
-The first time you watch a series, you will need to specify the path to it with the `-p` flag. Since you can specify a name for the series, you will not have to provide the path again. For example, to save a newly obtained series as "toradora", with "~/anime/Toradora" as the path, you can launch the program like so:
+To watch a series, you will need to specify the path to it with the `-p` flag. This only needs to be provided once if you decide to specify a name for the series. For example, if you want to watch Toradora and want to save it as "tora", you can launch the program like so:
+* Linux: `anup.sh tora -p <path to episodes>`
+* Windows: `anup.exe tora -p <path to episodes>`
+* macOS: `anup tora -p <path to episodes>`
 
-`anup.sh toradora -p ~/anime/Toradora`
+The next time you want to watch the same series, you can simply launch the program with the name you gave it. For example, to watch Toradora again:
+* Linux: `anup.sh tora`
+* Windows: `anup.exe tora`
+* macOS: `anup tora`
 
-The next time you want to watch the series, you can simply launch the program with the saved series name. For example, to watch the saved series "toradora" again:
+When you start the program for the first time, a URL will be opened in your default browser to let you authorize the program to access your AniList account. If you do not want your access token to be saved, you can launch the program with the `--dontsavetoken` flag. Please keep in mind that your access token is only encoded in the Base64 format if you decide to save it, which means that anyone can decode and use it.
 
-`anup.sh toradora`
+When you play a series for the first time, the program will search for the anime detected in the episode files, and prompt you to select which series you are actually watching. It will then create a file in the same directory called `.anup` that will save your selection so you do not have to enter it again.
 
-The first time you launch the program, it will ask you for your MyAnimeList username and password, and save it by default. If you do not want your password to be saved, you can launch the program with the `--dontsavepass` flag. If you do want your password saved, please keep in mind that it is **NOT** securely encrypted.
+After you select the series you want to watch (or play the series again later), the program will open the next unwatched episode of the series in your default video player. Once you exit the video player, the program will automatically increment the watched episode count on your anime list and prompt you to either rate the series, drop it, put it on hold, play the next episode, or exit the program.
 
-When you play a series for the first time, the program will search MyAnimeList for the name detected in the episode files, and prompt you to select which series you are actually watching. It will then create a file in the same directory called `.anup` that will save your selection so you do not have to enter it again.
-
-After you select the series you want to watch (or play the series again later), the program will open the next unwatched episode of the series in your default video player. Once you exit the video player, the program will automatically increment the watched episode count on your MyAnimeList profile and prompt you to either rate the series, drop it, put it on hold, play the next episode, or exit the program.
-
-For series that have multiple seasons and groups that don't split them up, you can use the `-s` flag with the season number to watch a specific season. For example, if a series has one season that is 24 episodes and a second season that is 12, and the episode number on your files goes up to 36, you can launch the program with `-s 2` to start playing at the 25th episode file. Note that you will have to select the correct series up to the specified season number in order for the offset to be calculated correctly.
+If you're watching a series that has multiple seasons and your episode files aren't split up appropriately, you can use the `-s` flag with the season number to watch a specific season. For example, if a series has one season that is 24 episodes and a second season that is 12, and the episode number on your files goes up to 36, you can launch the program with `-s 2` to start playing at the 25th episode file. Note that you will have to select the correct series up to the specified season number in order for the offset to be calculated correctly.
 
 # Configuration
 
-The program's configuration file (which contains your MAL account information) is located in one of the following locations, depending on your platform:
-
+The program's configuration file (which contains your account access token) is located in one of the following locations, depending on your platform:
 * Linux: `~/.config/anup/`
 * Windows: `C:\Users\{USERNAME}\AppData\Roaming\anup`
-* MacOS: `~/Library/Preferences/anup/`
+* macOS: `~/Library/Preferences/anup/`
 
-If you need to change your saved MAL account password (or wish to simply delete it), you can remove the `password` field under the `[user]` tag and the program will prompt you for your new password the next time you launch it. Remember to use the `--dontsavepass` flag if you simply no longer wish to store your password.
+If you need to update your access token, or no longer wish to keep it stored, you can remove the `access_token` field under the `[user]` category in the configuration file, and you will be prompted to enter a new token the next time you launch the program. Remember to launch the program with `--dontsavetoken` if you don't wish to store it anymore.
