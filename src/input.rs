@@ -1,5 +1,7 @@
 use error::InputError;
+use std::fmt::{Debug, Display};
 use std::io;
+use std::str::FromStr;
 
 pub fn read_line() -> io::Result<String> {
     let mut buffer = String::new();
@@ -9,12 +11,16 @@ pub fn read_line() -> io::Result<String> {
     Ok(buffer.trim_right().to_string())
 }
 
-pub fn read_usize_range(min: usize, max: usize) -> Result<usize, InputError> {
+pub fn read_range<T>(min: T, max: T) -> Result<T, InputError>
+where
+    T: Ord + FromStr + Debug + Display,
+    <T as FromStr>::Err: Debug,
+{
     loop {
         let input = read_line()
             .map_err(InputError::ReadFailed)?
             .parse()
-            .map_err(InputError::IntParseFailed)?;
+            .map_err(|e| InputError::ParseFailed(format!("{:?}", e)))?;
 
         if input >= min && input <= max {
             return Ok(input);
