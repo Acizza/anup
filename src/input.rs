@@ -13,7 +13,7 @@ pub fn read_line() -> io::Result<String> {
 
 pub fn read_range<T>(min: T, max: T) -> Result<T, InputError>
 where
-    T: Ord + FromStr + Debug + Display,
+    T: PartialOrd + FromStr + Debug + Display,
     <T as FromStr>::Err: Debug,
 {
     loop {
