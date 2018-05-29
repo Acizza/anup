@@ -126,7 +126,7 @@ where
             println!("{} [{}]", 1 + i, series.title);
         }
 
-        let index = input::read_usize_range(0, found.len())?;
+        let index = input::read_range(0, found.len())?;
 
         if index == 0 {
             println!("enter the name you want to search for:");
@@ -304,10 +304,7 @@ where
         );
 
         if input::read_yn(Answer::Yes)? {
-            // TODO: adjust for different scoring types
-            println!("enter your score between 1-10:");
-            let score = input::read_usize_range(1, 10)? as f32;
-            self.list_entry.score = score;
+            self.prompt_to_update_score();
         }
 
         self.list_entry.status = Status::Completed;
@@ -340,13 +337,9 @@ where
                 std::process::exit(0);
             }
             "r" => {
-                // TODO: adjust for different scoring types
-                println!("enter your score between 1-10:");
-
-                let score = input::read_usize_range(1, 10)? as f32;
-                self.list_entry.score = score;
-
+                self.prompt_to_update_score();
                 self.sync_backend.update_list_entry(&self.list_entry)?;
+
                 self.next_episode_options()?;
             }
             "x" => std::process::exit(0),
@@ -354,6 +347,16 @@ where
         }
 
         Ok(())
+    }
+
+    fn prompt_to_update_score(&mut self) {
+        let max_score = self.sync_backend.max_score();
+        println!("enter your score between 1-{}", max_score);
+
+        match input::read_range(1.0, f32::from(max_score)) {
+            Ok(score) => self.list_entry.score = score,
+            Err(err) => eprintln!("failed to get score: {}", err),
+        }
     }
 
     fn add_series_finish_date(&mut self, date: Date<Local>) -> Result<(), SeriesError> {
