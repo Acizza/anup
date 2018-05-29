@@ -93,8 +93,8 @@ pub enum InputError {
     #[fail(display = "failed to read line")]
     ReadFailed(#[cause] ::std::io::Error),
 
-    #[fail(display = "failed to parse input string to number")]
-    IntParseFailed(#[cause] ::std::num::ParseIntError),
+    #[fail(display = "failed to parse type: {}", _0)]
+    ParseFailed(String),
 }
 
 #[derive(Fail, Debug)]
