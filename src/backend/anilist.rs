@@ -1,5 +1,5 @@
 use super::{AnimeEntry, AnimeInfo, Status, SyncBackend};
-use chrono::{Datelike, NaiveDate, TimeZone, Utc};
+use chrono::{Date, Datelike, Local, NaiveDate, TimeZone};
 use config::Config;
 use error::BackendError;
 use input;
@@ -86,7 +86,10 @@ impl SyncBackend for Anilist {
                 match open_url(LOGIN_URL) {
                     Ok(status) if status.success() => (),
                     result => {
-                        eprintln!("failed to open URL in default browser. please open it manually: {}", LOGIN_URL);
+                        eprintln!(
+                            "failed to open URL in default browser. please open it manually: {}",
+                            LOGIN_URL
+                        );
 
                         if let Err(err) = result {
                             eprintln!("error message: {}", err);
@@ -341,14 +344,14 @@ struct MediaDate {
 }
 
 impl MediaDate {
-    fn into_date(self) -> Option<NaiveDate> {
+    fn into_date(self) -> Option<Date<Local>> {
         match (self.year, self.month, self.day) {
-            (Some(year), Some(month), Some(day)) => Some(Utc.ymd(year, month, day).naive_utc()),
+            (Some(year), Some(month), Some(day)) => Some(Local.ymd(year, month, day)),
             _ => None,
         }
     }
 
-    fn from_date(date: Option<NaiveDate>) -> MediaDate {
+    fn from_date(date: Option<Date<Local>>) -> MediaDate {
         match date {
             Some(date) => MediaDate {
                 year: Some(date.year()),

@@ -1,5 +1,5 @@
 use backend::{AnimeEntry, AnimeInfo, Status, SyncBackend};
-use chrono::{Local, NaiveDate};
+use chrono::{Date, Local};
 use error::SeriesError;
 use input::{self, Answer};
 use process;
@@ -9,10 +9,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use toml;
-
-fn get_today() -> NaiveDate {
-    Local::today().naive_utc()
-}
 
 #[derive(Debug)]
 pub struct Series<B>
@@ -156,7 +152,7 @@ where
             None => {
                 let mut entry = AnimeEntry::new(info.clone());
                 entry.status = Status::Watching;
-                entry.start_date = Some(get_today());
+                entry.start_date = Some(Local::today());
 
                 self.sync_backend.update_list_entry(&entry)?;
                 Ok(entry)
@@ -176,7 +172,7 @@ where
             println!("do you want to reset the start and end date? (Y/n)");
 
             if input::read_yn(Answer::Yes)? {
-                entry.start_date = Some(get_today());
+                entry.start_date = Some(Local::today());
                 entry.finish_date = None;
             }
 
@@ -293,7 +289,7 @@ where
             entry.status = Status::Watching;
 
             if entry.watched_episodes <= 1 {
-                entry.start_date = Some(get_today());
+                entry.start_date = Some(Local::today());
             }
         }
 
@@ -315,7 +311,7 @@ where
         }
 
         self.list_entry.status = Status::Completed;
-        self.add_series_finish_date(get_today())?;
+        self.add_series_finish_date(Local::today())?;
 
         self.sync_backend.update_list_entry(&self.list_entry)?;
 
@@ -332,7 +328,7 @@ where
         match input.as_str() {
             "d" => {
                 self.list_entry.status = Status::Dropped;
-                self.add_series_finish_date(get_today())?;
+                self.add_series_finish_date(Local::today())?;
                 self.sync_backend.update_list_entry(&self.list_entry)?;
 
                 std::process::exit(0);
@@ -360,7 +356,7 @@ where
         Ok(())
     }
 
-    fn add_series_finish_date(&mut self, date: NaiveDate) -> Result<(), SeriesError> {
+    fn add_series_finish_date(&mut self, date: Date<Local>) -> Result<(), SeriesError> {
         let entry = &mut self.list_entry;
 
         // Someone may want to keep the original start / finish date for an

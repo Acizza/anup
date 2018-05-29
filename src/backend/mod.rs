@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, Utc};
+use chrono::{Date, Local};
 use config::Config;
 use error::BackendError;
 
@@ -30,8 +30,8 @@ pub struct AnimeEntry {
     pub watched_episodes: u32,
     pub score: f32,
     pub status: Status,
-    pub start_date: Option<NaiveDate>,
-    pub finish_date: Option<NaiveDate>,
+    pub start_date: Option<Date<Local>>,
+    pub finish_date: Option<Date<Local>>,
 }
 
 impl AnimeEntry {
@@ -41,7 +41,7 @@ impl AnimeEntry {
             watched_episodes: 0,
             score: 0.0,
             status: Status::PlanToWatch,
-            start_date: Some(Utc::now().naive_utc().date()),
+            start_date: Some(Local::today()),
             finish_date: None,
         }
     }
