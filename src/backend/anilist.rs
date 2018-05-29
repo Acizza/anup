@@ -232,6 +232,11 @@ impl SyncBackend for Anilist {
 
         Ok(())
     }
+
+    fn max_score(&self) -> u8 {
+        // TODO: add support for other scoring types
+        10
+    }
 }
 
 fn open_url(url: &str) -> io::Result<ExitStatus> {

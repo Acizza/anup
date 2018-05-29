@@ -15,6 +15,8 @@ where
 
     fn get_list_entry(&self, info: AnimeInfo) -> Result<Option<AnimeEntry>, BackendError>;
     fn update_list_entry(&self, entry: &AnimeEntry) -> Result<(), BackendError>;
+
+    fn max_score(&self) -> u8;
 }
 
 #[derive(Clone, Debug)]
