@@ -257,7 +257,7 @@ fn open_url(url: &str) -> io::Result<ExitStatus> {
 struct MediaData {
     id: u32,
     title: Title,
-    episodes: u32,
+    episodes: Option<u32>,
 }
 
 #[derive(Deserialize)]

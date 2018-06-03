@@ -23,7 +23,7 @@ where
 pub struct AnimeInfo {
     pub id: u32,
     pub title: String,
-    pub episodes: u32,
+    pub episodes: Option<u32>,
 }
 
 #[derive(Debug)]
