@@ -67,10 +67,10 @@ fn run() -> Result<(), Error> {
     ).get_matches();
 
     if args.is_present("LIST") {
-        return print_series_list();
+        print_series_list()
+    } else {
+        watch_series(&args)
     }
-
-    watch_series(&args)
 }
 
 fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
