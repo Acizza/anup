@@ -185,7 +185,7 @@ pub struct Season<'a, B>
 where
     B: 'a + SyncBackend,
 {
-    pub sync_backend: &'a B,
+    sync_backend: &'a B,
     pub list_entry: AnimeEntry,
     pub local_episodes: &'a HashMap<u32, PathBuf>,
     pub ep_offset: u32,
