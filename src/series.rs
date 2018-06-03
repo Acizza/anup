@@ -15,8 +15,8 @@ pub struct Series<B>
 where
     B: SyncBackend,
 {
-    pub sync_backend: B,
-    pub data: SeriesData,
+    sync_backend: B,
+    pub episode_data: EpisodeData,
     pub save_data: SaveData,
     pub save_path: PathBuf,
 }
@@ -27,22 +27,13 @@ where
 {
     pub const DATA_FILE_NAME: &'static str = ".anup";
 
-    pub fn from_dir(dir: &Path, sync_backend: B) -> Result<Series<B>, SeriesError> {
-        if !dir.is_dir() {
-            return Err(SeriesError::NotADirectory(
-                dir.file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "err".into()),
-            ));
-        }
-
-        let series_data = SeriesData::parse_dir(dir)?;
-        let save_path = PathBuf::from(dir).join(Series::<B>::DATA_FILE_NAME);
+    pub fn from_data(episode_data: EpisodeData, sync_backend: B) -> Result<Series<B>, SeriesError> {
+        let save_path = PathBuf::from(&episode_data.path).join(Series::<B>::DATA_FILE_NAME);
         let save_data = SaveData::from_path_or_default(&save_path)?;
 
         let series = Series {
             sync_backend,
-            data: series_data,
+            episode_data,
             save_data,
             save_path,
         };
@@ -50,68 +41,71 @@ where
         Ok(series)
     }
 
-    pub fn load_season(&mut self, season_num: u32) -> Result<Season<B>, SeriesError> {
-        let created_series_info = self.ensure_num_seasons(season_num)?;
+    pub fn load_season(&mut self, season: u32) -> Result<Season<B>, SeriesError> {
+        let season_info = self.get_season_info(season)?;
+        let season_ep_offset = self.calculate_season_offset(season);
 
-        let season_info = {
-            let index = season_num.saturating_sub(1);
-            &self.save_data.seasons[index as usize]
-        };
+        let list_entry = self.get_list_entry(season_info.clone())?;
 
-        let series_info = match created_series_info {
-            Some(info) => info,
-            None => self
-                .sync_backend
-                .get_series_info_by_id(season_info.series_id)?,
-        };
-
-        let episode_offset = self.calculate_season_offset(season_num);
-        let list_entry = self.get_list_entry(&series_info)?;
-
-        Ok(Season::new(
-            &self.sync_backend,
+        let season = Season {
+            sync_backend: &self.sync_backend,
             list_entry,
-            &self.data.episodes,
-            episode_offset,
-        ))
+            ep_offset: season_ep_offset,
+            local_episodes: &self.episode_data.episodes,
+        };
+
+        Ok(season)
     }
 
-    fn ensure_num_seasons(&mut self, num_seasons: u32) -> Result<Option<AnimeInfo>, SeriesError> {
-        let mut created_series_info = None;
-        let existing_seasons = self.save_data.seasons.len();
+    pub fn save_data(&self) -> Result<(), SeriesError> {
+        self.save_data.write_to(&self.save_path)
+    }
 
-        if num_seasons as usize > existing_seasons {
-            for cur_season in existing_seasons..(num_seasons as usize) {
+    fn get_season_info(&mut self, season: u32) -> Result<AnimeInfo, SeriesError> {
+        let num_seasons = self.save_data.seasons.len() as u32;
+
+        if season >= num_seasons {
+            let mut series = None;
+
+            for cur_season in num_seasons..=season {
                 println!(
                     "select the correct series for season {} of [{}]:",
                     1 + cur_season,
-                    self.data.name
+                    self.episode_data.series_name
                 );
 
-                let season_info = self.search_and_select_series(&self.data.name)?;
+                let series_info = self.search_and_select_series(&self.episode_data.series_name)?;
+                self.save_data.seasons.push(series_info.clone().into());
 
-                created_series_info = Some(season_info.clone());
-                self.save_data.seasons.push(season_info.into());
+                series = Some(series_info);
             }
 
             self.save_data()?;
-        }
 
-        Ok(created_series_info)
+            // This unwrap should never fail, as the enclosing if statement ensures the for loop will set the
+            // series variable at least once
+            Ok(series.unwrap())
+        } else {
+            let season_info = &self.save_data.seasons[season as usize];
+
+            let series = self
+                .sync_backend
+                .get_series_info_by_id(season_info.series_id)?;
+
+            Ok(series)
+        }
     }
 
     fn calculate_season_offset(&self, season: u32) -> u32 {
         let mut offset = 0;
 
-        for cur_season in 1..(season as usize) {
-            offset += self.save_data.seasons[cur_season].episodes;
+        for cur_season in 0..(season as usize) {
+            if let Some(season_eps) = self.save_data.seasons[cur_season].episodes {
+                offset += season_eps;
+            }
         }
 
         offset
-    }
-
-    pub fn save_data(&self) -> Result<(), SeriesError> {
-        self.save_data.write_to(&self.save_path)
     }
 
     fn search_and_select_series(&self, name: &str) -> Result<AnimeInfo, SeriesError> {
@@ -139,7 +133,7 @@ where
         }
     }
 
-    fn get_list_entry(&self, info: &AnimeInfo) -> Result<AnimeEntry, SeriesError> {
+    fn get_list_entry(&self, info: AnimeInfo) -> Result<AnimeEntry, SeriesError> {
         let found = self.sync_backend.get_list_entry(info.clone())?;
 
         match found {
@@ -151,7 +145,7 @@ where
                 Ok(entry)
             }
             None => {
-                let mut entry = AnimeEntry::new(info.clone());
+                let mut entry = AnimeEntry::new(info);
                 entry.status = Status::Watching;
                 entry.start_date = Some(Local::today());
 
@@ -164,7 +158,6 @@ where
     fn prompt_to_rewatch(&self, entry: &mut AnimeEntry) -> Result<(), SeriesError> {
         println!("[{}] already completed", entry.info.title);
         println!("do you want to rewatch it? (Y/n)");
-        println!("(note that you have to increase the rewatch count manually)");
 
         if input::read_yn(Answer::Yes)? {
             entry.status = Status::Rewatching;
@@ -202,20 +195,6 @@ impl<'a, B> Season<'a, B>
 where
     B: 'a + SyncBackend,
 {
-    pub fn new(
-        sync_backend: &'a B,
-        list_entry: AnimeEntry,
-        local_episodes: &'a HashMap<u32, PathBuf>,
-        ep_offset: u32,
-    ) -> Season<'a, B> {
-        Season {
-            sync_backend,
-            list_entry,
-            local_episodes,
-            ep_offset,
-        }
-    }
-
     pub fn play_episode(&mut self, relative_ep: u32) -> Result<(), SeriesError> {
         let ep_num = self.ep_offset + relative_ep;
 
@@ -236,10 +215,9 @@ where
             }
         }
 
-        if relative_ep >= self.list_entry.info.episodes {
-            self.series_completed()?;
-        } else {
-            self.episode_completed()?;
+        match self.list_entry.info.episodes {
+            Some(total_eps) if relative_ep >= total_eps => self.series_completed()?,
+            _ => self.episode_completed()?,
         }
 
         Ok(())
@@ -259,7 +237,13 @@ where
 
         println!(
             "[{}] episode {}/{} completed",
-            entry.info.title, entry.watched_episodes, entry.info.episodes
+            entry.info.title,
+            entry.watched_episodes,
+            entry
+                .info
+                .episodes
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| "?".to_string())
         );
 
         if entry.status != Status::Rewatching {
@@ -359,16 +343,25 @@ type SeriesName = String;
 type EpisodeNum = u32;
 
 #[derive(Debug)]
-pub struct SeriesData {
-    pub name: String,
+pub struct EpisodeData {
+    pub series_name: String,
     pub episodes: HashMap<u32, PathBuf>,
+    pub path: PathBuf,
 }
 
-impl SeriesData {
+impl EpisodeData {
     pub const EP_FORMAT_REGEX: &'static str =
         r"(?:\[.+?\]\s*)?(?P<series>.+?)\s*-\s*(?P<episode>\d+).*?\..+?";
 
-    fn parse_dir(dir: &Path) -> Result<SeriesData, SeriesError> {
+    pub fn parse_dir(dir: &Path) -> Result<EpisodeData, SeriesError> {
+        if !dir.is_dir() {
+            return Err(SeriesError::NotADirectory(
+                dir.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "err".into()),
+            ));
+        }
+
         let mut series_name = None;
         let mut episodes = HashMap::new();
 
@@ -379,7 +372,7 @@ impl SeriesData {
                 continue;
             }
 
-            match SeriesData::parse_filename(&path) {
+            match EpisodeData::parse_filename(&path) {
                 Ok((ep_name, ep_num)) => {
                     match series_name {
                         Some(ref series_name) if &ep_name != series_name => {
@@ -396,17 +389,18 @@ impl SeriesData {
             }
         }
 
-        let series = series_name.ok_or(SeriesError::NoEpisodesFound)?;
+        let name = series_name.ok_or(SeriesError::NoEpisodesFound)?;
 
-        Ok(SeriesData {
-            name: series,
+        Ok(EpisodeData {
+            series_name: name,
             episodes,
+            path: dir.into(),
         })
     }
 
     fn parse_filename(path: &Path) -> Result<(SeriesName, EpisodeNum), SeriesError> {
         lazy_static! {
-            static ref EP_FORMAT: Regex = Regex::new(SeriesData::EP_FORMAT_REGEX).unwrap();
+            static ref EP_FORMAT: Regex = Regex::new(EpisodeData::EP_FORMAT_REGEX).unwrap();
         }
 
         // Replace certain special characters with spaces since they can either
@@ -470,7 +464,7 @@ impl SaveData {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SeasonInfo {
     pub series_id: u32,
-    pub episodes: u32,
+    pub episodes: Option<u32>,
 }
 
 impl From<AnimeInfo> for SeasonInfo {

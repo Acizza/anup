@@ -30,7 +30,7 @@ mod series;
 use backend::{anilist::Anilist, SyncBackend};
 use config::Config;
 use error::Error;
-use series::Series;
+use series::{EpisodeData, Series};
 use std::io::Read;
 use std::path::PathBuf;
 
@@ -82,12 +82,18 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
 
     config.save(!args.is_present("DONT_SAVE_TOKEN"))?;
 
-    let season = args
-        .value_of("SEASON")
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(1);
+    let season = {
+        let value: u32 = args
+            .value_of("SEASON")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
 
-    let mut series = Series::from_dir(&path, sync_backend)?;
+        value.saturating_sub(1)
+    };
+
+    let episode_data = EpisodeData::parse_dir(&path)?;
+    let mut series = Series::from_data(episode_data, sync_backend)?;
+
     series.load_season(season)?.play_all_episodes()?;
 
     Ok(())
