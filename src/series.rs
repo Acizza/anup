@@ -90,7 +90,7 @@ where
 
                 let season_info = self.search_and_select_series(&self.data.name)?;
 
-                created_series_info = Some(season_info.info.clone());
+                created_series_info = Some(season_info.clone());
                 self.save_data.seasons.push(season_info.into());
             }
 
@@ -114,7 +114,7 @@ where
         self.save_data.write_to(&self.save_path)
     }
 
-    fn search_and_select_series(&self, name: &str) -> Result<SeriesSelection, SeriesError> {
+    fn search_and_select_series(&self, name: &str) -> Result<AnimeInfo, SeriesError> {
         let mut found = self.sync_backend.search_by_name(name)?;
 
         println!("MAL results for [{}]:", name);
@@ -134,7 +134,8 @@ where
             let name = input::read_line()?;
             self.search_and_select_series(&name)
         } else {
-            Ok(SeriesSelection::new(found.swap_remove(index - 1), name))
+            let info = found.swap_remove(index - 1);
+            Ok(info)
         }
     }
 
@@ -183,30 +184,6 @@ where
         }
 
         Ok(())
-    }
-}
-
-struct SeriesSelection {
-    pub info: AnimeInfo,
-    pub search_term: String,
-}
-
-impl SeriesSelection {
-    fn new<S: Into<String>>(info: AnimeInfo, search_term: S) -> SeriesSelection {
-        SeriesSelection {
-            info,
-            search_term: search_term.into(),
-        }
-    }
-}
-
-impl Into<SeasonInfo> for SeriesSelection {
-    fn into(self) -> SeasonInfo {
-        SeasonInfo {
-            series_id: self.info.id,
-            episodes: self.info.episodes,
-            search_title: self.search_term,
-        }
     }
 }
 
@@ -494,5 +471,13 @@ impl SaveData {
 pub struct SeasonInfo {
     pub series_id: u32,
     pub episodes: u32,
-    pub search_title: String,
+}
+
+impl From<AnimeInfo> for SeasonInfo {
+    fn from(info: AnimeInfo) -> SeasonInfo {
+        SeasonInfo {
+            series_id: info.id,
+            episodes: info.episodes,
+        }
+    }
 }
