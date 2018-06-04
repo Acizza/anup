@@ -8,6 +8,9 @@ pub trait SyncBackend
 where
     Self: Sized,
 {
+    fn name() -> &'static str;
+    fn max_score(&self) -> u8;
+
     fn init(config: &mut Config) -> Result<Self, BackendError>;
 
     fn search_by_name(&self, name: &str) -> Result<Vec<AnimeInfo>, BackendError>;
@@ -15,8 +18,6 @@ where
 
     fn get_list_entry(&self, info: AnimeInfo) -> Result<Option<AnimeEntry>, BackendError>;
     fn update_list_entry(&self, entry: &AnimeEntry) -> Result<(), BackendError>;
-
-    fn max_score(&self) -> u8;
 }
 
 #[derive(Clone, Debug)]

@@ -145,6 +145,15 @@ impl Anilist {
 }
 
 impl SyncBackend for Anilist {
+    fn name() -> &'static str {
+        "AniList"
+    }
+
+    fn max_score(&self) -> u8 {
+        // TODO: add support for other scoring types
+        10
+    }
+
     fn init(config: &mut Config) -> Result<Anilist, BackendError> {
         let is_first_launch = config.user.access_token.is_none();
 
@@ -277,11 +286,6 @@ impl SyncBackend for Anilist {
         );
 
         Ok(())
-    }
-
-    fn max_score(&self) -> u8 {
-        // TODO: add support for other scoring types
-        10
     }
 }
 

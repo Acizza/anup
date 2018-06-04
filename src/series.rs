@@ -111,7 +111,7 @@ where
     fn search_and_select_series(&self, name: &str) -> Result<AnimeInfo, SeriesError> {
         let mut found = self.sync_backend.search_by_name(name)?;
 
-        println!("MAL results for [{}]:", name);
+        println!("{} results for [{}]:", B::name(), name);
         println!("enter the number next to the desired series:\n");
 
         println!("0 [custom search]");
