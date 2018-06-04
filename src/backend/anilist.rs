@@ -5,7 +5,7 @@ use error::BackendError;
 use input;
 use reqwest::header::{Accept, Authorization, Bearer, ContentType, Headers};
 use reqwest::{Client, Response};
-use serde_json;
+use serde_json as json;
 use std::io;
 use std::process::{Command, ExitStatus};
 
@@ -35,7 +35,7 @@ impl Anilist {
     fn send_request(
         &self,
         query_str: &str,
-        variables: &serde_json::Value,
+        variables: &json::Value,
     ) -> Result<Response, BackendError> {
         let body = json!({
             "query": query_str,
@@ -62,12 +62,12 @@ impl Anilist {
     fn send_json_request(
         &self,
         query_str: &str,
-        variables: &serde_json::Value,
-    ) -> Result<serde_json::Value, BackendError> {
+        variables: &json::Value,
+    ) -> Result<json::Value, BackendError> {
         let text = self.send_request(query_str, variables)?.text()?;
-        let json: serde_json::Value = serde_json::from_str(&text)?;
+        let json: json::Value = json::from_str(&text)?;
 
-        if json["errors"] != serde_json::Value::Null {
+        if json["errors"] != json::Value::Null {
             // TODO: add error chaining
             let err = &json["errors"][0];
 
@@ -93,7 +93,7 @@ impl Anilist {
             "data" => "Viewer" => "id"
         );
 
-        let id = serde_json::from_value(resp)?;
+        let id = json::from_value(resp)?;
         Ok(id)
     }
 
@@ -186,13 +186,13 @@ impl SyncBackend for Anilist {
             "data" => "Page" => "media"
         );
 
-        use serde_json::Value;
+        use self::json::Value;
         let mut series = Vec::new();
 
         match resp {
             Value::Array(ref entries) => {
                 for entry in entries {
-                    let series_info: MediaData = serde_json::from_value(entry.clone())?;
+                    let series_info: MediaData = json::from_value(entry.clone())?;
                     series.push(series_info.into());
                 }
             }
@@ -219,7 +219,7 @@ impl SyncBackend for Anilist {
             "data" => "Media"
         );
 
-        let info: MediaData = serde_json::from_value(resp)?;
+        let info: MediaData = json::from_value(resp)?;
         Ok(info.into())
     }
 
@@ -249,9 +249,9 @@ impl SyncBackend for Anilist {
         );
 
         match resp {
-            serde_json::Value::Null => Ok(None),
+            json::Value::Null => Ok(None),
             _ => {
-                let media_entry: MediaListEntry = serde_json::from_value(resp)?;
+                let media_entry: MediaListEntry = json::from_value(resp)?;
                 Ok(Some(media_entry.into_generic_entry(info)))
             }
         }
