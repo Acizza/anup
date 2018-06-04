@@ -403,8 +403,8 @@ impl EpisodeData {
             static ref EP_FORMAT: Regex = Regex::new(EpisodeData::EP_FORMAT_REGEX).unwrap();
         }
 
-        // Replace certain special characters with spaces since they can either
-        // affect parsing or prevent finding results on MAL
+        // Replace certain characters with spaces since they can prevent proper series
+        // identification or prevent it from being found on a sync backend
         let filename = path
             .file_name()
             .and_then(|path| path.to_str())
