@@ -20,9 +20,7 @@ macro_rules! send_query {
             $($vars)*
         });
 
-        let text = $backend.send_request($query_str, &vars)?.text()?;
-        let json: serde_json::Value = serde_json::from_str(&text)?;
-
+        let json = $backend.send_json_request($query_str, &vars)?;
         json$([$response_root])*.clone()
     }};
 }
@@ -57,7 +55,29 @@ impl Anilist {
             .headers(headers)
             .body(body)
             .send()?;
+
         Ok(response)
+    }
+
+    fn send_json_request(
+        &self,
+        query_str: &str,
+        variables: &serde_json::Value,
+    ) -> Result<serde_json::Value, BackendError> {
+        let text = self.send_request(query_str, variables)?.text()?;
+        let json: serde_json::Value = serde_json::from_str(&text)?;
+
+        if json["errors"] != serde_json::Value::Null {
+            // TODO: add error chaining
+            let err = &json["errors"][0];
+
+            let msg = err["message"].as_str().unwrap_or("unknown error");
+            let status_code = err["status"].as_u64().unwrap_or(0) as u32;
+
+            return Err(BackendError::BadResponse(status_code, msg.into()));
+        }
+
+        Ok(json)
     }
 
     fn request_user_id(&self) -> Result<u32, BackendError> {
@@ -207,7 +227,7 @@ impl SyncBackend for Anilist {
     }
 
     fn update_list_entry(&self, entry: &AnimeEntry) -> Result<(), BackendError> {
-        let resp = send_query!(self,
+        send_query!(self,
             r#"
                 mutation ($mediaId: Int, $watched_eps: Int, $score: Float, $status: MediaListStatus, $start_date: FuzzyDateInput, $finish_date: FuzzyDateInput) {
                     SaveMediaListEntry (mediaId: $mediaId, progress: $watched_eps, score: $score, status: $status, startedAt: $start_date, completedAt: $finish_date) {
@@ -224,11 +244,6 @@ impl SyncBackend for Anilist {
                 "finish_date": MediaDate::from_date(entry.finish_date),
             },
         );
-
-        if !resp["errors"].is_null() {
-            let msg = resp["errors"][0]["message"].to_string();
-            return Err(BackendError::ListUpdate(msg));
-        }
 
         Ok(())
     }

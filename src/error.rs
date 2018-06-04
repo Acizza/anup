@@ -142,8 +142,8 @@ pub enum BackendError {
     #[fail(display = "received invalid JSON response")]
     InvalidJsonResponse,
 
-    #[fail(display = "list update failed: {}", _0)]
-    ListUpdate(String),
+    #[fail(display = "received bad response from API: {} {}", _0, _1)]
+    BadResponse(u32, String),
 }
 
 impl_error_conversion!(BackendError,
