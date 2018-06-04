@@ -96,44 +96,75 @@ impl Anilist {
         let id = serde_json::from_value(resp)?;
         Ok(id)
     }
+
+    fn prompt_for_access_token(open_url: bool) -> Result<String, BackendError> {
+        if open_url {
+            try_open_url(LOGIN_URL);
+        }
+
+        println!(
+            "please authorize your account in the opened browser tab and paste the code below:"
+        );
+
+        let token = input::read_line()?;
+        Ok(token)
+    }
+
+    fn login(&mut self, is_first_launch: bool, config: &mut Config) -> Result<(), BackendError> {
+        let mut times_token_incorrect = 0;
+
+        loop {
+            match self.request_user_id() {
+                Ok(user_id) => {
+                    self.user_id = user_id;
+                    break;
+                }
+                // As bad as checking for a specific error via its message is, the API does not provide
+                // anything else to narrow it down to an invalid token error
+                Err(BackendError::BadResponse(400, ref msg))
+                    if msg.to_lowercase() == "invalid token" =>
+                {
+                    times_token_incorrect += 1;
+                    println!("\ninvalid access token");
+
+                    let should_open_url = !is_first_launch && times_token_incorrect <= 1;
+                    let token = Anilist::prompt_for_access_token(should_open_url)?;
+
+                    self.access_token = token;
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        if times_token_incorrect > 0 {
+            config.user.encode_access_token(&self.access_token);
+        }
+
+        Ok(())
+    }
 }
 
 impl SyncBackend for Anilist {
     fn init(config: &mut Config) -> Result<Anilist, BackendError> {
-        let access_token = match config.user.access_token {
-            Some(_) => config.user.decode_access_token()?,
-            None => {
-                match open_url(LOGIN_URL) {
-                    Ok(status) if status.success() => (),
-                    result => {
-                        eprintln!(
-                            "failed to open URL in default browser. please open it manually: {}",
-                            LOGIN_URL
-                        );
+        let is_first_launch = config.user.access_token.is_none();
 
-                        if let Err(err) = result {
-                            eprintln!("error message: {}", err);
-                        }
-                    }
-                }
-
-                println!("please authorize your account in the opened browser tab and paste the code below:");
-                let token = input::read_line()?;
-                config.user.encode_access_token(&token);
-
-                token
-            }
+        let access_token = if is_first_launch {
+            let token = Anilist::prompt_for_access_token(true)?;
+            config.user.encode_access_token(&token);
+            token
+        } else {
+            config.user.decode_access_token()?
         };
 
-        let mut instance = Anilist {
+        let mut anilist = Anilist {
             client: Client::new(),
             user_id: 0,
             access_token,
         };
 
-        instance.user_id = instance.request_user_id()?;
+        anilist.login(is_first_launch, config)?;
 
-        Ok(instance)
+        Ok(anilist)
     }
 
     fn search_by_name(&self, name: &str) -> Result<Vec<AnimeInfo>, BackendError> {
@@ -266,6 +297,22 @@ fn open_url(url: &str) -> io::Result<ExitStatus> {
     compile_error!("support for opening URL's not implemented for this platform");
 
     Command::new(LAUNCH_PROGRAM).arg(url).status()
+}
+
+fn try_open_url(url: &str) {
+    match open_url(url) {
+        Ok(status) if status.success() => (),
+        result => {
+            eprintln!(
+                "failed to open URL in default browser. please open it manually: {}",
+                url
+            );
+
+            if let Err(err) = result {
+                eprintln!("error message: {}", err);
+            }
+        }
+    }
 }
 
 #[derive(Deserialize)]
