@@ -1,5 +1,5 @@
 use backend::{AnimeEntry, AnimeInfo, Status, SyncBackend};
-use chrono::{Date, Local};
+use chrono::Local;
 use error::SeriesError;
 use input::{self, Answer};
 use process;
@@ -169,7 +169,7 @@ where
         };
 
         match season.list_entry.status {
-            Status::Completed => season.prompt_to_rewatch()?,
+            Status::Completed => season.update_series_status(Status::Rewatching)?,
             _ => (),
         }
 
@@ -207,7 +207,11 @@ where
         }
 
         match self.list_entry.info.episodes {
-            Some(total_eps) if relative_ep >= total_eps => self.series_completed()?,
+            Some(total_eps) if relative_ep >= total_eps => {
+                self.update_series_status(Status::Completed)?;
+                // TODO: replace with more graceful way of exiting
+                std::process::exit(0);
+            }
             _ => self.episode_completed()?,
         }
 
@@ -223,7 +227,7 @@ where
         }
     }
 
-    fn episode_completed(&mut self) -> Result<(), SeriesError> {
+    fn episode_completed(&self) -> Result<(), SeriesError> {
         println!(
             "[{}] episode {}/{} completed",
             self.list_entry.info.title,
@@ -235,34 +239,7 @@ where
                 .unwrap_or_else(|| "?".to_string())
         );
 
-        if self.list_entry.status != Status::Rewatching {
-            self.list_entry.status = Status::Watching;
-
-            if self.list_entry.watched_episodes <= 1 {
-                self.list_entry.start_date = Some(Local::today());
-            }
-        }
-
-        self.update_list_entry()?;
-        Ok(())
-    }
-
-    fn series_completed(&mut self) -> Result<(), SeriesError> {
-        println!(
-            "[{}] completed!\ndo you want to rate it? (Y/n)",
-            self.list_entry.info.title
-        );
-
-        if input::read_yn(Answer::Yes)? {
-            self.prompt_to_update_score();
-        }
-
-        self.list_entry.status = Status::Completed;
-        self.add_series_finish_date(Local::today())?;
-        self.update_list_entry()?;
-
-        // Nothing to do now
-        std::process::exit(0);
+        self.update_list_entry()
     }
 
     fn next_episode_options(&mut self) -> Result<(), SeriesError> {
@@ -273,16 +250,13 @@ where
 
         match input.as_str() {
             "d" => {
-                self.list_entry.status = Status::Dropped;
-                self.add_series_finish_date(Local::today())?;
-                self.update_list_entry()?;
-
+                self.update_series_status(Status::Dropped)?;
+                // TODO: replace with more graceful way of exiting
                 std::process::exit(0);
             }
             "h" => {
-                self.list_entry.status = Status::OnHold;
-                self.update_list_entry()?;
-
+                self.update_series_status(Status::OnHold)?;
+                // TODO: replace with more graceful way of exiting
                 std::process::exit(0);
             }
             "r" => {
@@ -308,45 +282,49 @@ where
         }
     }
 
-    fn add_series_finish_date(&mut self, date: Date<Local>) -> Result<(), SeriesError> {
-        let entry = &mut self.list_entry;
+    fn update_series_status(&mut self, status: Status) -> Result<(), SeriesError> {
+        self.list_entry.status = status;
 
-        // Someone may want to keep the original start / finish date for an
-        // anime they're rewatching
-        if entry.status == Status::Rewatching && entry.finish_date.is_some() {
-            println!("do you want to override the finish date? (Y/n)");
-
-            if input::read_yn(Answer::Yes)? {
-                entry.finish_date = Some(date);
+        match status {
+            Status::Watching => {
+                if self.list_entry.watched_episodes <= 1 {
+                    self.list_entry.start_date = Some(Local::today());
+                }
             }
-        } else {
-            entry.finish_date = Some(date);
+            Status::Rewatching => {
+                println!("[{}] already completed", self.list_entry.info.title);
+                println!("do you want to reset the start and end dates of the series? (Y/n)");
+
+                if input::read_yn(Answer::Yes)? {
+                    self.list_entry.start_date = Some(Local::today());
+                    self.list_entry.finish_date = None;
+                }
+
+                self.list_entry.watched_episodes = 0;
+            }
+            Status::Completed => {
+                if self.list_entry.finish_date.is_none() {
+                    self.list_entry.finish_date = Some(Local::today());
+                }
+
+                println!(
+                    "[{}] completed!\ndo you want to rate it? (Y/n)",
+                    self.list_entry.info.title
+                );
+
+                if input::read_yn(Answer::Yes)? {
+                    self.prompt_to_update_score();
+                }
+            }
+            Status::Dropped => {
+                if self.list_entry.finish_date.is_none() {
+                    self.list_entry.finish_date = Some(Local::today());
+                }
+            }
+            Status::OnHold | Status::PlanToWatch => (),
         }
 
-        Ok(())
-    }
-
-    fn prompt_to_rewatch(&mut self) -> Result<(), SeriesError> {
-        println!("[{}] already completed", self.list_entry.info.title);
-        println!("do you want to rewatch it? (Y/n)");
-
-        if input::read_yn(Answer::Yes)? {
-            self.list_entry.status = Status::Rewatching;
-            self.list_entry.watched_episodes = 0;
-
-            println!("do you want to reset the start and end date? (Y/n)");
-
-            if input::read_yn(Answer::Yes)? {
-                self.list_entry.start_date = Some(Local::today());
-                self.list_entry.finish_date = None;
-            }
-
-            self.update_list_entry()?;
-        } else {
-            // No point in continuing in this case
-            std::process::exit(0);
-        }
-
+        self.update_list_entry()?;
         Ok(())
     }
 }
