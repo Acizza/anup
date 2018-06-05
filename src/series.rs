@@ -170,6 +170,7 @@ where
 
         match season.list_entry.status {
             Status::Completed => season.update_series_status(Status::Rewatching)?,
+            Status::Dropped | Status::OnHold => season.prompt_watch_paused_series()?,
             _ => (),
         }
 
@@ -282,14 +283,30 @@ where
         }
     }
 
-    fn update_series_status(&mut self, status: Status) -> Result<(), SeriesError> {
-        self.list_entry.status = status;
+    fn prompt_watch_paused_series(&mut self) -> Result<(), SeriesError> {
+        println!(
+            "[{}] was put on hold or dropped\ndo you want to watch it from the beginning? (Y/n)",
+            self.list_entry.info.title
+        );
 
+        if input::read_yn(Answer::Yes)? {
+            self.list_entry.watched_episodes = 0;
+        }
+
+        self.update_series_status(Status::Watching)?;
+        Ok(())
+    }
+
+    fn update_series_status(&mut self, status: Status) -> Result<(), SeriesError> {
         match status {
             Status::Watching => {
-                if self.list_entry.watched_episodes <= 1 {
+                // A series that was on hold probably already has a starting date, and it would make
+                // more sense to use that one instead of replacing it
+                if self.list_entry.status != Status::OnHold {
                     self.list_entry.start_date = Some(Local::today());
                 }
+
+                self.list_entry.finish_date = None;
             }
             Status::Rewatching => {
                 println!("[{}] already completed", self.list_entry.info.title);
@@ -324,7 +341,9 @@ where
             Status::OnHold | Status::PlanToWatch => (),
         }
 
+        self.list_entry.status = status;
         self.update_list_entry()?;
+
         Ok(())
     }
 }
