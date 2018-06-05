@@ -29,7 +29,7 @@ The next time you want to watch the same series, you can simply launch the progr
 * Windows: `anup.exe tora`
 * macOS: `anup tora`
 
-When you start the program for the first time, a URL will be opened in your default browser to let you authorize the program to access your AniList account. If you do not want your access token to be saved, you can launch the program with the `--dontsavetoken` flag. Please keep in mind that your access token is only encoded in the Base64 format if you decide to save it, which means that anyone can decode and use it.
+The first time you launch the program, a URL will be opened in your default browser to let you authorize the program to access your AniList account via [OAuth](https://oauth.net/).
 
 When you play a series for the first time, the program will search for the anime detected in the episode files, and prompt you to select which series you are actually watching. It will then create a file in the same directory called `.anup` that will save your selection so you do not have to enter it again.
 
@@ -43,5 +43,3 @@ The program's configuration file (which contains your account access token) is l
 * Linux: `~/.config/anup/`
 * Windows: `C:\Users\{USERNAME}\AppData\Roaming\anup`
 * macOS: `~/Library/Preferences/anup/`
-
-If you need to update your access token, or no longer wish to keep it stored, you can remove the `access_token` field under the `[user]` category in the configuration file, and you will be prompted to enter a new token the next time you launch the program. Remember to launch the program with `--dontsavetoken` if you don't wish to store it anymore.
