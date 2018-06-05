@@ -42,20 +42,12 @@ impl Config {
         Ok(config)
     }
 
-    pub fn save(&mut self, save_access_token: bool) -> Result<(), ConfigError> {
-        let access_token = self.user.access_token.clone();
-
-        if !save_access_token {
-            self.user.access_token = None;
-        }
-
+    pub fn save(&self) -> Result<(), ConfigError> {
         let path = get_config_file_path()?;
         let mut file = File::create(path)?;
         let toml = toml::to_string_pretty(self)?;
 
         write!(file, "{}", toml)?;
-
-        self.user.access_token = access_token;
         Ok(())
     }
 

@@ -63,7 +63,6 @@ fn run() -> Result<(), Error> {
         (@arg PATH: -p --path +takes_value "Specifies the directory to look for video files in")
         (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
         (@arg LIST: -l --list "Displays all saved series")
-        (@arg DONT_SAVE_TOKEN: --dontsavetoken "Don't save your account access token")
     ).get_matches();
 
     if args.is_present("LIST") {
@@ -80,7 +79,7 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
     let path = get_series_path(&mut config, args)?;
     let sync_backend = Anilist::init(&mut config)?;
 
-    config.save(!args.is_present("DONT_SAVE_TOKEN"))?;
+    config.save()?;
 
     let season = {
         let value: u32 = args
