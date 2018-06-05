@@ -50,7 +50,7 @@ impl AnimeEntry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Status {
     Watching,
     Completed,
