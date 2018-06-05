@@ -20,8 +20,7 @@ macro_rules! send_query {
             $($vars)*
         });
 
-        let json = $backend.send_json_request($query_str, &vars)?;
-        json$([$response_root])*.clone()
+        $backend.send_json_request($query_str, &vars).map(|json| json$([$response_root])*.clone())
     }};
 }
 
@@ -91,7 +90,7 @@ impl Anilist {
             "#,
             {},
             "data" => "Viewer" => "id"
-        );
+        )?;
 
         let id = json::from_value(resp)?;
         Ok(id)
@@ -193,7 +192,7 @@ impl SyncBackend for Anilist {
             "#,
             { "name": name },
             "data" => "Page" => "media"
-        );
+        )?;
 
         use self::json::Value;
         let mut series = Vec::new();
@@ -226,7 +225,7 @@ impl SyncBackend for Anilist {
             "#,
             { "id": id },
             "data" => "Media"
-        );
+        )?;
 
         let info: MediaData = json::from_value(resp)?;
         Ok(info.into())
@@ -258,11 +257,12 @@ impl SyncBackend for Anilist {
         );
 
         match resp {
-            json::Value::Null => Ok(None),
-            _ => {
-                let media_entry: MediaListEntry = json::from_value(resp)?;
+            Ok(entry_json) => {
+                let media_entry: MediaListEntry = json::from_value(entry_json)?;
                 Ok(Some(media_entry.into_generic_entry(info)))
             }
+            Err(BackendError::BadResponse(404, _)) => Ok(None),
+            Err(err) => Err(err),
         }
     }
 
@@ -283,7 +283,7 @@ impl SyncBackend for Anilist {
                 "start_date": MediaDate::from_date(entry.start_date),
                 "finish_date": MediaDate::from_date(entry.finish_date),
             },
-        );
+        )?;
 
         Ok(())
     }
