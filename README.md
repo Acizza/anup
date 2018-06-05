@@ -1,14 +1,13 @@
 # anup
-This is a command line application to play downloaded anime and automatically syncronize it on [AniList](https://anilist.co).
+This is a command line application to play downloaded anime and update its status on your [AniList](https://anilist.co) account.
 
 The program allows you to very easily play and keep track of any series you have locally by letting you give it a custom name to refer to it again later.
 
 Current features include:
 * Automatic detection of a series based off its filename
-* Playing the next unwatched episode(s) of a series
-* Rating a series after playing an episode
-* Dropping / putting a series on hold after playing an episode
-* Rewatching support
+* Playing the next unwatched episode(s) of a series in your default video player
+* Options to rate, put on hold, and drop a series after playing an episode
+* Automatically handles watching a series that has already been dropped, put on hold, or completed
 * Automatically sets the start and end date of a series
 * Support for episode files that have multiple seasons merged together
 
