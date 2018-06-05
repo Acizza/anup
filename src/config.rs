@@ -33,7 +33,12 @@ impl Config {
         let file_contents = match fs::read_to_string(&path) {
             Ok(contents) => contents,
             Err(err) => match err.kind() {
-                ErrorKind::NotFound => return Ok(Config::new(User::new(None))),
+                ErrorKind::NotFound => {
+                    let user = User::new(None);
+                    let config = Config::new(user);
+
+                    return Ok(config);
+                }
                 _ => return Err(err.into()),
             },
         };
