@@ -15,15 +15,15 @@ lazy_static! {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
-    pub user: User,
     pub series: HashMap<String, PathBuf>,
+    pub anilist: Anilist,
 }
 
 impl Config {
-    pub fn new(user: User) -> Config {
+    pub fn new() -> Config {
         Config {
-            user,
             series: HashMap::new(),
+            anilist: Anilist::new(),
         }
     }
 
@@ -33,12 +33,7 @@ impl Config {
         let file_contents = match fs::read_to_string(&path) {
             Ok(contents) => contents,
             Err(err) => match err.kind() {
-                ErrorKind::NotFound => {
-                    let user = User::new(None);
-                    let config = Config::new(user);
-
-                    return Ok(config);
-                }
+                ErrorKind::NotFound => return Ok(Config::new()),
                 _ => return Err(err.into()),
             },
         };
@@ -75,26 +70,42 @@ fn get_config_file_path() -> io::Result<PathBuf> {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct User {
-    pub access_token: Option<String>,
+pub struct AccessToken {
+    pub token: Option<String>,
 }
 
-impl User {
-    pub fn new(access_token: Option<&str>) -> User {
-        User {
-            access_token: access_token.map(|t| base64::encode(t)),
-        }
+impl AccessToken {
+    pub fn new(token: Option<String>) -> AccessToken {
+        AccessToken { token }
     }
 
-    pub fn encode_access_token(&mut self, access_token: &str) {
-        self.access_token = Some(base64::encode(access_token));
+    pub fn encode(&mut self, token: &str) {
+        self.token = Some(base64::encode(token));
     }
 
-    pub fn decode_access_token(&self) -> Result<String, ConfigError> {
-        let access_token = self.access_token.as_ref().ok_or(ConfigError::TokenNotSet)?;
-        let bytes = base64::decode(access_token).map_err(ConfigError::FailedTokenDecode)?;
+    pub fn decode(&self) -> Result<String, ConfigError> {
+        let token = self.token.as_ref().ok_or(ConfigError::TokenNotSet)?;
+        let bytes = base64::decode(token).map_err(ConfigError::FailedTokenDecode)?;
         let string = String::from_utf8(bytes)?;
 
         Ok(string)
+    }
+
+    pub fn is_set(&self) -> bool {
+        self.token.is_some()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Anilist {
+    #[serde(flatten)]
+    pub token: AccessToken,
+}
+
+impl Anilist {
+    pub fn new() -> Anilist {
+        Anilist {
+            token: AccessToken::new(None),
+        }
     }
 }

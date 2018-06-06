@@ -136,7 +136,7 @@ impl Anilist {
         }
 
         if times_token_incorrect > 0 {
-            config.user.encode_access_token(&self.access_token);
+            config.anilist.token.encode(&self.access_token);
         }
 
         Ok(())
@@ -154,14 +154,14 @@ impl SyncBackend for Anilist {
     }
 
     fn init(config: &mut Config) -> Result<Anilist, BackendError> {
-        let is_first_launch = config.user.access_token.is_none();
+        let is_first_launch = !config.anilist.token.is_set();
 
         let access_token = if is_first_launch {
             let token = Anilist::prompt_for_access_token(true)?;
-            config.user.encode_access_token(&token);
+            config.anilist.token.encode(&token);
             token
         } else {
-            config.user.decode_access_token()?
+            config.anilist.token.decode()?
         };
 
         let mut anilist = Anilist {
