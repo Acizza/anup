@@ -1,5 +1,7 @@
+mod serialize;
+
+use self::serialize::{Media, MediaDate, MediaListEntry, MediaStatus, ScoreFormat, User};
 use super::{AnimeEntry, AnimeInfo, Status, SyncBackend};
-use chrono::{Date, Datelike, Local, NaiveDate, TimeZone};
 use config::Config;
 use error::BackendError;
 use input;
@@ -226,7 +228,7 @@ impl SyncBackend for Anilist {
         match resp {
             Value::Array(ref entries) => {
                 for entry in entries {
-                    let series_info: MediaData = json::from_value(entry.clone())?;
+                    let series_info: Media = json::from_value(entry.clone())?;
                     series.push(series_info.into());
                 }
             }
@@ -253,7 +255,7 @@ impl SyncBackend for Anilist {
             "data" => "Media"
         )?;
 
-        let info: MediaData = json::from_value(resp)?;
+        let info: Media = json::from_value(resp)?;
         Ok(info.into())
     }
 
@@ -341,198 +343,6 @@ fn try_open_url(url: &str) {
             if let Err(err) = result {
                 eprintln!("error message: {}", err);
             }
-        }
-    }
-}
-
-#[derive(Deserialize)]
-struct User {
-    id: u32,
-    #[serde(rename = "mediaListOptions")]
-    list_options: MediaListOptions,
-}
-
-impl Default for User {
-    fn default() -> User {
-        User {
-            id: 0,
-            list_options: MediaListOptions::default(),
-        }
-    }
-}
-
-#[derive(Deserialize)]
-struct MediaListOptions {
-    #[serde(rename = "scoreFormat")]
-    score_format: ScoreFormat,
-}
-
-impl Default for MediaListOptions {
-    fn default() -> MediaListOptions {
-        MediaListOptions {
-            score_format: ScoreFormat::default(),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Copy, Clone)]
-enum ScoreFormat {
-    #[serde(rename = "POINT_100")]
-    Point100,
-    #[serde(rename = "POINT_10_DECIMAL")]
-    Point10Decimal,
-    #[serde(rename = "POINT_10")]
-    Point10,
-    #[serde(rename = "POINT_5")]
-    Point5,
-    #[serde(rename = "POINT_3")]
-    Point3,
-}
-
-impl ScoreFormat {
-    fn max_score(&self) -> u8 {
-        use self::ScoreFormat::*;
-
-        match self {
-            Point100 => 100,
-            Point10Decimal | Point10 => 10,
-            Point5 => 5,
-            Point3 => 3,
-        }
-    }
-}
-
-impl Default for ScoreFormat {
-    fn default() -> ScoreFormat {
-        ScoreFormat::Point100
-    }
-}
-
-#[derive(Deserialize)]
-struct MediaData {
-    id: u32,
-    title: Title,
-    episodes: Option<u32>,
-}
-
-#[derive(Deserialize)]
-struct Title {
-    romaji: String,
-}
-
-impl Into<AnimeInfo> for MediaData {
-    fn into(self) -> AnimeInfo {
-        AnimeInfo {
-            id: self.id,
-            title: self.title.romaji,
-            episodes: self.episodes,
-        }
-    }
-}
-
-#[derive(Deserialize)]
-struct MediaListEntry {
-    progress: u32,
-    status: MediaStatus,
-    score: f32,
-    #[serde(rename = "startedAt")]
-    start_date: MediaDate,
-    #[serde(rename = "completedAt")]
-    finish_date: MediaDate,
-}
-
-impl MediaListEntry {
-    fn into_generic_entry(self, info: AnimeInfo) -> AnimeEntry {
-        AnimeEntry {
-            info,
-            watched_episodes: self.progress,
-            score: self.score,
-            status: self.status.into(),
-            start_date: self.start_date.into_date(),
-            finish_date: self.finish_date.into_date(),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Copy, Clone, PartialEq)]
-enum MediaStatus {
-    #[serde(rename = "CURRENT")]
-    Current,
-    #[serde(rename = "COMPLETED")]
-    Completed,
-    #[serde(rename = "PAUSED")]
-    Paused,
-    #[serde(rename = "DROPPED")]
-    Dropped,
-    #[serde(rename = "PLANNING")]
-    Planning,
-    #[serde(rename = "REPEATING")]
-    Repeating,
-}
-
-impl Into<Status> for MediaStatus {
-    fn into(self) -> Status {
-        match self {
-            MediaStatus::Current => Status::Watching,
-            MediaStatus::Completed => Status::Completed,
-            MediaStatus::Paused => Status::OnHold,
-            MediaStatus::Dropped => Status::Dropped,
-            MediaStatus::Planning => Status::PlanToWatch,
-            MediaStatus::Repeating => Status::Rewatching,
-        }
-    }
-}
-
-impl From<Status> for MediaStatus {
-    fn from(status: Status) -> MediaStatus {
-        match status {
-            Status::Watching => MediaStatus::Current,
-            Status::Completed => MediaStatus::Completed,
-            Status::OnHold => MediaStatus::Paused,
-            Status::Dropped => MediaStatus::Dropped,
-            Status::PlanToWatch => MediaStatus::Planning,
-            Status::Rewatching => MediaStatus::Repeating,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-struct MediaDate {
-    year: Option<i32>,
-    month: Option<u32>,
-    day: Option<u32>,
-}
-
-impl MediaDate {
-    fn into_date(self) -> Option<Date<Local>> {
-        match (self.year, self.month, self.day) {
-            (Some(year), Some(month), Some(day)) => Some(Local.ymd(year, month, day)),
-            _ => None,
-        }
-    }
-
-    fn from_date(date: Option<Date<Local>>) -> MediaDate {
-        match date {
-            Some(date) => MediaDate {
-                year: Some(date.year()),
-                month: Some(date.month()),
-                day: Some(date.day()),
-            },
-            None => MediaDate {
-                year: None,
-                month: None,
-                day: None,
-            },
-        }
-    }
-}
-
-impl From<NaiveDate> for MediaDate {
-    fn from(date: NaiveDate) -> MediaDate {
-        MediaDate {
-            year: Some(date.year()),
-            month: Some(date.month()),
-            day: Some(date.day()),
         }
     }
 }
