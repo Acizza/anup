@@ -26,7 +26,7 @@ macro_rules! send_query {
 
 pub struct Anilist {
     client: Client,
-    user_id: u32,
+    user: User,
     access_token: String,
 }
 
@@ -79,21 +79,24 @@ impl Anilist {
         Ok(json)
     }
 
-    fn request_user_id(&self) -> Result<u32, BackendError> {
+    fn request_user_info(&self) -> Result<User, BackendError> {
         let resp = send_query!(self,
             r#"
                 query {
                     Viewer {
                         id
+                        mediaListOptions {
+                            scoreFormat
+                        }
                     }
                 }
             "#,
             {},
-            "data" => "Viewer" => "id"
+            "data" => "Viewer"
         )?;
 
-        let id = json::from_value(resp)?;
-        Ok(id)
+        let user = json::from_value(resp)?;
+        Ok(user)
     }
 
     fn prompt_for_access_token(open_url: bool) -> Result<String, BackendError> {
@@ -113,9 +116,9 @@ impl Anilist {
         let mut times_token_incorrect = 0;
 
         loop {
-            match self.request_user_id() {
-                Ok(user_id) => {
-                    self.user_id = user_id;
+            match self.request_user_info() {
+                Ok(user) => {
+                    self.user = user;
                     break;
                 }
                 // As bad as checking for a specific error via its message is, the API does not provide
@@ -149,8 +152,7 @@ impl SyncBackend for Anilist {
     }
 
     fn max_score(&self) -> u8 {
-        // TODO: add support for other scoring types
-        10
+        self.user.list_options.score_format.max_score()
     }
 
     fn init(config: &mut Config) -> Result<Anilist, BackendError> {
@@ -166,7 +168,7 @@ impl SyncBackend for Anilist {
 
         let mut anilist = Anilist {
             client: Client::new(),
-            user_id: 0,
+            user: User::default(),
             access_token,
         };
 
@@ -252,7 +254,7 @@ impl SyncBackend for Anilist {
                     }
                 }
             "#,
-            { "id": info.id, "userID": self.user_id },
+            { "id": info.id, "userID": self.user.id },
             "data" => "MediaList"
         );
 
@@ -316,6 +318,69 @@ fn try_open_url(url: &str) {
                 eprintln!("error message: {}", err);
             }
         }
+    }
+}
+
+#[derive(Deserialize)]
+struct User {
+    id: u32,
+    #[serde(rename = "mediaListOptions")]
+    list_options: MediaListOptions,
+}
+
+impl Default for User {
+    fn default() -> User {
+        User {
+            id: 0,
+            list_options: MediaListOptions::default(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct MediaListOptions {
+    #[serde(rename = "scoreFormat")]
+    score_format: ScoreFormat,
+}
+
+impl Default for MediaListOptions {
+    fn default() -> MediaListOptions {
+        MediaListOptions {
+            score_format: ScoreFormat::default(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Copy, Clone)]
+enum ScoreFormat {
+    #[serde(rename = "POINT_100")]
+    Point100,
+    #[serde(rename = "POINT_10_DECIMAL")]
+    Point10Decimal,
+    #[serde(rename = "POINT_10")]
+    Point10,
+    #[serde(rename = "POINT_5")]
+    Point5,
+    #[serde(rename = "POINT_3")]
+    Point3,
+}
+
+impl ScoreFormat {
+    fn max_score(&self) -> u8 {
+        use self::ScoreFormat::*;
+
+        match self {
+            Point100 => 100,
+            Point10Decimal | Point10 => 10,
+            Point5 => 5,
+            Point3 => 3,
+        }
+    }
+}
+
+impl Default for ScoreFormat {
+    fn default() -> ScoreFormat {
+        ScoreFormat::Point100
     }
 }
 
