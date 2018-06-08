@@ -9,7 +9,9 @@ where
     Self: Sized,
 {
     fn name() -> &'static str;
-    fn max_score(&self) -> u8;
+
+    fn score_range(&self) -> (String, String);
+    fn parse_score(&self, input: &str) -> Result<f32, BackendError>;
 
     fn init(config: &mut Config) -> Result<Self, BackendError>;
 

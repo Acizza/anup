@@ -151,8 +151,32 @@ impl SyncBackend for Anilist {
         "AniList"
     }
 
-    fn max_score(&self) -> u8 {
-        self.user.list_options.score_format.max_score()
+    fn score_range(&self) -> (String, String) {
+        match self.user.list_options.score_format {
+            ScoreFormat::Point3 => (":(".into(), ":)".into()),
+            format => ("1".into(), format.max_score().to_string()),
+        }
+    }
+
+    fn parse_score(&self, input: &str) -> Result<f32, BackendError> {
+        match self.user.list_options.score_format {
+            ScoreFormat::Point3 => match input {
+                ":(" => Ok(1.0),
+                ":|" => Ok(2.0),
+                ":)" => Ok(3.0),
+                _ => Err(BackendError::UnknownScoreValue(input.into())),
+            },
+            format => {
+                let value = input.parse::<f32>()?;
+                let max_score = format.max_score() as f32;
+
+                if value < 1.0 || value > max_score {
+                    return Err(BackendError::OutOfRangeScore);
+                }
+
+                Ok(value)
+            }
+        }
     }
 
     fn init(config: &mut Config) -> Result<Anilist, BackendError> {

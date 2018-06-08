@@ -274,12 +274,20 @@ where
     }
 
     fn prompt_to_update_score(&mut self) {
-        let max_score = self.series.sync_backend.max_score();
-        println!("enter your score between 1-{}", max_score);
+        let (min_score, max_score) = self.series.sync_backend.score_range();
+        println!("enter your score between {} and {}:", min_score, max_score);
 
-        match input::read_range(1.0, f32::from(max_score)) {
+        let input = match input::read_line() {
+            Ok(input) => input,
+            Err(err) => {
+                eprintln!("failed to read score: {}", err);
+                return;
+            }
+        };
+
+        match self.series.sync_backend.parse_score(&input) {
             Ok(score) => self.list_entry.score = score,
-            Err(err) => eprintln!("failed to get score: {}", err),
+            Err(err) => eprintln!("failed to parse score: {}", err),
         }
     }
 

@@ -130,6 +130,9 @@ pub enum BackendError {
     #[fail(display = "io error")]
     Io(#[cause] ::std::io::Error),
 
+    #[fail(display = "float parse error")]
+    ParseFloat(#[cause] ::std::num::ParseFloatError),
+
     #[fail(display = "config error")]
     ConfigError(#[cause] ConfigError),
 
@@ -144,10 +147,17 @@ pub enum BackendError {
 
     #[fail(display = "received bad response from API: {} {}", _0, _1)]
     BadResponse(u32, String),
+
+    #[fail(display = "unknown score value: {}", _0)]
+    UnknownScoreValue(String),
+
+    #[fail(display = "score out of range")]
+    OutOfRangeScore,
 }
 
 impl_error_conversion!(BackendError,
     ::std::io::Error => Io,
+    ::std::num::ParseFloatError => ParseFloat,
     ConfigError => ConfigError,
     ::reqwest::Error => HttpError,
     ::serde_json::Error => Json,
