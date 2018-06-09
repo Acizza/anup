@@ -156,6 +156,7 @@ impl SyncBackend for Anilist {
     fn score_range(&self) -> (String, String) {
         match self.user.list_options.score_format {
             ScoreFormat::Point3 => (":(".into(), ":)".into()),
+            ScoreFormat::Point10Decimal => ("1.0".into(), "10.0".into()),
             format => ("1".into(), format.max_score().to_string()),
         }
     }
