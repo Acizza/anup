@@ -169,9 +169,10 @@ where
         };
 
         match season.list_entry.status {
+            Status::Watching | Status::Rewatching => (),
             Status::Completed => season.update_series_status(Status::Rewatching)?,
-            Status::Dropped | Status::OnHold => season.prompt_watch_paused_series()?,
-            _ => (),
+            Status::OnHold | Status::Dropped => season.prompt_watch_paused_series()?,
+            Status::PlanToWatch => season.update_series_status(Status::Watching)?,
         }
 
         Ok(season)
