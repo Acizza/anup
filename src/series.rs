@@ -5,6 +5,7 @@ use input::{self, Answer};
 use process;
 use regex::Regex;
 use std;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -27,9 +28,11 @@ where
 {
     pub const DATA_FILE_NAME: &'static str = ".anup";
 
-    pub fn from_data(episode_data: EpisodeData, sync_backend: B) -> Result<Series<B>, SeriesError> {
-        let save_path = PathBuf::from(&episode_data.path).join(Series::<B>::DATA_FILE_NAME);
-        let save_data = SaveData::from_path_or_default(&save_path)?;
+    pub fn from_path(path: &Path, sync_backend: B) -> Result<Series<B>, SeriesError> {
+        let save_path = PathBuf::from(path).join(Series::<B>::DATA_FILE_NAME);
+        let mut save_data = SaveData::from_path_or_default(&save_path)?;
+
+        let episode_data = Series::<B>::parse_episode_data(path, &mut save_data)?;
 
         let series = Series {
             sync_backend,
@@ -39,6 +42,40 @@ where
         };
 
         Ok(series)
+    }
+
+    fn parse_episode_data(
+        path: &Path,
+        save_data: &mut SaveData,
+    ) -> Result<EpisodeData, SeriesError> {
+        loop {
+            match EpisodeData::parse_dir(path, save_data.episode_matcher.as_ref()) {
+                Ok(data) => break Ok(data),
+                Err(SeriesError::NoEpisodesFound) => {
+                    println!("no episodes found");
+                    println!("do you want to create a custom regex matcher? (Y/n)");
+
+                    if input::read_yn(Answer::Yes)? {
+                        println!("note: mark the series name and episode number with {{name}} and {{episode}}");
+                        println!("example:");
+                        println!("filename: [SubGroup] Series Name - Ep01.mkv");
+                        println!(r"custom pattern: \[.+?\] {{name}} - Ep{{episode}}.mkv");
+
+                        save_data.episode_matcher = Some(input::read_line()?);
+                    } else {
+                        // TODO: exit more gracefully
+                        std::process::exit(0);
+                    }
+                }
+                Err(err @ SeriesError::Regex(_))
+                | Err(err @ SeriesError::UnknownRegexCapture(_)) => {
+                    eprintln!("error parsing regex pattern: {}", err);
+                    println!("please try again:");
+                    save_data.episode_matcher = Some(input::read_line()?);
+                }
+                Err(err) => return Err(err),
+            }
+        }
     }
 
     pub fn load_season(&mut self, season: u32) -> Result<Season<B>, SeriesError> {
@@ -139,6 +176,51 @@ where
                 self.sync_backend.update_list_entry(&entry)?;
                 Ok(entry)
             }
+        }
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct SaveData {
+    pub episode_matcher: Option<String>,
+    pub seasons: Vec<SeasonInfo>,
+}
+
+impl SaveData {
+    fn from_path(path: &Path) -> Result<SaveData, SeriesError> {
+        let file_contents = fs::read_to_string(path)?;
+        let data = toml::from_str(&file_contents)?;
+
+        Ok(data)
+    }
+
+    fn from_path_or_default(path: &Path) -> Result<SaveData, SeriesError> {
+        if path.exists() {
+            SaveData::from_path(path)
+        } else {
+            Ok(SaveData::default())
+        }
+    }
+
+    fn write_to(&self, path: &Path) -> Result<(), SeriesError> {
+        let toml = toml::to_string_pretty(self)?;
+        fs::write(path, toml)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SeasonInfo {
+    pub series_id: u32,
+    pub episodes: Option<u32>,
+}
+
+impl From<AnimeInfo> for SeasonInfo {
+    fn from(info: AnimeInfo) -> SeasonInfo {
+        SeasonInfo {
+            series_id: info.id,
+            episodes: info.episodes,
         }
     }
 }
@@ -365,13 +447,39 @@ pub struct EpisodeData {
     pub series_name: String,
     pub episodes: HashMap<u32, PathBuf>,
     pub path: PathBuf,
+    pub custom_format: Option<String>,
 }
 
 impl EpisodeData {
     pub const EP_FORMAT_REGEX: &'static str =
-        r"(?:\[.+?\]\s*)?(?P<series>.+?)\s*-\s*(?P<episode>\d+).*?\..+?";
+        r"(?:\[.+?\]\s*)?(?P<name>.+?)\s*-\s*(?P<episode>\d+).*?\..+?";
 
-    pub fn parse_dir(dir: &Path) -> Result<EpisodeData, SeriesError> {
+    fn get_matcher<'a, S>(custom_format: Option<S>) -> Result<Cow<'a, Regex>, SeriesError>
+    where
+        S: AsRef<str>,
+    {
+        lazy_static! {
+            static ref EP_FORMAT: Regex = Regex::new(EpisodeData::EP_FORMAT_REGEX).unwrap();
+        }
+
+        match custom_format {
+            Some(raw_pattern) => {
+                let pattern = raw_pattern
+                    .as_ref()
+                    .replace("{name}", "(?P<name>.+?)")
+                    .replace("{episode}", r"(?P<episode>\d+)");
+
+                let regex = Regex::new(&pattern)?;
+                Ok(Cow::Owned(regex))
+            }
+            None => Ok(Cow::Borrowed(&*EP_FORMAT)),
+        }
+    }
+
+    pub fn parse_dir<S>(dir: &Path, custom_format: Option<S>) -> Result<EpisodeData, SeriesError>
+    where
+        S: AsRef<str>,
+    {
         if !dir.is_dir() {
             return Err(SeriesError::NotADirectory(
                 dir.file_name()
@@ -379,6 +487,8 @@ impl EpisodeData {
                     .unwrap_or_else(|| "err".into()),
             ));
         }
+
+        let matcher = EpisodeData::get_matcher(custom_format)?;
 
         let mut series_name = None;
         let mut episodes = HashMap::new();
@@ -390,7 +500,7 @@ impl EpisodeData {
                 continue;
             }
 
-            match EpisodeData::parse_filename(&path) {
+            match EpisodeData::parse_filename(&path, matcher.as_ref()) {
                 Ok((ep_name, ep_num)) => {
                     match series_name {
                         Some(ref series_name) if &ep_name != series_name => {
@@ -413,14 +523,14 @@ impl EpisodeData {
             series_name: name,
             episodes,
             path: dir.into(),
+            custom_format: None,
         })
     }
 
-    fn parse_filename(path: &Path) -> Result<(SeriesName, EpisodeNum), SeriesError> {
-        lazy_static! {
-            static ref EP_FORMAT: Regex = Regex::new(EpisodeData::EP_FORMAT_REGEX).unwrap();
-        }
-
+    fn parse_filename(
+        path: &Path,
+        matcher: &Regex,
+    ) -> Result<(SeriesName, EpisodeNum), SeriesError> {
         // Replace certain characters with spaces since they can prevent proper series
         // identification or prevent it from being found on a sync backend
         let filename = path
@@ -429,67 +539,32 @@ impl EpisodeData {
             .ok_or(SeriesError::UnableToGetFilename)?
             .replace('_', " ");
 
-        let caps = EP_FORMAT
+        let caps = matcher
             .captures(&filename)
             .ok_or(SeriesError::EpisodeRegexCaptureFailed)?;
 
         let series_name = {
-            let raw_name = &caps["series"];
+            let raw_name = caps
+                .name("name")
+                .map(|c| c.as_str())
+                .ok_or_else(|| SeriesError::UnknownRegexCapture("name".into()))?;
 
-            raw_name.replace('.', " ")
-            .replace(" -", ":") // Dashes typically represent a colon in file names
-            .trim()
-            .to_string()
+            raw_name
+                .replace('.', " ")
+                .replace(" -", ":") // Dashes typically represent a colon in file names
+                .trim()
+                .to_string()
         };
 
-        let episode = caps["episode"]
-            .parse()
-            .map_err(SeriesError::EpisodeNumParseFailed)?;
+        let episode = caps
+            .name("episode")
+            .ok_or_else(|| SeriesError::UnknownRegexCapture("episode".into()))
+            .and_then(|cap| {
+                cap.as_str()
+                    .parse()
+                    .map_err(SeriesError::EpisodeNumParseFailed)
+            })?;
 
         Ok((series_name, episode))
-    }
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct SaveData {
-    pub seasons: Vec<SeasonInfo>,
-}
-
-impl SaveData {
-    fn from_path(path: &Path) -> Result<SaveData, SeriesError> {
-        let file_contents = fs::read_to_string(path)?;
-        let data = toml::from_str(&file_contents)?;
-
-        Ok(data)
-    }
-
-    fn from_path_or_default(path: &Path) -> Result<SaveData, SeriesError> {
-        if path.exists() {
-            SaveData::from_path(path)
-        } else {
-            Ok(SaveData::default())
-        }
-    }
-
-    fn write_to(&self, path: &Path) -> Result<(), SeriesError> {
-        let toml = toml::to_string_pretty(self)?;
-        fs::write(path, toml)?;
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SeasonInfo {
-    pub series_id: u32,
-    pub episodes: Option<u32>,
-}
-
-impl From<AnimeInfo> for SeasonInfo {
-    fn from(info: AnimeInfo) -> SeasonInfo {
-        SeasonInfo {
-            series_id: info.id,
-            episodes: info.episodes,
-        }
     }
 }

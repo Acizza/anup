@@ -61,6 +61,9 @@ pub enum SeriesError {
     #[fail(display = "sync service error")]
     Backend(#[cause] BackendError),
 
+    #[fail(display = "regex error")]
+    Regex(#[cause] ::regex::Error),
+
     #[fail(display = "no episodes found")]
     NoEpisodesFound,
 
@@ -78,6 +81,9 @@ pub enum SeriesError {
 
     #[fail(display = "episode {} not found", _0)]
     EpisodeNotFound(u32),
+
+    #[fail(display = "no regex capture named \"{}\"", _0)]
+    UnknownRegexCapture(String),
 }
 
 impl_error_conversion!(SeriesError,
@@ -86,6 +92,7 @@ impl_error_conversion!(SeriesError,
     ::toml::ser::Error => TomlSerialize,
     ::toml::de::Error => TomlDeserialize,
     BackendError => Backend,
+    ::regex::Error => Regex,
 );
 
 #[derive(Fail, Debug)]

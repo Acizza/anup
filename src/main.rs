@@ -30,7 +30,7 @@ mod series;
 use backend::{anilist::Anilist, SyncBackend};
 use config::Config;
 use error::Error;
-use series::{EpisodeData, Series};
+use series::Series;
 use std::io::Read;
 use std::path::PathBuf;
 
@@ -90,10 +90,9 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
         value.saturating_sub(1)
     };
 
-    let episode_data = EpisodeData::parse_dir(&path)?;
-    let mut series = Series::from_data(episode_data, sync_backend)?;
-
-    series.load_season(season)?.play_all_episodes()?;
+    Series::from_path(&path, sync_backend)?
+        .load_season(season)?
+        .play_all_episodes()?;
 
     Ok(())
 }
