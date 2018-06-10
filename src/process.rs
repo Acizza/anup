@@ -1,9 +1,12 @@
+use std::ffi::OsString;
 use std::io;
-use std::path::Path;
 use std::process::ExitStatus;
 
 #[cfg(windows)]
-pub fn open_with_default(file: &Path) -> io::Result<ExitStatus> {
+pub fn open_with_default<S>(file: S) -> io::Result<ExitStatus>
+where
+    S: Into<OsString>,
+{
     use std::mem;
     use std::os::windows::ffi::OsStrExt;
     use std::os::windows::process::ExitStatusExt;
@@ -17,7 +20,7 @@ pub fn open_with_default(file: &Path) -> io::Result<ExitStatus> {
     use winapi::um::winnt::HANDLE;
     use winapi::um::winuser::SW_SHOW;
 
-    let file_name = file.as_os_str()
+    let file_name = file.into()
         .encode_wide()
         .chain(Some(0).into_iter())
         .collect::<Vec<_>>();
@@ -54,18 +57,23 @@ pub fn open_with_default(file: &Path) -> io::Result<ExitStatus> {
 }
 
 #[cfg(not(windows))]
-pub fn open_with_default(file: &Path) -> io::Result<ExitStatus> {
+pub fn open_with_default<S>(file: S) -> io::Result<ExitStatus>
+where
+    S: Into<OsString>,
+{
     use std::process::Command;
 
-    let start_program = if cfg!(target_os = "linux") {
-        "xdg-open"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        unimplemented!();
-    };
+    #[cfg(target_os = "windows")]
+    const LAUNCH_PROGRAM: &str = "explorer";
+    #[cfg(target_os = "macos")]
+    const LAUNCH_PROGRAM: &str = "open";
+    #[cfg(target_os = "linux")]
+    const LAUNCH_PROGRAM: &str = "xdg-open";
 
-    let mut cmd = Command::new(start_program);
-    cmd.arg(file);
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    compile_error!("support for opening URL's not implemented for this platform");
+
+    let mut cmd = Command::new(LAUNCH_PROGRAM);
+    cmd.arg(file.into());
     cmd.output().map(|output| output.status)
 }

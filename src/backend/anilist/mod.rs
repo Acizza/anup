@@ -5,11 +5,10 @@ use super::{AnimeEntry, AnimeInfo, Status, SyncBackend};
 use config::Config;
 use error::BackendError;
 use input;
+use process;
 use reqwest::header::{Accept, Authorization, Bearer, ContentType, Headers};
 use reqwest::{Client, Response};
 use serde_json as json;
-use std::io;
-use std::process::{Command, ExitStatus};
 
 const LOGIN_URL: &str =
     "https://anilist.co/api/v2/oauth/authorize?client_id=427&response_type=token";
@@ -50,8 +49,7 @@ impl Anilist {
             token: self.access_token.to_owned(),
         }));
 
-        let response = self
-            .client
+        let response = self.client
             .post(API_URL)
             .headers(headers)
             .body(body)
@@ -318,22 +316,8 @@ impl SyncBackend for Anilist {
     }
 }
 
-fn open_url(url: &str) -> io::Result<ExitStatus> {
-    #[cfg(target_os = "windows")]
-    const LAUNCH_PROGRAM: &str = "start";
-    #[cfg(target_os = "macos")]
-    const LAUNCH_PROGRAM: &str = "open";
-    #[cfg(target_os = "linux")]
-    const LAUNCH_PROGRAM: &str = "xdg-open";
-
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    compile_error!("support for opening URL's not implemented for this platform");
-
-    Command::new(LAUNCH_PROGRAM).arg(url).status()
-}
-
 fn try_open_url(url: &str) {
-    match open_url(url) {
+    match process::open_with_default(url) {
         Ok(status) if status.success() => (),
         result => {
             eprintln!(
