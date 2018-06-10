@@ -171,7 +171,7 @@ impl SyncBackend for Anilist {
             },
             format => {
                 let value = input.parse::<f32>()?;
-                let max_score = format.max_score() as f32;
+                let max_score = f32::from(format.max_score());
 
                 if value < 1.0 || value > max_score {
                     return Err(BackendError::OutOfRangeScore);
