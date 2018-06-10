@@ -60,7 +60,7 @@ fn get_config_file_path() -> io::Result<PathBuf> {
     let path = PROJECT_DIRS.config_dir();
 
     if !path.exists() {
-        fs::create_dir(path)?;
+        fs::create_dir_all(path)?;
     }
 
     let mut path = PathBuf::from(path);
