@@ -446,7 +446,6 @@ type EpisodeNum = u32;
 pub struct EpisodeData {
     pub series_name: String,
     pub episodes: HashMap<u32, PathBuf>,
-    pub path: PathBuf,
     pub custom_format: Option<String>,
 }
 
@@ -522,7 +521,6 @@ impl EpisodeData {
         Ok(EpisodeData {
             series_name: name,
             episodes,
-            path: dir.into(),
             custom_format: None,
         })
     }
