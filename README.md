@@ -1,7 +1,7 @@
 # anup
-This is a command line application to play downloaded anime and update its status on your [AniList](https://anilist.co) account.
+This is a command line application to play downloaded anime and to update its progress on your [AniList](https://anilist.co) account.
 
-The program allows you to very easily play and keep track of any series you have locally by letting you give it a custom name to refer to it again later.
+It is primarily intended for anyone who prefers being able to very quickly play anime from a run prompt or terminal, and anyone looking for (yet) another auto-updater application.
 
 Current features include:
 * Automatic detection of a series based off its filename
@@ -9,17 +9,15 @@ Current features include:
 * Options to rate, put on hold, and drop a series after playing an episode
 * Automatically handles watching a series that has already been dropped, put on hold, or completed
 * Automatically sets the start and end date of a series
-* Support for episode files that have multiple seasons merged together
+* Support for series that have multiple seasons merged together
 
-# Usage
-First, please ensure the names of your legally obtained episodes resemble that of a \*cough\* torrent \*cough\*. The program can detect multiple layouts that are commonly used, such as:
+The program is developed for Linux and Windows, with Linux being the primary platform.
+Base macOS support is included but untested.
 
-* `[Group] Series Title - 01.mkv`
-* `[Group]_Series_Title_-_01.mkv`
-* `[Group] Series Title - 01 [1080p].mkv`
-* `Series Title - 01.mkv`
-
-To watch a series, you will need to specify the path to it with the `-p` flag. This only needs to be provided once if you decide to specify a name for the series. For example, if you want to watch Toradora and want to save it as "tora", you can launch the program like so:
+# Playing An Anime
+Whenever you want to watch a series through the program for the first time, you will need to specify the path to it with the `-p` flag.
+To avoid having to specify the path to the series every time you want to play it, you can give the series a custom name.
+For example, to watch Toradora and save it as "tora", you can launch the program like so:
 * Linux: `anup.sh tora -p <path to episodes>`
 * Windows: `anup.exe tora -p <path to episodes>`
 * macOS: `anup tora -p <path to episodes>`
@@ -29,17 +27,34 @@ The next time you want to watch the same series, you can simply launch the progr
 * Windows: `anup.exe tora`
 * macOS: `anup tora`
 
-The first time you launch the program, a URL will be opened in your default browser to let you authorize the program to access your AniList account via [OAuth](https://oauth.net/).
+# Episode File Detection
+Whenever you play a series, the program will try to automatically detect the real name of the series and which episodes of it you currently have.
+The program can automatically detect episodes in multiple common layouts, such as:
 
-When you play a series for the first time, the program will search for the anime detected in the episode files, and prompt you to select which series you are actually watching. It will then create a file in the same directory called `.anup` that will save your selection so you do not have to enter it again.
+* `[Group] Series Title - 01.mkv`
+* `[Group]_Series_Title_-_01.mkv`
+* `[Group] Series Title - 01 [1080p].mkv`
+* `Series Title - 01.mkv`
 
-After you select the series you want to watch (or play the series again later), the program will open the next unwatched episode of the series in your default video player. Once you exit the video player, the program will automatically increment the watched episode count on your anime list and prompt you to either rate the series, drop it, put it on hold, play the next episode, or exit the program.
+In cases where the automatic detection fails, the program will prompt you to enter a custom regex pattern to use.
+When you enter a custom regex pattern, you **must** include the magic values `{name}` and `{episode}` in the appropriate places so the episode parser knows where to pull important information from.
+For example, to parse episode files that are formatted like this:
 
-If you're watching a series that has multiple seasons and your episode files aren't split up appropriately, you can use the `-s` flag with the season number to watch a specific season. For example, if a series has one season that is 24 episodes and a second season that is 12, and the episode number on your files goes up to 36, you can launch the program with `-s 2` to start playing at the 25th episode file. Note that you will have to select the correct series up to the specified season number in order for the offset to be calculated correctly.
+`[Group] Ep01 - Series Title.mkv`
+
+You could use the following pattern to parse it:
+
+`\[Group\] Ep{episode} - {name}.mkv`
+
+# Playing An Anime With Merged Seasons
+Often, *cough* torrents *cough* will have multiple seasons of a series combined into one, and not bother to separate the seasons into separate folders.
+When that happens, you can use the `-s` flag with the season number you want to watch and the program will automatically figure out which episodes belong to the appropriate anime.
+
+Note that the program will prompt you to select the correct series for every season older than the one you want to watch, unless you have already watched those seasons through the program.
 
 # Configuration
 
 The program's configuration file (which contains your account access token) is located in one of the following locations, depending on your platform:
 * Linux: `~/.config/anup/`
-* Windows: `C:\Users\{USERNAME}\AppData\Roaming\anup`
+* Windows: `C:\Users\{USERNAME}\AppData\Roaming\anup\config\`
 * macOS: `~/Library/Preferences/anup/`
