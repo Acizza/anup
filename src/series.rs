@@ -63,8 +63,7 @@ where
 
                         save_data.episode_matcher = Some(input::read_line()?);
                     } else {
-                        // TODO: exit more gracefully
-                        std::process::exit(0);
+                        return Err(SeriesError::RequestExit);
                     }
                 }
                 Err(err @ SeriesError::Regex(_))
@@ -293,8 +292,7 @@ where
         match self.list_entry.info.episodes {
             Some(total_eps) if relative_ep >= total_eps => {
                 self.update_series_status(Status::Completed)?;
-                // TODO: replace with more graceful way of exiting
-                std::process::exit(0);
+                return Err(SeriesError::RequestExit);
             }
             _ => self.episode_completed()?,
         }
@@ -335,25 +333,21 @@ where
         match input.as_str() {
             "d" => {
                 self.update_series_status(Status::Dropped)?;
-                // TODO: replace with more graceful way of exiting
-                std::process::exit(0);
+                Err(SeriesError::RequestExit)
             }
             "h" => {
                 self.update_series_status(Status::OnHold)?;
-                // TODO: replace with more graceful way of exiting
-                std::process::exit(0);
+                Err(SeriesError::RequestExit)
             }
             "r" => {
                 self.prompt_to_update_score();
                 self.update_list_entry()?;
 
-                self.next_episode_options()?;
+                self.next_episode_options()
             }
-            "x" => std::process::exit(0),
-            _ => (),
+            "x" => Err(SeriesError::RequestExit),
+            _ => Ok(()),
         }
-
-        Ok(())
     }
 
     fn prompt_to_update_score(&mut self) {

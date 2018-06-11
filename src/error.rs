@@ -64,6 +64,9 @@ pub enum SeriesError {
     #[fail(display = "regex error")]
     Regex(#[cause] ::regex::Error),
 
+    #[fail(display = "exit requested (note: this is a bug)")]
+    RequestExit,
+
     #[fail(display = "no episodes found")]
     NoEpisodesFound,
 

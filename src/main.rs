@@ -29,7 +29,7 @@ mod series;
 
 use backend::{anilist::Anilist, SyncBackend};
 use config::Config;
-use error::Error;
+use error::{Error, SeriesError};
 use series::Series;
 use std::io::Read;
 use std::path::PathBuf;
@@ -37,6 +37,7 @@ use std::path::PathBuf;
 fn main() {
     match run() {
         Ok(_) => (),
+        Err(Error::SeriesError(SeriesError::RequestExit)) => (),
         Err(e) => {
             let e: failure::Error = e.into();
             eprintln!("fatal error: {}", e.cause());
