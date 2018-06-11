@@ -16,13 +16,13 @@ pub enum Error {
     Io(#[cause] ::std::io::Error),
 
     #[fail(display = "sync service error")]
-    BackendError(#[cause] BackendError),
+    Backend(#[cause] BackendError),
 
     #[fail(display = "error processing series")]
-    SeriesError(#[cause] SeriesError),
+    Series(#[cause] SeriesError),
 
     #[fail(display = "config error")]
-    ConfigError(#[cause] ConfigError),
+    Config(#[cause] ConfigError),
 
     #[fail(display = "path to [{}] not found. Try setting it with -p", _0)]
     SeriesNotFound(String),
@@ -33,18 +33,21 @@ pub enum Error {
 
 impl_error_conversion!(Error,
     ::std::io::Error => Io,
-    BackendError => BackendError,
-    SeriesError => SeriesError,
-    ConfigError => ConfigError,
+    BackendError => Backend,
+    SeriesError => Series,
+    ConfigError => Config,
 );
 
 #[derive(Fail, Debug)]
 pub enum SeriesError {
+    #[fail(display = "input error")]
+    Input(#[cause] InputError),
+
+    #[fail(display = "sync service error")]
+    Backend(#[cause] BackendError),
+
     #[fail(display = "io error")]
     Io(#[cause] ::std::io::Error),
-
-    #[fail(display = "input error")]
-    InputError(#[cause] InputError),
 
     #[fail(display = "error serializing toml")]
     TomlSerialize(#[cause] ::toml::ser::Error),
@@ -57,9 +60,6 @@ pub enum SeriesError {
 
     #[fail(display = "episode number parse failed")]
     EpisodeNumParseFailed(#[cause] ::std::num::ParseIntError),
-
-    #[fail(display = "sync service error")]
-    Backend(#[cause] BackendError),
 
     #[fail(display = "regex error")]
     Regex(#[cause] ::regex::Error),
@@ -90,11 +90,11 @@ pub enum SeriesError {
 }
 
 impl_error_conversion!(SeriesError,
+    InputError => Input,
+    BackendError => Backend,
     ::std::io::Error => Io,
-    InputError => InputError,
     ::toml::ser::Error => TomlSerialize,
     ::toml::de::Error => TomlDeserialize,
-    BackendError => Backend,
     ::regex::Error => Regex,
 );
 
@@ -113,7 +113,7 @@ pub enum ConfigError {
     Io(#[cause] ::std::io::Error),
 
     #[fail(display = "input is not valid UTF8")]
-    FromUtf8Error(#[cause] ::std::string::FromUtf8Error),
+    FromUtf8(#[cause] ::std::string::FromUtf8Error),
 
     #[fail(display = "error serializing toml")]
     TomlSerialize(#[cause] ::toml::ser::Error),
@@ -130,24 +130,24 @@ pub enum ConfigError {
 
 impl_error_conversion!(ConfigError,
     ::std::io::Error => Io,
-    ::std::string::FromUtf8Error => FromUtf8Error,
+    ::std::string::FromUtf8Error => FromUtf8,
     ::toml::ser::Error => TomlSerialize,
     ::toml::de::Error => TomlDeserialize,
 );
 
 #[derive(Fail, Debug)]
 pub enum BackendError {
+    #[fail(display = "config error")]
+    Config(#[cause] ConfigError),
+
     #[fail(display = "io error")]
     Io(#[cause] ::std::io::Error),
 
     #[fail(display = "float parse error")]
     ParseFloat(#[cause] ::std::num::ParseFloatError),
 
-    #[fail(display = "config error")]
-    ConfigError(#[cause] ConfigError),
-
     #[fail(display = "HTTP error")]
-    HttpError(#[cause] ::reqwest::Error),
+    Http(#[cause] ::reqwest::Error),
 
     #[fail(display = "json error")]
     Json(#[cause] ::serde_json::Error),
@@ -166,9 +166,9 @@ pub enum BackendError {
 }
 
 impl_error_conversion!(BackendError,
+    ConfigError => Config,
     ::std::io::Error => Io,
     ::std::num::ParseFloatError => ParseFloat,
-    ConfigError => ConfigError,
-    ::reqwest::Error => HttpError,
+    ::reqwest::Error => Http,
     ::serde_json::Error => Json,
 );

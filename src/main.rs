@@ -37,7 +37,7 @@ use std::path::PathBuf;
 fn main() {
     match run() {
         Ok(_) => (),
-        Err(Error::SeriesError(SeriesError::RequestExit)) => (),
+        Err(Error::Series(SeriesError::RequestExit)) => (),
         Err(e) => {
             let e: failure::Error = e.into();
             eprintln!("fatal error: {}", e.cause());
