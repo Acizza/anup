@@ -351,8 +351,26 @@ where
     }
 
     fn prompt_to_update_score(&mut self) {
-        let (min_score, max_score) = self.series.sync_backend.score_range();
-        println!("enter your score between {} and {}:", min_score, max_score);
+        let (min_score, max_score) = self.series.sync_backend.formatted_score_range();
+
+        let cur_score_str: Cow<str> = if self.list_entry.score >= 1.0 {
+            let cur_score = self.series.sync_backend.format_score(self.list_entry.score);
+
+            match cur_score {
+                Ok(score) => format!(" (current score is {})", score).into(),
+                Err(err) => {
+                    eprintln!("failed to read existing list entry score: {}", err);
+                    "".into()
+                }
+            }
+        } else {
+            "".into()
+        };
+
+        println!(
+            "enter your score between {} and {}{}:",
+            min_score, max_score, cur_score_str
+        );
 
         let input = match input::read_line() {
             Ok(input) => input,
