@@ -1,7 +1,7 @@
 mod serialize;
 
 use self::serialize::{Media, MediaDate, MediaListEntry, MediaStatus, ScoreFormat, User};
-use super::{AnimeEntry, AnimeInfo, Status, SyncBackend};
+use super::{AnimeEntry, AnimeInfo, ScoreParser, Status, SyncBackend};
 use config::Config;
 use error::BackendError;
 use input;
@@ -9,6 +9,7 @@ use process;
 use reqwest::header::{Accept, Authorization, Bearer, ContentType, Headers};
 use reqwest::{Client, Response};
 use serde_json as json;
+use std::borrow::Cow;
 
 const LOGIN_URL: &str =
     "https://anilist.co/api/v2/oauth/authorize?client_id=427&response_type=token";
@@ -49,7 +50,8 @@ impl Anilist {
             token: self.access_token.to_owned(),
         }));
 
-        let response = self.client
+        let response = self
+            .client
             .post(API_URL)
             .headers(headers)
             .body(body)
@@ -149,35 +151,6 @@ impl Anilist {
 impl SyncBackend for Anilist {
     fn name() -> &'static str {
         "AniList"
-    }
-
-    fn score_range(&self) -> (String, String) {
-        match self.user.list_options.score_format {
-            ScoreFormat::Point3 => (":(".into(), ":)".into()),
-            ScoreFormat::Point10Decimal => ("1.0".into(), "10.0".into()),
-            format => ("1".into(), format.max_score().to_string()),
-        }
-    }
-
-    fn parse_score(&self, input: &str) -> Result<f32, BackendError> {
-        match self.user.list_options.score_format {
-            ScoreFormat::Point3 => match input {
-                ":(" => Ok(1.0),
-                ":|" => Ok(2.0),
-                ":)" => Ok(3.0),
-                _ => Err(BackendError::UnknownScoreValue(input.into())),
-            },
-            format => {
-                let value = input.parse::<f32>()?;
-                let max_score = f32::from(format.max_score());
-
-                if value < 1.0 || value > max_score {
-                    return Err(BackendError::OutOfRangeScore);
-                }
-
-                Ok(value)
-            }
-        }
     }
 
     fn init(config: &mut Config) -> Result<Anilist, BackendError> {
@@ -313,6 +286,53 @@ impl SyncBackend for Anilist {
         )?;
 
         Ok(())
+    }
+}
+
+impl ScoreParser for Anilist {
+    fn formatted_score_range(&self) -> (Cow<str>, Cow<str>) {
+        match self.user.list_options.score_format {
+            ScoreFormat::Point3 => (":(".into(), ":)".into()),
+            ScoreFormat::Point10Decimal => ("1.0".into(), "10.0".into()),
+            format => ("1".into(), format.max_score().to_string().into()),
+        }
+    }
+
+    fn parse_score(&self, input: &str) -> Result<f32, BackendError> {
+        match self.user.list_options.score_format {
+            ScoreFormat::Point3 => match input {
+                ":(" => Ok(1.0),
+                ":|" => Ok(2.0),
+                ":)" => Ok(3.0),
+                _ => Err(BackendError::UnknownScoreValue(input.into())),
+            },
+            format => {
+                let value = input.parse::<f32>()?;
+                let max_score = f32::from(format.max_score());
+
+                if value < 1.0 || value > max_score {
+                    return Err(BackendError::OutOfRangeScore);
+                }
+
+                Ok(value)
+            }
+        }
+    }
+
+    fn format_score(&self, raw_score: f32) -> Result<String, BackendError> {
+        match self.user.list_options.score_format {
+            ScoreFormat::Point3 => match raw_score.round() as u32 {
+                1 => Ok(":(".into()),
+                2 => Ok(":|".into()),
+                3 => Ok(":)".into()),
+                _ => Err(BackendError::OutOfRangeScore),
+            },
+            ScoreFormat::Point5 | ScoreFormat::Point10 | ScoreFormat::Point100 => {
+                let value = raw_score.round() as u32;
+                Ok(value.to_string())
+            }
+            ScoreFormat::Point10Decimal => Ok(raw_score.to_string()),
+        }
     }
 }
 

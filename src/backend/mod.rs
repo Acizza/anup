@@ -1,17 +1,15 @@
 use chrono::{Date, Local};
 use config::Config;
 use error::BackendError;
+use std::borrow::Cow;
 
 pub mod anilist;
 
 pub trait SyncBackend
 where
-    Self: Sized,
+    Self: Sized + ScoreParser,
 {
     fn name() -> &'static str;
-
-    fn score_range(&self) -> (String, String);
-    fn parse_score(&self, input: &str) -> Result<f32, BackendError>;
 
     fn init(config: &mut Config) -> Result<Self, BackendError>;
 
@@ -20,6 +18,12 @@ where
 
     fn get_list_entry(&self, info: AnimeInfo) -> Result<Option<AnimeEntry>, BackendError>;
     fn update_list_entry(&self, entry: &AnimeEntry) -> Result<(), BackendError>;
+}
+
+pub trait ScoreParser {
+    fn formatted_score_range(&self) -> (Cow<str>, Cow<str>);
+    fn parse_score(&self, input: &str) -> Result<f32, BackendError>;
+    fn format_score(&self, raw_score: f32) -> Result<String, BackendError>;
 }
 
 #[derive(Clone, Debug)]
