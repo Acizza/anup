@@ -27,7 +27,7 @@ mod input;
 mod process;
 mod series;
 
-use backend::{anilist::Anilist, SyncBackend};
+use backend::{anilist::AniList, SyncBackend};
 use config::Config;
 use error::{Error, SeriesError};
 use series::Series;
@@ -78,7 +78,7 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
     config.remove_invalid_series();
 
     let path = get_series_path(&mut config, args)?;
-    let sync_backend = Anilist::init(&mut config)?;
+    let sync_backend = AniList::init(&mut config)?;
 
     config.save()?;
 

@@ -26,13 +26,13 @@ macro_rules! send_query {
     }};
 }
 
-pub struct Anilist {
+pub struct AniList {
     client: Client,
     user: User,
     access_token: String,
 }
 
-impl Anilist {
+impl AniList {
     fn send_request(
         &self,
         query_str: &str,
@@ -132,7 +132,7 @@ impl Anilist {
                     println!("\ninvalid access token");
 
                     let should_open_url = !is_first_launch && times_token_incorrect <= 1;
-                    let token = Anilist::prompt_for_access_token(should_open_url)?;
+                    let token = AniList::prompt_for_access_token(should_open_url)?;
 
                     self.access_token = token;
                 }
@@ -148,23 +148,23 @@ impl Anilist {
     }
 }
 
-impl SyncBackend for Anilist {
+impl SyncBackend for AniList {
     fn name() -> &'static str {
         "AniList"
     }
 
-    fn init(config: &mut Config) -> Result<Anilist, BackendError> {
+    fn init(config: &mut Config) -> Result<AniList, BackendError> {
         let is_first_launch = !config.anilist.token.is_set();
 
         let access_token = if is_first_launch {
-            let token = Anilist::prompt_for_access_token(true)?;
+            let token = AniList::prompt_for_access_token(true)?;
             config.anilist.token.encode(&token);
             token
         } else {
             config.anilist.token.decode()?
         };
 
-        let mut anilist = Anilist {
+        let mut anilist = AniList {
             client: Client::new(),
             user: User::default(),
             access_token,
@@ -289,7 +289,7 @@ impl SyncBackend for Anilist {
     }
 }
 
-impl ScoreParser for Anilist {
+impl ScoreParser for AniList {
     fn formatted_score_range(&self) -> (Cow<str>, Cow<str>) {
         match self.user.list_options.score_format {
             ScoreFormat::Point3 => (":(".into(), ":)".into()),
