@@ -37,7 +37,7 @@ pub struct AnimeInfo {
 pub struct AnimeEntry {
     pub info: AnimeInfo,
     pub watched_episodes: u32,
-    pub score: f32,
+    pub score: Option<f32>,
     pub status: Status,
     pub start_date: Option<Date<Local>>,
     pub finish_date: Option<Date<Local>>,
@@ -48,7 +48,7 @@ impl AnimeEntry {
         AnimeEntry {
             info,
             watched_episodes: 0,
-            score: 0.0,
+            score: None,
             status: Status::PlanToWatch,
             start_date: Some(Local::today()),
             finish_date: None,

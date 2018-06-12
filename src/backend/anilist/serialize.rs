@@ -99,10 +99,17 @@ pub struct MediaListEntry {
 
 impl MediaListEntry {
     pub fn into_generic_entry(self, info: AnimeInfo) -> AnimeEntry {
+        // AniList uses 0.0 to represent a non-set score
+        let score = if self.score >= 0.1 {
+            Some(self.score)
+        } else {
+            None
+        };
+
         AnimeEntry {
             info,
             watched_episodes: self.progress,
-            score: self.score,
+            score,
             status: self.status.into(),
             start_date: self.start_date.into_date(),
             finish_date: self.finish_date.into_date(),

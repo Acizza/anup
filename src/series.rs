@@ -353,18 +353,19 @@ where
     fn prompt_to_update_score(&mut self) {
         let (min_score, max_score) = self.series.sync_backend.formatted_score_range();
 
-        let cur_score_str: Cow<str> = if self.list_entry.score >= 1.0 {
-            let cur_score = self.series.sync_backend.format_score(self.list_entry.score);
+        let cur_score_str: Cow<str> = match self.list_entry.score {
+            Some(score) => {
+                let cur_score = self.series.sync_backend.format_score(score);
 
-            match cur_score {
-                Ok(score) => format!(" (current score is {})", score).into(),
-                Err(err) => {
-                    eprintln!("failed to read existing list entry score: {}", err);
-                    "".into()
+                match cur_score {
+                    Ok(score) => format!(" (current score is {})", score).into(),
+                    Err(err) => {
+                        eprintln!("failed to read existing list entry score: {}", err);
+                        "".into()
+                    }
                 }
             }
-        } else {
-            "".into()
+            None => "".into(),
         };
 
         println!(
@@ -381,7 +382,7 @@ where
         };
 
         match self.series.sync_backend.parse_score(&input) {
-            Ok(score) => self.list_entry.score = score,
+            Ok(score) => self.list_entry.score = Some(score),
             Err(err) => eprintln!("failed to parse score: {}", err),
         }
     }

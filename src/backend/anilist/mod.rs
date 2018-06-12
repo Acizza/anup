@@ -278,7 +278,7 @@ impl SyncBackend for Anilist {
             {
                 "mediaId": entry.info.id,
                 "watched_eps": entry.watched_episodes,
-                "score": entry.score,
+                "score": entry.score.unwrap_or(0.0),
                 "status": MediaStatus::from(entry.status),
                 "start_date": MediaDate::from_date(entry.start_date),
                 "finish_date": MediaDate::from_date(entry.finish_date),
