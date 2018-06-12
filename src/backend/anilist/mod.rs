@@ -269,8 +269,22 @@ impl SyncBackend for AniList {
     fn update_list_entry(&self, entry: &AnimeEntry) -> Result<(), BackendError> {
         send_query!(self,
             r#"
-                mutation ($mediaId: Int, $watched_eps: Int, $score: Float, $status: MediaListStatus, $start_date: FuzzyDateInput, $finish_date: FuzzyDateInput) {
-                    SaveMediaListEntry (mediaId: $mediaId, progress: $watched_eps, score: $score, status: $status, startedAt: $start_date, completedAt: $finish_date) {
+                mutation (
+                    $mediaId: Int,
+                    $watched_eps: Int,
+                    $score: Float,
+                    $status: MediaListStatus,
+                    $start_date: FuzzyDateInput,
+                    $finish_date: FuzzyDateInput) {
+
+                    SaveMediaListEntry (
+                        mediaId: $mediaId,
+                        progress: $watched_eps,
+                        score: $score,
+                        status: $status,
+                        startedAt: $start_date,
+                        completedAt: $finish_date) {
+                            
                         mediaId
                     }
                 }
