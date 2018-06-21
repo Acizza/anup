@@ -1,5 +1,5 @@
-#[cfg(unix)]
-mod unix {
+#[cfg(linux)]
+mod linux {
     use std::env;
     use std::fs;
     use std::path::PathBuf;
@@ -22,6 +22,6 @@ mod unix {
 }
 
 fn main() {
-    #[cfg(unix)]
-    unix::run();
+    #[cfg(linux)]
+    linux::run();
 }
