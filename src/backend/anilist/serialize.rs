@@ -46,7 +46,7 @@ pub enum ScoreFormat {
 }
 
 impl ScoreFormat {
-    pub fn max_score(&self) -> u8 {
+    pub fn max_score(self) -> u8 {
         use self::ScoreFormat::*;
 
         match self {
