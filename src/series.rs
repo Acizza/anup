@@ -97,15 +97,10 @@ where
             let mut series = None;
 
             for cur_season in num_seasons..=season {
-                println!(
-                    "select the correct series for season {} of [{}]:",
-                    1 + cur_season,
-                    self.episode_data.series_name
-                );
+                let series_info =
+                    self.search_and_select_series(&self.episode_data.series_name, 1 + cur_season)?;
 
-                let series_info = self.search_and_select_series(&self.episode_data.series_name)?;
                 self.save_data.seasons.push(series_info.clone().into());
-
                 series = Some(series_info);
             }
 
@@ -137,11 +132,14 @@ where
         offset
     }
 
-    fn search_and_select_series(&self, name: &str) -> Result<AnimeInfo, SeriesError> {
+    fn search_and_select_series(&self, name: &str, season: u32) -> Result<AnimeInfo, SeriesError> {
         let mut found = self.sync_backend.search_by_name(name)?;
 
-        println!("{} results for [{}]:", B::name(), name);
-        println!("enter the number next to the desired series:\n");
+        println!("[{}] search results from [{}]:", name, B::name());
+        println!(
+            "select season {} by entering the number next to its name:\n",
+            season
+        );
 
         println!("0 [custom search]");
 
@@ -155,7 +153,7 @@ where
             println!("enter the name you want to search for:");
 
             let name = input::read_line()?;
-            self.search_and_select_series(&name)
+            self.search_and_select_series(&name, season)
         } else {
             let info = found.swap_remove(index - 1);
             Ok(info)
