@@ -91,7 +91,7 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
         value.saturating_sub(1)
     };
 
-    Series::from_path(&path, sync_backend)?
+    Series::load(&path, sync_backend)?
         .load_season(season)?
         .play_all_episodes()?;
 

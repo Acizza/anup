@@ -28,7 +28,7 @@ where
 {
     pub const DATA_FILE_NAME: &'static str = ".anup";
 
-    pub fn from_path(path: &Path, sync_backend: B) -> Result<Series<B>, SeriesError> {
+    pub fn load(path: &Path, sync_backend: B) -> Result<Series<B>, SeriesError> {
         let save_path = PathBuf::from(path).join(Series::<B>::DATA_FILE_NAME);
         let mut save_data = SaveData::from_path_or_default(&save_path)?;
 
