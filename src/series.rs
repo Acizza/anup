@@ -323,8 +323,15 @@ where
     }
 
     fn next_episode_options(&mut self) -> Result<(), SeriesError> {
+        let current_score_text: Cow<str> = match self.try_read_entry_score() {
+            Some(score) => format!(" [{}]", score).into(),
+            None => "".into(),
+        };
+
         println!("options:");
-        println!("\t[d] drop series\n\t[h] put series on hold\n\t[r] rate series\n\t[x] exit\n\t[n] watch next episode (default)");
+        println!("\t[d] drop series\n\t[h] put series on hold\n\t[r] rate series{}\n\t[x] exit\n\t[n] watch next episode (default)",
+            current_score_text
+        );
 
         let input = input::read_line()?.to_lowercase();
 
@@ -350,26 +357,7 @@ where
 
     fn prompt_to_update_score(&mut self) {
         let (min_score, max_score) = self.series.sync_backend.formatted_score_range();
-
-        let cur_score_str: Cow<str> = match self.list_entry.score {
-            Some(score) => {
-                let cur_score = self.series.sync_backend.format_score(score);
-
-                match cur_score {
-                    Ok(score) => format!(" (current score is {})", score).into(),
-                    Err(err) => {
-                        eprintln!("failed to read existing list entry score: {}", err);
-                        "".into()
-                    }
-                }
-            }
-            None => "".into(),
-        };
-
-        println!(
-            "enter your score between {} and {}{}:",
-            min_score, max_score, cur_score_str
-        );
+        println!("enter your score between {} and {}:", min_score, max_score);
 
         let input = match input::read_line() {
             Ok(input) => input,
@@ -447,6 +435,23 @@ where
         self.update_list_entry()?;
 
         Ok(())
+    }
+
+    fn try_read_entry_score(&self) -> Option<String> {
+        match self.list_entry.score {
+            Some(score) => {
+                let cur_score = self.series.sync_backend.format_score(score);
+
+                match cur_score {
+                    Ok(score) => Some(score),
+                    Err(err) => {
+                        eprintln!("failed to read existing list entry score: {}", err);
+                        None
+                    }
+                }
+            }
+            None => None,
+        }
     }
 }
 
