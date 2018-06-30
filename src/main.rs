@@ -31,7 +31,6 @@ use backend::{anilist::AniList, SyncBackend};
 use config::Config;
 use error::{Error, SeriesError};
 use series::Series;
-use std::io::Read;
 use std::path::PathBuf;
 
 fn main() {
@@ -47,10 +46,6 @@ fn main() {
             }
 
             eprintln!("{}", e.backtrace());
-
-            // This will allow errors to be displayed when the program
-            // is launched within a newly created terminal
-            let _ = std::io::stdin().bytes().next();
             std::process::exit(1);
         }
     }
