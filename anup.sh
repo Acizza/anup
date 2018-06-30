@@ -15,15 +15,15 @@ source ~/.bash_profile
 
 LAUNCH_TERM="xterm"
 
-if [ $TERMCMD != "" ]; then
+if [ "$TERMCMD" != "" ]; then
     LAUNCH_TERM=$TERMCMD
-elif [ $TERM != "" ]; then
+elif [ "$TERM" != "" ]; then
     LAUNCH_TERM=$TERM
 fi
 
 LAUNCH_FLAGS="-e"
 
-if [ $LAUNCH_TERM == "gnome-terminal" ]; then
+if [ "$LAUNCH_TERM" == "gnome-terminal" ]; then
     LAUNCH_FLAGS="-- bash -c "
 fi
 
