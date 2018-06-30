@@ -27,4 +27,4 @@ if [ "$LAUNCH_TERM" == "gnome-terminal" ]; then
     LAUNCH_FLAGS="-- bash -c "
 fi
 
-exec $LAUNCH_TERM $LAUNCH_FLAGS "$EXE_NAME "$@""
+exec $LAUNCH_TERM $LAUNCH_FLAGS "sh -c '$EXE_NAME "$@"; read'"
