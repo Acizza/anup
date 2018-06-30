@@ -30,7 +30,7 @@ mod series;
 use backend::{anilist::AniList, SyncBackend};
 use config::Config;
 use error::{Error, SeriesError};
-use series::Series;
+use series::{EpisodeData, SaveData, Series};
 use std::path::PathBuf;
 
 fn main() {
@@ -94,17 +94,37 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
 }
 
 fn print_series_list() -> Result<(), Error> {
-    let config = Config::load()?;
+    let mut config = Config::load()?;
+    config.remove_invalid_series();
 
-    println!("{} series found", config.series.len());
-    println!(
-        "note that any series marked as invalid will be removed the next time you watch a series"
-    );
-    println!();
+    println!("found [{}] series:\n", config.series.len());
 
     for (name, path) in config.series {
-        let status_str = if path.exists() { "valid" } else { "invalid" };
-        println!("[{}] {}: {}", status_str, name, path.to_string_lossy());
+        let ep_matcher = match SaveData::from_path(&path) {
+            Ok(save_data) => save_data.episode_matcher,
+            _ => None,
+        };
+
+        let ep_data = match EpisodeData::parse_dir(&path, ep_matcher) {
+            Ok(ep_data) => ep_data,
+            Err(err) => {
+                eprintln!("failed to parse episode data for [{}]: {}", name, err);
+                continue;
+            }
+        };
+
+        let mut ep_nums = ep_data.episodes.keys().cloned().collect::<Vec<_>>();
+        ep_nums.sort_unstable();
+
+        let ep_list =
+            concat_sequential_values(&ep_nums, "..", " | ").unwrap_or_else(|| "none".into());
+
+        println!("[{}]:", name);
+        println!(
+            "  path: {}\n  episodes on disk: {}",
+            path.to_string_lossy(),
+            ep_list
+        );
     }
 
     Ok(())
@@ -129,4 +149,46 @@ fn get_series_path(config: &mut Config, args: &clap::ArgMatches) -> Result<PathB
                 .map(|path| path.into())
         }
     }
+}
+
+fn concat_sequential_values(list: &[u32], group_delim: &str, space_delim: &str) -> Option<String> {
+    match list.len() {
+        0 => return None,
+        1 => return Some(list[0].to_string()),
+        _ => (),
+    }
+
+    let mut concat_str = list[0].to_string();
+    let mut group_start_val = list[0];
+    let mut prev_value = list[0];
+
+    for &value in list {
+        // Check for a nonsequential jump
+        if (value as i32 - prev_value as i32).abs() > 1 {
+            // Extend the current group with a range if there's a big enough gap between the current value
+            // and start value of the group
+            if (value as i32 - group_start_val as i32).abs() > 2 {
+                concat_str.push_str(group_delim);
+                concat_str.push_str(&prev_value.to_string());
+            }
+
+            // Form a new group
+            concat_str.push_str(space_delim);
+            concat_str.push_str(&value.to_string());
+
+            group_start_val = value;
+        }
+
+        prev_value = value;
+    }
+
+    let last_item = list[list.len() - 1];
+
+    // Finish off the last list item with a range if it extends beyond the start value of the current group
+    if group_start_val != last_item {
+        concat_str.push_str(group_delim);
+        concat_str.push_str(&last_item.to_string());
+    }
+
+    Some(concat_str)
 }

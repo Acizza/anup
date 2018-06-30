@@ -184,14 +184,14 @@ pub struct SaveData {
 }
 
 impl SaveData {
-    fn from_path(path: &Path) -> Result<SaveData, SeriesError> {
+    pub fn from_path(path: &Path) -> Result<SaveData, SeriesError> {
         let file_contents = fs::read_to_string(path)?;
         let data = toml::from_str(&file_contents)?;
 
         Ok(data)
     }
 
-    fn from_path_or_default(path: &Path) -> Result<SaveData, SeriesError> {
+    pub fn from_path_or_default(path: &Path) -> Result<SaveData, SeriesError> {
         if path.exists() {
             SaveData::from_path(path)
         } else {
@@ -199,7 +199,7 @@ impl SaveData {
         }
     }
 
-    fn write_to(&self, path: &Path) -> Result<(), SeriesError> {
+    pub fn write_to(&self, path: &Path) -> Result<(), SeriesError> {
         let toml = toml::to_string_pretty(self)?;
         fs::write(path, toml)?;
 
