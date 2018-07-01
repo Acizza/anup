@@ -53,18 +53,14 @@ where
                 Ok(data) => break Ok(data),
                 Err(SeriesError::NoEpisodesFound) => {
                     println!("no episodes found");
-                    println!("do you want to create a custom regex matcher? (Y/n)");
+                    println!("you will now be prompted to enter a custom regex pattern");
+                    println!("when entering the pattern, please mark the series name and episode number with {{name}} and {{episode}}, respectively");
+                    println!("example:");
+                    println!("  filename: [SubGroup] Series Name - Ep01.mkv");
+                    println!(r"  pattern: \[.+?\] {{name}} - Ep{{episode}}.mkv");
+                    println!("please enter your custom pattern:");
 
-                    if input::read_yn(Answer::Yes)? {
-                        println!("note: mark the series name and episode number with {{name}} and {{episode}}");
-                        println!("example:");
-                        println!("filename: [SubGroup] Series Name - Ep01.mkv");
-                        println!(r"custom pattern: \[.+?\] {{name}} - Ep{{episode}}.mkv");
-
-                        save_data.episode_matcher = Some(input::read_line()?);
-                    } else {
-                        return Err(SeriesError::RequestExit);
-                    }
+                    save_data.episode_matcher = Some(input::read_line()?);
                 }
                 Err(err @ SeriesError::Regex(_))
                 | Err(err @ SeriesError::UnknownRegexCapture(_)) => {
