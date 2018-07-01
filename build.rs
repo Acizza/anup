@@ -1,4 +1,4 @@
-#[cfg(linux)]
+#[cfg(target_os = "linux")]
 mod linux {
     use std::env;
     use std::fs;
@@ -18,6 +18,6 @@ mod linux {
 }
 
 fn main() {
-    #[cfg(linux)]
+    #[cfg(target_os = "linux")]
     linux::run();
 }
