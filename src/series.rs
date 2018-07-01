@@ -133,30 +133,38 @@ where
     }
 
     fn search_and_select_series(&self, name: &str, season: u32) -> Result<AnimeInfo, SeriesError> {
+        println!("[{}] searching on {}..", name, B::name());
+
         let mut found = self.sync_backend.search_by_name(name)?;
 
-        println!("[{}] search results from [{}]:", name, B::name());
-        println!(
-            "select season {} by entering the number next to its name:\n",
-            season
-        );
+        if found.len() > 0 {
+            println!(
+                "select season {} by entering the number next to its name:\n",
+                season
+            );
 
-        println!("0 [custom search]");
+            println!("0 [custom search]");
 
-        for (i, series) in found.iter().enumerate() {
-            println!("{} [{}]", 1 + i, series.title);
-        }
+            for (i, series) in found.iter().enumerate() {
+                println!("{} [{}]", 1 + i, series.title);
+            }
 
-        let index = input::read_range(0, found.len())?;
+            let index = input::read_range(0, found.len())?;
 
-        if index == 0 {
-            println!("enter the name you want to search for:");
+            if index == 0 {
+                println!("enter the name you want to search for:");
+
+                let name = input::read_line()?;
+                self.search_and_select_series(&name, season)
+            } else {
+                let info = found.swap_remove(index - 1);
+                Ok(info)
+            }
+        } else {
+            println!("no results found\nplease enter a custom search term:");
 
             let name = input::read_line()?;
             self.search_and_select_series(&name, season)
-        } else {
-            let info = found.swap_remove(index - 1);
-            Ok(info)
         }
     }
 
