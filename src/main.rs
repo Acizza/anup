@@ -100,7 +100,7 @@ fn print_saved_series_info() -> Result<(), Error> {
     println!("found [{}] series:\n", config.series.len());
 
     for (name, path) in config.series {
-        let ep_matcher = match SaveData::from_path(&path) {
+        let ep_matcher = match SaveData::from_dir(&path) {
             Ok(save_data) => save_data.episode_matcher,
             _ => None,
         };

@@ -19,26 +19,20 @@ where
     sync_backend: B,
     pub episode_data: EpisodeData,
     pub save_data: SaveData,
-    pub save_path: PathBuf,
 }
 
 impl<B> Series<B>
 where
     B: SyncBackend,
 {
-    pub const DATA_FILE_NAME: &'static str = ".anup";
-
     pub fn load(path: &Path, sync_backend: B) -> Result<Series<B>, SeriesError> {
-        let save_path = PathBuf::from(path).join(Series::<B>::DATA_FILE_NAME);
-        let mut save_data = SaveData::from_path_or_default(&save_path)?;
-
+        let mut save_data = SaveData::from_dir(path)?;
         let episode_data = Series::<B>::parse_episode_data(path, &mut save_data)?;
 
         let series = Series {
             sync_backend,
             episode_data,
             save_data,
-            save_path,
         };
 
         Ok(series)
@@ -83,7 +77,7 @@ where
     }
 
     pub fn save_data(&self) -> Result<(), SeriesError> {
-        self.save_data.write_to(&self.save_path)
+        self.save_data.write_to_file()
     }
 
     fn get_season_info(&mut self, season: u32) -> Result<AnimeInfo, SeriesError> {
@@ -181,31 +175,43 @@ where
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SaveData {
     pub episode_matcher: Option<String>,
     pub seasons: Vec<SeasonInfo>,
+    #[serde(skip)]
+    pub path: PathBuf,
 }
 
 impl SaveData {
-    pub fn from_path(path: &Path) -> Result<SaveData, SeriesError> {
-        let file_contents = fs::read_to_string(path)?;
-        let data = toml::from_str(&file_contents)?;
+    const DATA_FILE_NAME: &'static str = ".anup";
 
-        Ok(data)
-    }
-
-    pub fn from_path_or_default(path: &Path) -> Result<SaveData, SeriesError> {
-        if path.exists() {
-            SaveData::from_path(path)
-        } else {
-            Ok(SaveData::default())
+    pub fn new(path: PathBuf) -> SaveData {
+        SaveData {
+            episode_matcher: None,
+            seasons: Vec::new(),
+            path,
         }
     }
 
-    pub fn write_to(&self, path: &Path) -> Result<(), SeriesError> {
+    pub fn from_dir(path: &Path) -> Result<SaveData, SeriesError> {
+        let path = PathBuf::from(path).join(SaveData::DATA_FILE_NAME);
+
+        if !path.exists() {
+            return Ok(SaveData::new(path));
+        }
+
+        let file_contents = fs::read_to_string(&path)?;
+
+        let mut save_data: SaveData = toml::from_str(&file_contents)?;
+        save_data.path = path;
+
+        Ok(save_data)
+    }
+
+    pub fn write_to_file(&self) -> Result<(), SeriesError> {
         let toml = toml::to_string_pretty(self)?;
-        fs::write(path, toml)?;
+        fs::write(&self.path, toml)?;
 
         Ok(())
     }
