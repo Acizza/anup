@@ -9,10 +9,6 @@ mod linux {
     pub fn run() {
         let profile = env::var("PROFILE").unwrap();
 
-        if profile != "release" {
-            return;
-        }
-
         let mut out_path = PathBuf::from("target");
         out_path.push(profile);
         out_path.push(LAUNCH_SCRIPT);
