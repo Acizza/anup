@@ -58,11 +58,11 @@ fn run() -> Result<(), Error> {
         (@arg NAME: "The name of the series to watch")
         (@arg PATH: -p --path +takes_value "Specifies the directory to look for video files in")
         (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
-        (@arg LIST: -l --list "Displays all saved series")
+        (@arg INFO: -i --info "Displays saved series information")
     ).get_matches();
 
-    if args.is_present("LIST") {
-        print_series_list()
+    if args.is_present("INFO") {
+        print_saved_series_info()
     } else {
         watch_series(&args)
     }
@@ -93,7 +93,7 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
     Ok(())
 }
 
-fn print_series_list() -> Result<(), Error> {
+fn print_saved_series_info() -> Result<(), Error> {
     let mut config = Config::load()?;
     config.remove_invalid_series();
 
