@@ -127,7 +127,7 @@ where
 
         let mut found = self.sync_backend.search_by_name(name)?;
 
-        if found.len() > 0 {
+        if !found.is_empty() {
             println!(
                 "select season {} by entering the number next to its name:\n",
                 season
