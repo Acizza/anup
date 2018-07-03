@@ -14,6 +14,26 @@ Current features include:
 The program is developed for Linux and Windows, with Linux being the primary platform.
 Base macOS support is included but untested.
 
+# Building
+anup is written in [Rust](https://www.rust-lang.org), so you will have to compile the application before you can use it.
+
+Windows
+-------
+1. Install the latest stable version of Rust from [here](https://rustup.rs).
+2. Open CMD / PowerShell in the directory you cloned the project in by pressing Shift + Right click in the directory and selecting "Open command window here" or "Open PowerShell window here".
+3. Run `cargo build --release` and wait for it to finish.
+
+Linux
+-----
+1. Install the latest stable version of Rust from your distribution's package manager, or from [here](https://rustup.rs).
+2. Ensure OpenSSL is installed (note: on most distribution's it already is).
+3. In the directory you cloned the project in, run `cargo build --release`.
+
+Once the application has finished compiling, you will find the resulting executable in the `target/release/` directory.
+
+If you're using Linux, you will also find a shell script in the same directory named `anup.sh`.
+This script will run the program in a new terminal for you if you try to launch it from something like a run prompt, but you do not have to use it.
+
 # Playing An Anime
 Whenever you want to watch a series through the program for the first time, you will need to specify the path to it with the `-p` flag.
 To avoid having to specify the path to the series every time you want to play it, you can give the series a custom name.
