@@ -67,7 +67,7 @@ You could use the following pattern to parse it:
 `\[Group\] Ep{episode} - {name}.mkv`
 
 # Playing An Anime With Merged Seasons
-Often, *cough* torrents *cough* will have multiple seasons of a series combined into one, and not bother to separate the seasons into separate folders.
+Often, **\*cough\*** torrents **\*cough\*** will have multiple seasons of a series combined into one, and not bother to separate the seasons into separate folders.
 When that happens, you can use the `-s` flag with the season number you want to watch and the program will automatically figure out which episodes belong to the appropriate anime.
 
 Note that the program will prompt you to select the correct series for every season older than the one you want to watch, unless you have already watched those seasons through the program.
