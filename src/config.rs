@@ -23,14 +23,14 @@ lazy_static! {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     pub series: HashMap<String, PathBuf>,
-    pub anilist: Anilist,
+    pub anilist: AniList,
 }
 
 impl Config {
     pub fn new() -> Config {
         Config {
             series: HashMap::new(),
-            anilist: Anilist::new(),
+            anilist: AniList::new(),
         }
     }
 
@@ -104,14 +104,14 @@ impl AccessToken {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Anilist {
+pub struct AniList {
     #[serde(flatten)]
     pub token: AccessToken,
 }
 
-impl Anilist {
-    pub fn new() -> Anilist {
-        Anilist {
+impl AniList {
+    pub fn new() -> AniList {
+        AniList {
             token: AccessToken::new(None),
         }
     }
