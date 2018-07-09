@@ -1,4 +1,4 @@
-use chrono::{Date, Local};
+use chrono::{Local, NaiveDate};
 use config::Config;
 use error::BackendError;
 use std::borrow::Cow;
@@ -26,21 +26,22 @@ pub trait ScoreParser {
     fn format_score(&self, raw_score: f32) -> Result<String, BackendError>;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnimeInfo {
     pub id: u32,
     pub title: String,
     pub episodes: Option<u32>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AnimeEntry {
+    #[serde(flatten)]
     pub info: AnimeInfo,
     pub watched_episodes: u32,
     pub score: Option<f32>,
     pub status: Status,
-    pub start_date: Option<Date<Local>>,
-    pub finish_date: Option<Date<Local>>,
+    pub start_date: Option<NaiveDate>,
+    pub finish_date: Option<NaiveDate>,
 }
 
 impl AnimeEntry {
@@ -50,13 +51,13 @@ impl AnimeEntry {
             watched_episodes: 0,
             score: None,
             status: Status::PlanToWatch,
-            start_date: Some(Local::today()),
+            start_date: Some(Local::today().naive_local()),
             finish_date: None,
         }
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Status {
     Watching,
     Completed,

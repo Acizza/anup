@@ -166,7 +166,7 @@ where
             None => {
                 let mut entry = AnimeEntry::new(info);
                 entry.status = Status::Watching;
-                entry.start_date = Some(Local::today());
+                entry.start_date = Some(Local::today().naive_local());
 
                 self.sync_backend.update_list_entry(&entry)?;
                 Ok(entry)
@@ -403,7 +403,7 @@ where
                 // A series that was on hold probably already has a starting date, and it would make
                 // more sense to use that one instead of replacing it
                 if self.list_entry.status != Status::OnHold {
-                    self.list_entry.start_date = Some(Local::today());
+                    self.list_entry.start_date = Some(Local::today().naive_local());
                 }
 
                 self.list_entry.finish_date = None;
@@ -413,7 +413,7 @@ where
                 println!("do you want to reset the start and end dates of the series? (Y/n)");
 
                 if input::read_yn(Answer::Yes)? {
-                    self.list_entry.start_date = Some(Local::today());
+                    self.list_entry.start_date = Some(Local::today().naive_local());
                     self.list_entry.finish_date = None;
                 }
 
@@ -421,7 +421,7 @@ where
             }
             Status::Completed => {
                 if self.list_entry.finish_date.is_none() {
-                    self.list_entry.finish_date = Some(Local::today());
+                    self.list_entry.finish_date = Some(Local::today().naive_local());
                 }
 
                 println!(
@@ -435,7 +435,7 @@ where
             }
             Status::Dropped => {
                 if self.list_entry.finish_date.is_none() {
-                    self.list_entry.finish_date = Some(Local::today());
+                    self.list_entry.finish_date = Some(Local::today().naive_local());
                 }
             }
             Status::OnHold | Status::PlanToWatch => (),

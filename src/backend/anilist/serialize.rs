@@ -1,5 +1,5 @@
 use super::{AnimeEntry, AnimeInfo, Status};
-use chrono::{Date, Datelike, Local, NaiveDate, TimeZone};
+use chrono::{Datelike, NaiveDate};
 
 #[derive(Deserialize)]
 pub struct User {
@@ -167,14 +167,14 @@ pub struct MediaDate {
 }
 
 impl MediaDate {
-    pub fn into_date(self) -> Option<Date<Local>> {
+    pub fn into_date(self) -> Option<NaiveDate> {
         match (self.year, self.month, self.day) {
-            (Some(year), Some(month), Some(day)) => Some(Local.ymd(year, month, day)),
+            (Some(year), Some(month), Some(day)) => Some(NaiveDate::from_ymd(year, month, day)),
             _ => None,
         }
     }
 
-    pub fn from_date(date: Option<Date<Local>>) -> MediaDate {
+    pub fn from_date(date: Option<NaiveDate>) -> MediaDate {
         match date {
             Some(date) => MediaDate {
                 year: Some(date.year()),
