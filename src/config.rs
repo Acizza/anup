@@ -1,24 +1,13 @@
 use base64;
-use directories::ProjectDirs;
 use error::ConfigError;
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{self, ErrorKind, Write};
+use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 use toml;
+use util;
 
 pub const DEFAULT_CONFIG_NAME: &str = "config.toml";
-
-lazy_static! {
-    static ref PROJECT_DIRS: ProjectDirs = {
-        let dirs = ProjectDirs::from("", "", env!("CARGO_PKG_NAME"));
-
-        match dirs {
-            Some(dirs) => dirs,
-            None => panic!("failed to get user directories"),
-        }
-    };
-}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
@@ -35,7 +24,7 @@ impl Config {
     }
 
     pub fn load() -> Result<Config, ConfigError> {
-        let path = get_config_file_path()?;
+        let path = util::get_valid_config_path(DEFAULT_CONFIG_NAME)?;
 
         let file_contents = match fs::read_to_string(&path) {
             Ok(contents) => contents,
@@ -50,7 +39,7 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<(), ConfigError> {
-        let path = get_config_file_path()?;
+        let path = util::get_valid_config_path(DEFAULT_CONFIG_NAME)?;
         let mut file = File::create(path)?;
         let toml = toml::to_string_pretty(self)?;
 
@@ -61,19 +50,6 @@ impl Config {
     pub fn remove_invalid_series(&mut self) {
         self.series.retain(|_, path: &mut PathBuf| path.exists());
     }
-}
-
-fn get_config_file_path() -> io::Result<PathBuf> {
-    let path = PROJECT_DIRS.config_dir();
-
-    if !path.exists() {
-        fs::create_dir_all(path)?;
-    }
-
-    let mut path = PathBuf::from(path);
-    path.push(DEFAULT_CONFIG_NAME);
-
-    Ok(path)
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
