@@ -60,6 +60,7 @@ fn run() -> Result<(), Error> {
         (@arg PATH: -p --path +takes_value "Specifies the directory to look for video files in")
         (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
         (@arg INFO: -i --info "Displays saved series information")
+        (@arg OFFLINE: -o --offline "Launches the program in offline mode")
     ).get_matches();
 
     if args.is_present("INFO") {
@@ -74,7 +75,9 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
     config.remove_invalid_series();
 
     let path = get_series_path(&mut config, args)?;
-    let sync_backend = AniList::init(&mut config)?;
+    let offline_mode = args.is_present("OFFLINE");
+
+    let sync_backend = AniList::init(offline_mode, &mut config)?;
 
     config.save()?;
 
@@ -87,7 +90,7 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
         value.saturating_sub(1)
     };
 
-    Series::load(&path, sync_backend)?
+    Series::load(offline_mode, &path, sync_backend)?
         .load_season(season)?
         .play_all_episodes()?;
 

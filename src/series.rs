@@ -16,6 +16,7 @@ pub struct Series<B>
 where
     B: SyncBackend,
 {
+    offline_mode: bool,
     sync_backend: B,
     pub episode_data: EpisodeData,
     pub save_data: SaveData,
@@ -25,11 +26,16 @@ impl<B> Series<B>
 where
     B: SyncBackend,
 {
-    pub fn load(path: &Path, sync_backend: B) -> Result<Series<B>, SeriesError> {
+    pub fn load(
+        offline_mode: bool,
+        path: &Path,
+        sync_backend: B,
+    ) -> Result<Series<B>, SeriesError> {
         let mut save_data = SaveData::from_dir(path)?;
         let episode_data = Series::<B>::parse_episode_data(path, &mut save_data)?;
 
         let series = Series {
+            offline_mode,
             sync_backend,
             episode_data,
             save_data,
@@ -71,9 +77,10 @@ where
         let season_state = self.get_season_state(season)?;
         let season_ep_offset = self.calculate_season_offset(season);
 
-        let list_entry = self.get_list_entry(season_state.info)?;
+        let list_entry = self.get_list_entry(season, season_state.info)?;
+        let offline_mode = self.offline_mode;
 
-        Season::init(self, list_entry, season_ep_offset)
+        Season::init(self, offline_mode, list_entry, season, season_ep_offset)
     }
 
     pub fn save_data(&self) -> Result<(), SeriesError> {
@@ -87,12 +94,22 @@ where
             let mut series = None;
 
             for cur_season in num_seasons..=season {
-                let series_info =
-                    self.search_and_select_series(&self.episode_data.series_name, 1 + cur_season)?;
+                let series_info = if self.offline_mode {
+                    let mut info = AnimeInfo::default();
+                    info.title = self.episode_data.series_name.clone();
+                    info
+                } else {
+                    self.search_and_select_series(&self.episode_data.series_name, 1 + cur_season)?
+                };
 
                 let entry = AnimeEntry::new(series_info);
 
-                self.save_data.season_states.push(entry.clone());
+                let season_state = SeasonState {
+                    state: entry.clone(),
+                    needs_series_info: self.offline_mode,
+                };
+
+                self.save_data.season_states.push(season_state);
                 series = Some(entry);
             }
 
@@ -101,9 +118,21 @@ where
             // This unwrap should never fail, as the enclosing if statement ensures the for loop will set the
             // series variable at least once
             Ok(series.unwrap())
+        } else if self.offline_mode {
+            let season_state = &self.save_data.season_states[season as usize].state;
+            Ok(season_state.clone())
         } else {
-            let series_state = &self.save_data.season_states[season as usize];
-            Ok(series_state.clone())
+            let mut season_state = self.save_data.season_states[season as usize].clone();
+
+            if season_state.needs_series_info {
+                season_state.state.info =
+                    self.search_and_select_series(&self.episode_data.series_name, season)?;
+
+                season_state.needs_series_info = false;
+            }
+
+            self.save_data.season_states[season as usize] = season_state.clone();
+            Ok(season_state.state)
         }
     }
 
@@ -111,9 +140,9 @@ where
         let mut offset = 0;
 
         for cur_season in 0..(season as usize) {
-            let state = &self.save_data.season_states[cur_season];
+            let season_state = &self.save_data.season_states[cur_season];
 
-            if let Some(season_eps) = state.info.episodes {
+            if let Some(season_eps) = season_state.state.info.episodes {
                 offset += season_eps;
             }
         }
@@ -157,17 +186,19 @@ where
         }
     }
 
-    fn get_list_entry(&self, info: AnimeInfo) -> Result<AnimeEntry, SeriesError> {
+    fn get_list_entry(&self, season: u32, info: AnimeInfo) -> Result<AnimeEntry, SeriesError> {
+        if self.offline_mode {
+            return Ok(self.save_data.season_states[season as usize].state.clone());
+        }
+
         let found = self.sync_backend.get_list_entry(info.clone())?;
 
         match found {
             Some(entry) => Ok(entry),
             None => {
-                let mut entry = AnimeEntry::new(info);
-                entry.status = Status::Watching;
-                entry.start_date = Some(Local::today().naive_local());
+                let mut entry = self.save_data.season_states[season as usize].state.clone();
+                entry.info = info;
 
-                self.sync_backend.update_list_entry(&entry)?;
                 Ok(entry)
             }
         }
@@ -177,7 +208,7 @@ where
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SaveData {
     pub episode_matcher: Option<String>,
-    pub season_states: Vec<AnimeEntry>,
+    pub season_states: Vec<SeasonState>,
     #[serde(skip)]
     pub path: PathBuf,
 }
@@ -216,12 +247,21 @@ impl SaveData {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SeasonState {
+    #[serde(flatten)]
+    state: AnimeEntry,
+    needs_series_info: bool,
+}
+
 #[derive(Debug)]
 pub struct Season<'a, B>
 where
     B: 'a + SyncBackend,
 {
-    series: &'a Series<B>,
+    series: &'a mut Series<B>,
+    offline_mode: bool,
+    season_num: u32,
     pub list_entry: AnimeEntry,
     pub ep_offset: u32,
 }
@@ -231,12 +271,16 @@ where
     B: 'a + SyncBackend,
 {
     fn init(
-        series: &'a Series<B>,
+        series: &'a mut Series<B>,
+        offline_mode: bool,
         list_entry: AnimeEntry,
+        season_num: u32,
         ep_offset: u32,
     ) -> Result<Season<'a, B>, SeriesError> {
         let mut season = Season {
             series,
+            offline_mode,
+            season_num,
             list_entry,
             ep_offset,
         };
@@ -251,7 +295,16 @@ where
         Ok(season)
     }
 
-    fn update_list_entry(&self) -> Result<(), SeriesError> {
+    fn update_list_entry(&mut self) -> Result<(), SeriesError> {
+        self.series.save_data.season_states[self.season_num as usize].state =
+            self.list_entry.clone();
+
+        self.series.save_data.write_to_file()?;
+
+        if self.offline_mode {
+            return Ok(());
+        }
+
         self.series
             .sync_backend
             .update_list_entry(&self.list_entry)?;
@@ -262,12 +315,14 @@ where
     pub fn play_episode(&mut self, relative_ep: u32) -> Result<(), SeriesError> {
         let ep_num = self.ep_offset + relative_ep;
 
-        let path = self
-            .series
-            .episode_data
-            .episodes
-            .get(&ep_num)
-            .ok_or_else(|| SeriesError::EpisodeNotFound(ep_num))?;
+        let path = {
+            self.series
+                .episode_data
+                .episodes
+                .get(&ep_num)
+                .ok_or_else(|| SeriesError::EpisodeNotFound(ep_num))?
+                .clone() // TODO: remove clone and block when NLL is stable
+        };
 
         let status = process::open_with_default(path).map_err(SeriesError::FailedToOpenPlayer)?;
         self.list_entry.watched_episodes = relative_ep;
@@ -301,7 +356,7 @@ where
         }
     }
 
-    fn episode_completed(&self) -> Result<(), SeriesError> {
+    fn episode_completed(&mut self) -> Result<(), SeriesError> {
         println!(
             "[{}] episode {}/{} completed",
             self.list_entry.info.title,

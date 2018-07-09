@@ -153,7 +153,17 @@ impl SyncBackend for AniList {
         "AniList"
     }
 
-    fn init(config: &mut Config) -> Result<AniList, BackendError> {
+    fn init(offline_mode: bool, config: &mut Config) -> Result<AniList, BackendError> {
+        if offline_mode {
+            let anilist = AniList {
+                client: Client::new(),
+                user: User::default(),
+                access_token: String::new(),
+            };
+
+            return Ok(anilist);
+        }
+
         let is_first_launch = !config.anilist.token.is_set();
 
         let access_token = if is_first_launch {

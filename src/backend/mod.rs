@@ -11,7 +11,7 @@ where
 {
     fn name() -> &'static str;
 
-    fn init(config: &mut Config) -> Result<Self, BackendError>;
+    fn init(offline_mode: bool, config: &mut Config) -> Result<Self, BackendError>;
 
     fn search_by_name(&self, name: &str) -> Result<Vec<AnimeInfo>, BackendError>;
     fn get_series_info_by_id(&self, id: u32) -> Result<AnimeInfo, BackendError>;
@@ -31,6 +31,16 @@ pub struct AnimeInfo {
     pub id: u32,
     pub title: String,
     pub episodes: Option<u32>,
+}
+
+impl Default for AnimeInfo {
+    fn default() -> AnimeInfo {
+        AnimeInfo {
+            id: 0,
+            title: String::new(),
+            episodes: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
