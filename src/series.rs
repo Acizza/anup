@@ -68,10 +68,10 @@ where
     }
 
     pub fn load_season(&mut self, season: u32) -> Result<Season<B>, SeriesError> {
-        let season_info = self.get_season_info(season)?;
+        let season_state = self.get_season_state(season)?;
         let season_ep_offset = self.calculate_season_offset(season);
 
-        let list_entry = self.get_list_entry(season_info.clone())?;
+        let list_entry = self.get_list_entry(season_state.info)?;
 
         Season::init(self, list_entry, season_ep_offset)
     }
@@ -80,8 +80,8 @@ where
         self.save_data.write_to_file()
     }
 
-    fn get_season_info(&mut self, season: u32) -> Result<AnimeInfo, SeriesError> {
-        let num_seasons = self.save_data.seasons.len() as u32;
+    fn get_season_state(&mut self, season: u32) -> Result<AnimeEntry, SeriesError> {
+        let num_seasons = self.save_data.season_states.len() as u32;
 
         if season >= num_seasons {
             let mut series = None;
@@ -90,8 +90,10 @@ where
                 let series_info =
                     self.search_and_select_series(&self.episode_data.series_name, 1 + cur_season)?;
 
-                self.save_data.seasons.push(series_info.clone().into());
-                series = Some(series_info);
+                let entry = AnimeEntry::new(series_info);
+
+                self.save_data.season_states.push(entry.clone());
+                series = Some(entry);
             }
 
             self.save_data()?;
@@ -100,13 +102,8 @@ where
             // series variable at least once
             Ok(series.unwrap())
         } else {
-            let season_info = &self.save_data.seasons[season as usize];
-
-            let series = self
-                .sync_backend
-                .get_series_info_by_id(season_info.series_id)?;
-
-            Ok(series)
+            let series_state = &self.save_data.season_states[season as usize];
+            Ok(series_state.clone())
         }
     }
 
@@ -114,7 +111,9 @@ where
         let mut offset = 0;
 
         for cur_season in 0..(season as usize) {
-            if let Some(season_eps) = self.save_data.seasons[cur_season].episodes {
+            let state = &self.save_data.season_states[cur_season];
+
+            if let Some(season_eps) = state.info.episodes {
                 offset += season_eps;
             }
         }
@@ -178,7 +177,7 @@ where
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SaveData {
     pub episode_matcher: Option<String>,
-    pub seasons: Vec<SeasonInfo>,
+    pub season_states: Vec<AnimeEntry>,
     #[serde(skip)]
     pub path: PathBuf,
 }
@@ -189,7 +188,7 @@ impl SaveData {
     pub fn new(path: PathBuf) -> SaveData {
         SaveData {
             episode_matcher: None,
-            seasons: Vec::new(),
+            season_states: Vec::new(),
             path,
         }
     }
@@ -214,21 +213,6 @@ impl SaveData {
         fs::write(&self.path, toml)?;
 
         Ok(())
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SeasonInfo {
-    pub series_id: u32,
-    pub episodes: Option<u32>,
-}
-
-impl From<AnimeInfo> for SeasonInfo {
-    fn from(info: AnimeInfo) -> SeasonInfo {
-        SeasonInfo {
-            series_id: info.id,
-            episodes: info.episodes,
-        }
     }
 }
 

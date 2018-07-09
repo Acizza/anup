@@ -26,14 +26,14 @@ pub trait ScoreParser {
     fn format_score(&self, raw_score: f32) -> Result<String, BackendError>;
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnimeInfo {
     pub id: u32,
     pub title: String,
     pub episodes: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnimeEntry {
     #[serde(flatten)]
     pub info: AnimeInfo,
@@ -50,7 +50,7 @@ impl AnimeEntry {
             info,
             watched_episodes: 0,
             score: None,
-            status: Status::PlanToWatch,
+            status: Status::Watching,
             start_date: Some(Local::today().naive_local()),
             finish_date: None,
         }
