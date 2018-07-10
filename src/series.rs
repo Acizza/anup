@@ -163,7 +163,7 @@ where
 
     fn get_series_info(&self, name: &str, season: u32) -> Result<AnimeInfo, SeriesError> {
         if self.offline_mode {
-            let info = if self.save_data.season_states.len() >= season as usize {
+            let info = if self.save_data.season_states.len() > season as usize {
                 self.season_state(season).state.info.clone()
             } else {
                 let mut info = AnimeInfo::default();
