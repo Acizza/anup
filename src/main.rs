@@ -1,3 +1,5 @@
+#![feature(nll)]
+
 #[cfg(windows)]
 extern crate winapi;
 

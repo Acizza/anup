@@ -115,8 +115,6 @@ where
             Ok(series.unwrap())
         } else {
             // When we already have the required season data, we can perform any necessary syncing and return it directly
-            // TODO: this entire block can likely be simplified when NLL becomes stable
-
             let mut season_state = self.season_state(season).clone();
 
             if season_state.needs_info {
@@ -358,12 +356,9 @@ where
     }
 
     fn update_list_entry(&mut self) -> Result<(), SeriesError> {
-        // TODO: remove block when NLL is stable
-        {
-            let season_state = self.series.season_state_mut(self.season_num);
-            season_state.state = self.list_entry.clone();
-            season_state.needs_sync = self.offline_mode;
-        }
+        let season_state = self.series.season_state_mut(self.season_num);
+        season_state.state = self.list_entry.clone();
+        season_state.needs_sync = self.offline_mode;
 
         self.series.save_data()?;
 
@@ -381,14 +376,12 @@ where
     pub fn play_episode(&mut self, relative_ep: u32) -> Result<(), SeriesError> {
         let ep_num = self.ep_offset + relative_ep;
 
-        let path = {
-            self.series
-                .episode_data
-                .episodes
-                .get(&ep_num)
-                .ok_or_else(|| SeriesError::EpisodeNotFound(ep_num))?
-                .clone() // TODO: remove clone and block when NLL is stable
-        };
+        let path = self
+            .series
+            .episode_data
+            .episodes
+            .get(&ep_num)
+            .ok_or_else(|| SeriesError::EpisodeNotFound(ep_num))?;
 
         let status = process::open_with_default(path).map_err(SeriesError::FailedToOpenPlayer)?;
         self.list_entry.watched_episodes = relative_ep;
