@@ -102,6 +102,7 @@ where
 
                 let season_state = SeasonState {
                     state: entry.clone(),
+                    needs_info: self.offline_mode,
                     needs_sync: self.offline_mode,
                 };
 
@@ -118,14 +119,14 @@ where
 
             let mut season_state = self.season_state(season).clone();
 
-            if season_state.needs_sync {
+            if season_state.needs_info {
                 season_state.state.info =
                     self.get_series_info(&self.episode_data.series_name, season)?;
 
                 // We want to stay in a needs-sync state in offline mode so the "real" info
                 // can be inserted when the series is played in online mode
                 if !self.offline_mode {
-                    season_state.needs_sync = false;
+                    season_state.needs_info = false;
                 }
 
                 *self.season_state_mut(season) = season_state.clone();
@@ -222,10 +223,17 @@ where
         let found = self.sync_backend.get_list_entry(info.clone())?;
 
         match found {
-            Some(entry) => {
+            Some(mut entry) => {
                 // When the list entry already exists, we should sync the data we have locally
-                // to the new list entry data
-                self.season_state_mut(season).state = entry.clone();
+                // to the new list entry data unless we have new data to report to the backend
+                let season_state = self.season_state_mut(season);
+
+                if season_state.needs_sync {
+                    entry = season_state.state.clone();
+                } else {
+                    season_state.state = entry.clone();
+                }
+
                 Ok(entry)
             }
             None => {
@@ -293,8 +301,9 @@ impl SaveData {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SeasonState {
     #[serde(flatten)]
-    state: AnimeEntry,
-    needs_sync: bool,
+    pub state: AnimeEntry,
+    pub needs_info: bool,
+    pub needs_sync: bool,
 }
 
 pub struct Season<'a, B>
@@ -338,7 +347,13 @@ where
     }
 
     fn update_list_entry(&mut self) -> Result<(), SeriesError> {
-        self.series.season_state_mut(self.season_num).state = self.list_entry.clone();
+        // TODO: remove block when NLL is stable
+        {
+            let season_state = self.series.season_state_mut(self.season_num);
+            season_state.state = self.list_entry.clone();
+            season_state.needs_sync = self.offline_mode;
+        }
+
         self.series.save_data()?;
 
         if self.offline_mode {
