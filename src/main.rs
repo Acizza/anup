@@ -1,3 +1,5 @@
+#![feature(nll)]
+
 #[cfg(windows)]
 extern crate winapi;
 
@@ -60,10 +62,14 @@ fn run() -> Result<(), Error> {
         (@arg PATH: -p --path +takes_value "Specifies the directory to look for video files in")
         (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
         (@arg INFO: -i --info "Displays saved series information")
+        (@arg OFFLINE: -o --offline "Launches the program in offline mode")
+        (@arg SYNC: --sync "Synchronizes all changes made offline to AniList")
     ).get_matches();
 
     if args.is_present("INFO") {
         print_saved_series_info()
+    } else if args.is_present("SYNC") {
+        sync_offline_changes()
     } else {
         watch_series(&args)
     }
@@ -74,12 +80,14 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
     config.remove_invalid_series();
 
     let path = get_series_path(&mut config, args)?;
-    let sync_backend = AniList::init(&mut config)?;
+    let offline_mode = args.is_present("OFFLINE");
+
+    let sync_backend = AniList::init(offline_mode, &mut config)?;
 
     config.save()?;
 
     let season = {
-        let value: u32 = args
+        let value: usize = args
             .value_of("SEASON")
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
@@ -87,7 +95,7 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
         value.saturating_sub(1)
     };
 
-    Series::load(&path, sync_backend)?
+    Series::load(offline_mode, &path, sync_backend)?
         .load_season(season)?
         .play_all_episodes()?;
 
@@ -126,6 +134,46 @@ fn print_saved_series_info() -> Result<(), Error> {
             path.to_string_lossy(),
             ep_list
         );
+    }
+
+    Ok(())
+}
+
+fn sync_offline_changes() -> Result<(), Error> {
+    let mut config = Config::load()?;
+    config.remove_invalid_series();
+
+    let backend = AniList::init(false, &mut config)?;
+
+    for (_, path) in config.series {
+        let mut save_data = match SaveData::from_dir(&path) {
+            Ok(save_data) => save_data,
+            Err(_) => continue,
+        };
+
+        for season_num in 0..save_data.season_states.len() {
+            let season_state = &mut save_data.season_states[season_num];
+
+            if !season_state.needs_sync {
+                continue;
+            }
+
+            println!("[{}] syncing..", season_state.state.info.title);
+
+            if season_state.needs_info {
+                let ep_data = EpisodeData::parse_dir(&path, save_data.episode_matcher.clone())?;
+
+                season_state.state.info =
+                    series::search_for_series_info(&backend, &ep_data.series_name, season_num)?;
+
+                season_state.needs_info = false;
+            }
+
+            backend.update_list_entry(&season_state.state)?;
+            season_state.needs_sync = false;
+        }
+
+        save_data.write_to_file()?;
     }
 
     Ok(())

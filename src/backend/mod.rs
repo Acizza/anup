@@ -1,4 +1,4 @@
-use chrono::{Date, Local};
+use chrono::{Local, NaiveDate};
 use config::Config;
 use error::BackendError;
 use std::borrow::Cow;
@@ -11,7 +11,7 @@ where
 {
     fn name() -> &'static str;
 
-    fn init(config: &mut Config) -> Result<Self, BackendError>;
+    fn init(offline_mode: bool, config: &mut Config) -> Result<Self, BackendError>;
 
     fn search_by_name(&self, name: &str) -> Result<Vec<AnimeInfo>, BackendError>;
     fn get_series_info_by_id(&self, id: u32) -> Result<AnimeInfo, BackendError>;
@@ -26,21 +26,32 @@ pub trait ScoreParser {
     fn format_score(&self, raw_score: f32) -> Result<String, BackendError>;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AnimeInfo {
     pub id: u32,
     pub title: String,
     pub episodes: Option<u32>,
 }
 
-#[derive(Debug)]
+impl Default for AnimeInfo {
+    fn default() -> AnimeInfo {
+        AnimeInfo {
+            id: 0,
+            title: String::new(),
+            episodes: None,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AnimeEntry {
+    #[serde(flatten)]
     pub info: AnimeInfo,
     pub watched_episodes: u32,
     pub score: Option<f32>,
     pub status: Status,
-    pub start_date: Option<Date<Local>>,
-    pub finish_date: Option<Date<Local>>,
+    pub start_date: Option<NaiveDate>,
+    pub finish_date: Option<NaiveDate>,
 }
 
 impl AnimeEntry {
@@ -49,14 +60,14 @@ impl AnimeEntry {
             info,
             watched_episodes: 0,
             score: None,
-            status: Status::PlanToWatch,
-            start_date: Some(Local::today()),
+            status: Status::Watching,
+            start_date: Some(Local::today().naive_local()),
             finish_date: None,
         }
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Status {
     Watching,
     Completed,

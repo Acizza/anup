@@ -11,11 +11,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use toml;
 
-#[derive(Debug)]
 pub struct Series<B>
 where
     B: SyncBackend,
 {
+    offline_mode: bool,
     sync_backend: B,
     pub episode_data: EpisodeData,
     pub save_data: SaveData,
@@ -25,11 +25,16 @@ impl<B> Series<B>
 where
     B: SyncBackend,
 {
-    pub fn load(path: &Path, sync_backend: B) -> Result<Series<B>, SeriesError> {
+    pub fn load(
+        offline_mode: bool,
+        path: &Path,
+        sync_backend: B,
+    ) -> Result<Series<B>, SeriesError> {
         let mut save_data = SaveData::from_dir(path)?;
         let episode_data = Series::<B>::parse_episode_data(path, &mut save_data)?;
 
         let series = Series {
+            offline_mode,
             sync_backend,
             episode_data,
             save_data,
@@ -67,118 +72,203 @@ where
         }
     }
 
-    pub fn load_season(&mut self, season: u32) -> Result<Season<B>, SeriesError> {
-        let season_info = self.get_season_info(season)?;
-        let season_ep_offset = self.calculate_season_offset(season);
+    pub fn load_season(&mut self, season: usize) -> Result<Season<B>, SeriesError> {
+        let season_state = self.get_season_state(season)?;
+        let season_ep_offset = self.calculate_season_offset(season)?;
 
-        let list_entry = self.get_list_entry(season_info.clone())?;
+        let list_entry = self.get_list_entry(season, season_state.info)?;
+        let offline_mode = self.offline_mode;
 
-        Season::init(self, list_entry, season_ep_offset)
+        self.save_data()?;
+
+        Season::init(self, offline_mode, list_entry, season, season_ep_offset)
     }
 
     pub fn save_data(&self) -> Result<(), SeriesError> {
         self.save_data.write_to_file()
     }
 
-    fn get_season_info(&mut self, season: u32) -> Result<AnimeInfo, SeriesError> {
-        let num_seasons = self.save_data.seasons.len() as u32;
+    fn get_season_state(&mut self, season: usize) -> Result<AnimeEntry, SeriesError> {
+        let num_seasons = self.save_data.season_states.len();
 
         if season >= num_seasons {
             let mut series = None;
 
+            // Get new season info up to the desired season
             for cur_season in num_seasons..=season {
-                let series_info =
-                    self.search_and_select_series(&self.episode_data.series_name, 1 + cur_season)?;
+                let series_info = self.get_series_info(&self.episode_data.series_name, cur_season)?;
 
-                self.save_data.seasons.push(series_info.clone().into());
-                series = Some(series_info);
+                let entry = AnimeEntry::new(series_info);
+
+                let season_state = SeasonState {
+                    state: entry.clone(),
+                    needs_info: self.offline_mode,
+                    needs_sync: self.offline_mode,
+                };
+
+                self.save_data.season_states.push(season_state);
+                series = Some(entry);
             }
-
-            self.save_data()?;
 
             // This unwrap should never fail, as the enclosing if statement ensures the for loop will set the
             // series variable at least once
             Ok(series.unwrap())
         } else {
-            let season_info = &self.save_data.seasons[season as usize];
+            // When we already have the required season data, we can perform any necessary syncing and return it directly
+            let mut season_state = self.season_state(season).clone();
 
-            let series = self
-                .sync_backend
-                .get_series_info_by_id(season_info.series_id)?;
+            if season_state.needs_info {
+                season_state.state.info =
+                    self.get_series_info(&self.episode_data.series_name, season)?;
 
-            Ok(series)
+                // We want to stay in a needs-sync state in offline mode so the "real" info
+                // can be inserted when the series is played in online mode
+                if !self.offline_mode {
+                    season_state.needs_info = false;
+                }
+
+                *self.season_state_mut(season) = season_state.clone();
+            }
+
+            Ok(season_state.state)
         }
     }
 
-    fn calculate_season_offset(&self, season: u32) -> u32 {
+    fn calculate_season_offset(&mut self, season: usize) -> Result<u32, SeriesError> {
         let mut offset = 0;
 
-        for cur_season in 0..(season as usize) {
-            if let Some(season_eps) = self.save_data.seasons[cur_season].episodes {
-                offset += season_eps;
+        for cur_season in 0..season {
+            let num_episodes = self.season_state(cur_season).state.info.episodes;
+
+            match num_episodes {
+                Some(eps) => offset += eps,
+                None => {
+                    println!(
+                        "please enter the number of episodes for season {} of [{}]:",
+                        1 + cur_season,
+                        self.episode_data.series_name
+                    );
+
+                    let eps = input::read_range(1, ::std::u32::MAX)?;
+
+                    self.season_state_mut(cur_season).state.info.episodes = Some(eps);
+                    offset += eps;
+                }
             }
         }
 
-        offset
+        Ok(offset)
     }
 
-    fn search_and_select_series(&self, name: &str, season: u32) -> Result<AnimeInfo, SeriesError> {
-        println!("[{}] searching on {}..", name, B::name());
-
-        let mut found = self.sync_backend.search_by_name(name)?;
-
-        if !found.is_empty() {
-            println!(
-                "select season {} by entering the number next to its name:\n",
-                season
-            );
-
-            println!("0 [custom search]");
-
-            for (i, series) in found.iter().enumerate() {
-                println!("{} [{}]", 1 + i, series.title);
-            }
-
-            let index = input::read_range(0, found.len())?;
-
-            if index == 0 {
-                println!("enter the name you want to search for:");
-
-                let name = input::read_line()?;
-                self.search_and_select_series(&name, season)
+    fn get_series_info(&self, name: &str, season: usize) -> Result<AnimeInfo, SeriesError> {
+        if self.offline_mode {
+            let info = if self.save_data.season_states.len() > season {
+                self.season_state(season).state.info.clone()
             } else {
-                let info = found.swap_remove(index - 1);
-                Ok(info)
-            }
-        } else {
-            println!("no results found\nplease enter a custom search term:");
+                let mut info = AnimeInfo::default();
+                info.title = self.episode_data.series_name.clone();
 
-            let name = input::read_line()?;
-            self.search_and_select_series(&name, season)
+                info
+            };
+
+            return Ok(info);
         }
+
+        search_for_series_info(&self.sync_backend, name, season)
     }
 
-    fn get_list_entry(&self, info: AnimeInfo) -> Result<AnimeEntry, SeriesError> {
+    fn get_list_entry(
+        &mut self,
+        season: usize,
+        info: AnimeInfo,
+    ) -> Result<AnimeEntry, SeriesError> {
+        if self.offline_mode {
+            return Ok(self.season_state(season).state.clone());
+        }
+
         let found = self.sync_backend.get_list_entry(info.clone())?;
 
         match found {
-            Some(entry) => Ok(entry),
-            None => {
-                let mut entry = AnimeEntry::new(info);
-                entry.status = Status::Watching;
-                entry.start_date = Some(Local::today());
+            Some(mut entry) => {
+                // When the list entry already exists, we should sync the data we have locally
+                // to the new list entry data unless we have new data to report to the backend
+                let season_state = self.season_state_mut(season);
 
-                self.sync_backend.update_list_entry(&entry)?;
+                if season_state.needs_sync {
+                    entry = season_state.state.clone();
+                } else {
+                    season_state.state = entry.clone();
+                }
+
+                Ok(entry)
+            }
+            None => {
+                // When the list entry doesn't exist, we should "upload" our existing local data to
+                // the backend
+                let mut entry = self.season_state(season).state.clone();
+                entry.info = info;
+
                 Ok(entry)
             }
         }
     }
+
+    fn season_state(&self, season: usize) -> &SeasonState {
+        &self.save_data.season_states[season]
+    }
+
+    fn season_state_mut(&mut self, season: usize) -> &mut SeasonState {
+        &mut self.save_data.season_states[season]
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+pub fn search_for_series_info<B>(
+    backend: &B,
+    name: &str,
+    season: usize,
+) -> Result<AnimeInfo, SeriesError>
+where
+    B: SyncBackend,
+{
+    println!("[{}] searching on {}..", name, B::name());
+
+    let mut found = backend.search_by_name(name)?;
+
+    if !found.is_empty() {
+        println!(
+            "select season {} by entering the number next to its name:\n",
+            1 + season
+        );
+
+        println!("0 [custom search]");
+
+        for (i, series) in found.iter().enumerate() {
+            println!("{} [{}]", 1 + i, series.title);
+        }
+
+        let index = input::read_range(0, found.len())?;
+
+        if index == 0 {
+            println!("enter the name you want to search for:");
+
+            let name = input::read_line()?;
+            search_for_series_info(backend, &name, season)
+        } else {
+            let info = found.swap_remove(index - 1);
+            Ok(info)
+        }
+    } else {
+        println!("no results found\nplease enter a custom search term:");
+
+        let name = input::read_line()?;
+        search_for_series_info(backend, &name, season)
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct SaveData {
     pub episode_matcher: Option<String>,
-    pub seasons: Vec<SeasonInfo>,
+    pub season_states: Vec<SeasonState>,
     #[serde(skip)]
     pub path: PathBuf,
 }
@@ -189,7 +279,7 @@ impl SaveData {
     pub fn new(path: PathBuf) -> SaveData {
         SaveData {
             episode_matcher: None,
-            seasons: Vec::new(),
+            season_states: Vec::new(),
             path,
         }
     }
@@ -217,27 +307,21 @@ impl SaveData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SeasonInfo {
-    pub series_id: u32,
-    pub episodes: Option<u32>,
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SeasonState {
+    #[serde(flatten)]
+    pub state: AnimeEntry,
+    pub needs_info: bool,
+    pub needs_sync: bool,
 }
 
-impl From<AnimeInfo> for SeasonInfo {
-    fn from(info: AnimeInfo) -> SeasonInfo {
-        SeasonInfo {
-            series_id: info.id,
-            episodes: info.episodes,
-        }
-    }
-}
-
-#[derive(Debug)]
 pub struct Season<'a, B>
 where
     B: 'a + SyncBackend,
 {
-    series: &'a Series<B>,
+    series: &'a mut Series<B>,
+    offline_mode: bool,
+    season_num: usize,
     pub list_entry: AnimeEntry,
     pub ep_offset: u32,
 }
@@ -247,12 +331,16 @@ where
     B: 'a + SyncBackend,
 {
     fn init(
-        series: &'a Series<B>,
+        series: &'a mut Series<B>,
+        offline_mode: bool,
         list_entry: AnimeEntry,
+        season_num: usize,
         ep_offset: u32,
     ) -> Result<Season<'a, B>, SeriesError> {
         let mut season = Season {
             series,
+            offline_mode,
+            season_num,
             list_entry,
             ep_offset,
         };
@@ -267,7 +355,17 @@ where
         Ok(season)
     }
 
-    fn update_list_entry(&self) -> Result<(), SeriesError> {
+    fn update_list_entry(&mut self) -> Result<(), SeriesError> {
+        let season_state = self.series.season_state_mut(self.season_num);
+        season_state.state = self.list_entry.clone();
+        season_state.needs_sync = self.offline_mode;
+
+        self.series.save_data()?;
+
+        if self.offline_mode {
+            return Ok(());
+        }
+
         self.series
             .sync_backend
             .update_list_entry(&self.list_entry)?;
@@ -317,7 +415,7 @@ where
         }
     }
 
-    fn episode_completed(&self) -> Result<(), SeriesError> {
+    fn episode_completed(&mut self) -> Result<(), SeriesError> {
         println!(
             "[{}] episode {}/{} completed",
             self.list_entry.info.title,
@@ -403,7 +501,7 @@ where
                 // A series that was on hold probably already has a starting date, and it would make
                 // more sense to use that one instead of replacing it
                 if self.list_entry.status != Status::OnHold {
-                    self.list_entry.start_date = Some(Local::today());
+                    self.list_entry.start_date = Some(Local::today().naive_local());
                 }
 
                 self.list_entry.finish_date = None;
@@ -413,7 +511,7 @@ where
                 println!("do you want to reset the start and end dates of the series? (Y/n)");
 
                 if input::read_yn(Answer::Yes)? {
-                    self.list_entry.start_date = Some(Local::today());
+                    self.list_entry.start_date = Some(Local::today().naive_local());
                     self.list_entry.finish_date = None;
                 }
 
@@ -421,7 +519,7 @@ where
             }
             Status::Completed => {
                 if self.list_entry.finish_date.is_none() {
-                    self.list_entry.finish_date = Some(Local::today());
+                    self.list_entry.finish_date = Some(Local::today().naive_local());
                 }
 
                 println!(
@@ -435,7 +533,7 @@ where
             }
             Status::Dropped => {
                 if self.list_entry.finish_date.is_none() {
-                    self.list_entry.finish_date = Some(Local::today());
+                    self.list_entry.finish_date = Some(Local::today().naive_local());
                 }
             }
             Status::OnHold | Status::PlanToWatch => (),
@@ -468,7 +566,6 @@ where
 type SeriesName = String;
 type EpisodeNum = u32;
 
-#[derive(Debug)]
 pub struct EpisodeData {
     pub series_name: String,
     pub episodes: HashMap<u32, PathBuf>,

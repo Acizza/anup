@@ -9,7 +9,7 @@ use util;
 
 pub const DEFAULT_CONFIG_NAME: &str = "config.toml";
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Config {
     pub series: HashMap<String, PathBuf>,
     pub anilist: AniList,
@@ -52,7 +52,7 @@ impl Config {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct AccessToken {
     pub token: Option<String>,
 }
@@ -79,7 +79,7 @@ impl AccessToken {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct AniList {
     #[serde(flatten)]
     pub token: AccessToken,
