@@ -80,6 +80,8 @@ where
         let list_entry = self.get_list_entry(season, season_state.info)?;
         let offline_mode = self.offline_mode;
 
+        self.save_data()?;
+
         Season::init(self, offline_mode, list_entry, season, season_ep_offset)
     }
 
@@ -112,8 +114,6 @@ where
                 self.save_data.season_states.push(season_state);
                 series = Some(entry);
             }
-
-            self.save_data()?;
 
             // This unwrap should never fail, as the enclosing if statement ensures the for loop will set the
             // series variable at least once
@@ -186,7 +186,7 @@ where
         }
     }
 
-    fn get_list_entry(&self, season: u32, info: AnimeInfo) -> Result<AnimeEntry, SeriesError> {
+    fn get_list_entry(&mut self, season: u32, info: AnimeInfo) -> Result<AnimeEntry, SeriesError> {
         if self.offline_mode {
             return Ok(self.save_data.season_states[season as usize].state.clone());
         }
@@ -194,8 +194,15 @@ where
         let found = self.sync_backend.get_list_entry(info.clone())?;
 
         match found {
-            Some(entry) => Ok(entry),
+            Some(entry) => {
+                // When the list entry already exists, we should sync the data we have locally
+                // to the new list entry data
+                self.save_data.season_states[season as usize].state = entry.clone();
+                Ok(entry)
+            }
             None => {
+                // When the list entry doesn't exist, we should "upload" our existing local data to
+                // the backend
                 let mut entry = self.save_data.season_states[season as usize].state.clone();
                 entry.info = info;
 
