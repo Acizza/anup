@@ -11,7 +11,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use toml;
 
-#[derive(Debug)]
 pub struct Series<B>
 where
     B: SyncBackend,
@@ -249,7 +248,7 @@ where
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct SaveData {
     pub episode_matcher: Option<String>,
     pub season_states: Vec<SeasonState>,
@@ -291,14 +290,13 @@ impl SaveData {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SeasonState {
     #[serde(flatten)]
     state: AnimeEntry,
     needs_sync: bool,
 }
 
-#[derive(Debug)]
 pub struct Season<'a, B>
 where
     B: 'a + SyncBackend,
@@ -549,7 +547,6 @@ where
 type SeriesName = String;
 type EpisodeNum = u32;
 
-#[derive(Debug)]
 pub struct EpisodeData {
     pub series_name: String,
     pub episodes: HashMap<u32, PathBuf>,

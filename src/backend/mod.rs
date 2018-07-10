@@ -26,7 +26,7 @@ pub trait ScoreParser {
     fn format_score(&self, raw_score: f32) -> Result<String, BackendError>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AnimeInfo {
     pub id: u32,
     pub title: String,
@@ -43,7 +43,7 @@ impl Default for AnimeInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AnimeEntry {
     #[serde(flatten)]
     pub info: AnimeInfo,
@@ -67,7 +67,7 @@ impl AnimeEntry {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Status {
     Watching,
     Completed,
