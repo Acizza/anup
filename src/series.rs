@@ -128,9 +128,10 @@ where
                 if !self.offline_mode {
                     season_state.needs_sync = false;
                 }
+
+                *self.season_state_mut(season) = season_state.clone();
             }
 
-            *self.season_state_mut(season) = season_state.clone();
             Ok(season_state.state)
         }
     }
