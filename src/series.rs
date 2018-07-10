@@ -73,7 +73,7 @@ where
         }
     }
 
-    pub fn load_season(&mut self, season: u32) -> Result<Season<B>, SeriesError> {
+    pub fn load_season(&mut self, season: usize) -> Result<Season<B>, SeriesError> {
         let season_state = self.get_season_state(season)?;
         let season_ep_offset = self.calculate_season_offset(season)?;
 
@@ -89,8 +89,8 @@ where
         self.save_data.write_to_file()
     }
 
-    fn get_season_state(&mut self, season: u32) -> Result<AnimeEntry, SeriesError> {
-        let num_seasons = self.save_data.season_states.len() as u32;
+    fn get_season_state(&mut self, season: usize) -> Result<AnimeEntry, SeriesError> {
+        let num_seasons = self.save_data.season_states.len();
 
         if season >= num_seasons {
             let mut series = None;
@@ -136,11 +136,11 @@ where
         }
     }
 
-    fn calculate_season_offset(&mut self, season: u32) -> Result<u32, SeriesError> {
+    fn calculate_season_offset(&mut self, season: usize) -> Result<u32, SeriesError> {
         let mut offset = 0;
 
-        for cur_season in 0..(season as usize) {
-            let num_episodes = self.season_state(cur_season as u32).state.info.episodes;
+        for cur_season in 0..season {
+            let num_episodes = self.season_state(cur_season).state.info.episodes;
 
             match num_episodes {
                 Some(eps) => offset += eps,
@@ -153,7 +153,7 @@ where
 
                     let eps = input::read_range(1, ::std::u32::MAX)?;
 
-                    self.season_state_mut(cur_season as u32).state.info.episodes = Some(eps);
+                    self.season_state_mut(cur_season).state.info.episodes = Some(eps);
                     offset += eps;
                 }
             }
@@ -162,9 +162,9 @@ where
         Ok(offset)
     }
 
-    fn get_series_info(&self, name: &str, season: u32) -> Result<AnimeInfo, SeriesError> {
+    fn get_series_info(&self, name: &str, season: usize) -> Result<AnimeInfo, SeriesError> {
         if self.offline_mode {
-            let info = if self.save_data.season_states.len() > season as usize {
+            let info = if self.save_data.season_states.len() > season {
                 self.season_state(season).state.info.clone()
             } else {
                 let mut info = AnimeInfo::default();
@@ -211,7 +211,11 @@ where
         }
     }
 
-    fn get_list_entry(&mut self, season: u32, info: AnimeInfo) -> Result<AnimeEntry, SeriesError> {
+    fn get_list_entry(
+        &mut self,
+        season: usize,
+        info: AnimeInfo,
+    ) -> Result<AnimeEntry, SeriesError> {
         if self.offline_mode {
             return Ok(self.season_state(season).state.clone());
         }
@@ -236,12 +240,12 @@ where
         }
     }
 
-    fn season_state(&self, season: u32) -> &SeasonState {
-        &self.save_data.season_states[season as usize]
+    fn season_state(&self, season: usize) -> &SeasonState {
+        &self.save_data.season_states[season]
     }
 
-    fn season_state_mut(&mut self, season: u32) -> &mut SeasonState {
-        &mut self.save_data.season_states[season as usize]
+    fn season_state_mut(&mut self, season: usize) -> &mut SeasonState {
+        &mut self.save_data.season_states[season]
     }
 }
 
@@ -301,7 +305,7 @@ where
 {
     series: &'a mut Series<B>,
     offline_mode: bool,
-    season_num: u32,
+    season_num: usize,
     pub list_entry: AnimeEntry,
     pub ep_offset: u32,
 }
@@ -314,7 +318,7 @@ where
         series: &'a mut Series<B>,
         offline_mode: bool,
         list_entry: AnimeEntry,
-        season_num: u32,
+        season_num: usize,
         ep_offset: u32,
     ) -> Result<Season<'a, B>, SeriesError> {
         let mut season = Season {
@@ -336,10 +340,8 @@ where
     }
 
     fn update_list_entry(&mut self) -> Result<(), SeriesError> {
-        self.series.save_data.season_states[self.season_num as usize].state =
-            self.list_entry.clone();
-
-        self.series.save_data.write_to_file()?;
+        self.series.season_state_mut(self.season_num).state = self.list_entry.clone();
+        self.series.save_data()?;
 
         if self.offline_mode {
             return Ok(());

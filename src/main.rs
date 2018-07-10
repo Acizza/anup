@@ -82,7 +82,7 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
     config.save()?;
 
     let season = {
-        let value: u32 = args
+        let value: usize = args
             .value_of("SEASON")
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
