@@ -5,11 +5,12 @@ It is primarily intended for anyone who prefers being able to very quickly play 
 
 Current features include:
 * Automatic detection of a series based off its filename
-* Playing the next unwatched episode(s) of a series in your default video player
-* Options to rate, put on hold, and drop a series after playing an episode
-* Automatically handles watching a series that has already been dropped, put on hold, or completed
-* Automatically sets the start and end date of a series
-* Support for series that have multiple seasons merged together
+* Playing the next unwatched episode(s) of an anime in your default video player
+* Offline mode
+* Options to rate, put on hold, and drop an anime after playing each episode
+* Handling of anime that have already been completed, dropped, or put on hold
+* Automatic setting of the date you started watching and finished watching an anime
+* Support for anime that have multiple seasons merged together
 
 The program is developed for Linux and Windows, with Linux being the primary platform.
 Base macOS support is included but untested.
@@ -37,7 +38,7 @@ This script will run the program in a new terminal for you if you try to launch 
 # Playing An Anime
 Whenever you want to watch a series through the program for the first time, you will need to specify the path to it with the `-p` flag.
 To avoid having to specify the path to the series every time you want to play it, you can give the series a custom name.
-For example, to watch Toradora and save it as "tora", you can launch the program like so:
+For example, if you wanted to watch Toradora and save it as "tora", you can launch the program like so:
 * Linux: `anup.sh tora -p <path to episodes>`
 * Windows: `anup.exe tora -p <path to episodes>`
 * macOS: `anup tora -p <path to episodes>`
@@ -46,6 +47,15 @@ The next time you want to watch the same series, you can simply launch the progr
 * Linux: `anup.sh tora`
 * Windows: `anup.exe tora`
 * macOS: `anup tora`
+
+Offline Mode
+------------
+To play an anime in offline mode, you would launch the program the same ways you would above, but with the `-o` flag. For example, to play the saved series "tora" in offline mode:
+* Linux: `anup.sh tora -o`
+* Windows: `anup.exe tora -o`
+* macOS: `anup tora -o`
+
+To sync the updates you made while offline to AniList, you can either watch the series again without the `-o` flag, or simply launch the program with the `--sync` flag to synchronize all updates made to your saved series.
 
 # Episode File Detection
 Whenever you play a series, the program will try to automatically detect the real name of the series and which episodes of it you currently have.
