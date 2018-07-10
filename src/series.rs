@@ -176,39 +176,7 @@ where
             return Ok(info);
         }
 
-        println!("[{}] searching on {}..", name, B::name());
-
-        let mut found = self.sync_backend.search_by_name(name)?;
-
-        if !found.is_empty() {
-            println!(
-                "select season {} by entering the number next to its name:\n",
-                1 + season
-            );
-
-            println!("0 [custom search]");
-
-            for (i, series) in found.iter().enumerate() {
-                println!("{} [{}]", 1 + i, series.title);
-            }
-
-            let index = input::read_range(0, found.len())?;
-
-            if index == 0 {
-                println!("enter the name you want to search for:");
-
-                let name = input::read_line()?;
-                self.get_series_info(&name, season)
-            } else {
-                let info = found.swap_remove(index - 1);
-                Ok(info)
-            }
-        } else {
-            println!("no results found\nplease enter a custom search term:");
-
-            let name = input::read_line()?;
-            self.get_series_info(&name, season)
-        }
+        search_for_series_info(&self.sync_backend, name, season)
     }
 
     fn get_list_entry(
@@ -253,6 +221,49 @@ where
 
     fn season_state_mut(&mut self, season: usize) -> &mut SeasonState {
         &mut self.save_data.season_states[season]
+    }
+}
+
+pub fn search_for_series_info<B>(
+    backend: &B,
+    name: &str,
+    season: usize,
+) -> Result<AnimeInfo, SeriesError>
+where
+    B: SyncBackend,
+{
+    println!("[{}] searching on {}..", name, B::name());
+
+    let mut found = backend.search_by_name(name)?;
+
+    if !found.is_empty() {
+        println!(
+            "select season {} by entering the number next to its name:\n",
+            1 + season
+        );
+
+        println!("0 [custom search]");
+
+        for (i, series) in found.iter().enumerate() {
+            println!("{} [{}]", 1 + i, series.title);
+        }
+
+        let index = input::read_range(0, found.len())?;
+
+        if index == 0 {
+            println!("enter the name you want to search for:");
+
+            let name = input::read_line()?;
+            search_for_series_info(backend, &name, season)
+        } else {
+            let info = found.swap_remove(index - 1);
+            Ok(info)
+        }
+    } else {
+        println!("no results found\nplease enter a custom search term:");
+
+        let name = input::read_line()?;
+        search_for_series_info(backend, &name, season)
     }
 }
 
