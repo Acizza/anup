@@ -10,9 +10,6 @@ if [ $? == 0 ]; then
     exec $EXE_NAME "$@"
 fi
 
-# Read custom environment variables to get the default terminal
-source ~/.bash_profile
-
 LAUNCH_TERM="xterm"
 
 if [ "$TERMCMD" != "" ]; then
