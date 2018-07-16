@@ -27,7 +27,7 @@ Windows
 Linux
 -----
 1. Install the latest stable version of Rust from your distribution's package manager, or from [here](https://rustup.rs).
-2. Ensure OpenSSL is installed (note: on most distribution's it already is).
+2. Ensure OpenSSL, GCC, and pkgconfig are installed (note: these packages usually are already).
 3. In the directory you cloned the project in, run `cargo build --release`.
 
 Once the application has finished compiling, you will find the resulting executable in the `target/release/` directory.
