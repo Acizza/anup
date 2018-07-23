@@ -63,14 +63,12 @@ where
 {
     use std::process::Command;
 
-    #[cfg(target_os = "windows")]
-    const LAUNCH_PROGRAM: &str = "explorer";
     #[cfg(target_os = "macos")]
     const LAUNCH_PROGRAM: &str = "open";
     #[cfg(target_os = "linux")]
     const LAUNCH_PROGRAM: &str = "xdg-open";
 
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     compile_error!("support for opening URL's not implemented for this platform");
 
     let mut cmd = Command::new(LAUNCH_PROGRAM);
