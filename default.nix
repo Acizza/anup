@@ -5,5 +5,5 @@ with import <nixpkgs> {};
 
 stdenv.mkDerivation {
     name = "anup";
-    buildInputs = [ buildPackages.stdenv.cc pkgconfig openssl.dev ];
+    buildInputs = [ buildPackages.stdenv.cc pkgconfig openssl.dev xdg_utils ];
 }
