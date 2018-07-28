@@ -22,8 +22,17 @@ macro_rules! send_query {
             $($vars)*
         });
 
-        $backend.send_json_request($query_str, &vars).map(|json| json$([$response_root])*.clone())
+        let query = minimize_graphql_query($query_str);
+
+        $backend.send_json_request(&query, &vars).map(|json| json$([$response_root])*.clone())
     }};
+}
+
+fn minimize_graphql_query(query: &str) -> String {
+    let mut minimized = String::from(query);
+    minimized.retain(|c| c != ' ');
+
+    minimized
 }
 
 pub struct AniList {
