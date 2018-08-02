@@ -580,8 +580,18 @@ pub struct EpisodeData {
 }
 
 impl EpisodeData {
+    // This default pattern will match episodes in several common formats, such as:
+    // [Group] Series Name - 01.mkv
+    // [Group]_Series_Name_-_01.mkv
+    // [Group].Series.Name.-.01.mkv
+    // [Group] Series Name - 01 [tag 1][tag 2].mkv
+    // [Group]_Series_Name_-_01_[tag1][tag2].mkv
+    // [Group].Series.Name.-.01.[tag1][tag2].mkv
+    // Series Name - 01.mkv
+    // Series_Name_-_01.mkv
+    // Series.Name.-.01.mkv
     pub const EP_FORMAT_REGEX: &'static str =
-        r"(?:\[.+?\]\s*)?(?P<name>.+?)\s*-\s*(?P<episode>\d+).*?\..+?";
+        r"(?:\[.+?\](?:\s+|_+|\.+))?(?P<name>.+?)(?:\s*|_*|\.*)-(?:\s*|_*|\.*)(?P<episode>\d+).*?\..+?";
 
     fn get_matcher<'a, S>(custom_format: Option<S>) -> Result<Cow<'a, Regex>, SeriesError>
     where
@@ -664,9 +674,8 @@ impl EpisodeData {
         let filename = path
             .file_name()
             .and_then(|path| path.to_str())
-            .ok_or(SeriesError::UnableToGetFilename)?
-            .replace('_', " ");
-
+            .ok_or(SeriesError::UnableToGetFilename)?;
+            
         let caps = matcher
             .captures(&filename)
             .ok_or(SeriesError::EpisodeRegexCaptureFailed)?;
@@ -680,6 +689,7 @@ impl EpisodeData {
             raw_name
                 .replace('.', " ")
                 .replace(" -", ":") // Dashes typically represent a colon in file names
+                .replace('_', " ")
                 .trim()
                 .to_string()
         };
