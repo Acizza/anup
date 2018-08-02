@@ -40,9 +40,9 @@ fn main() {
         Err(Error::Series(SeriesError::RequestExit)) => (),
         Err(e) => {
             let e: failure::Error = e.into();
-            eprintln!("fatal error: {}", e.cause());
+            eprintln!("fatal error: {}", e);
 
-            for cause in e.causes().skip(1) {
+            for cause in e.iter_chain().skip(1) {
                 eprintln!("cause: {}", cause);
             }
 
