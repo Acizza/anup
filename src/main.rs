@@ -112,19 +112,20 @@ fn print_saved_series_info() -> Result<(), Error> {
             _ => None,
         };
 
-        let ep_data = match EpisodeData::parse_dir(&path, ep_matcher) {
-            Ok(ep_data) => ep_data,
+        let ep_list = match EpisodeData::parse_dir(&path, ep_matcher) {
+            Ok(ep_data) => {
+                let mut ep_nums = ep_data.episodes.keys().cloned().collect::<Vec<_>>();
+                ep_nums.sort_unstable();
+
+                util::concat_sequential_values(&ep_nums, "..", " | ")
+                    .unwrap_or_else(|| "none".into())
+            }
+            Err(SeriesError::NoEpisodesFound) => "none".into(),
             Err(err) => {
                 eprintln!("failed to parse episode data for [{}]: {}", name, err);
                 continue;
             }
         };
-
-        let mut ep_nums = ep_data.episodes.keys().cloned().collect::<Vec<_>>();
-        ep_nums.sort_unstable();
-
-        let ep_list =
-            util::concat_sequential_values(&ep_nums, "..", " | ").unwrap_or_else(|| "none".into());
 
         println!("[{}]:", name);
         println!(
