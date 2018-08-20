@@ -31,7 +31,9 @@ where
         sync_backend: B,
     ) -> Result<Series<B>, SeriesError> {
         let mut save_data = SaveData::from_dir(path)?;
-        let episode_data = Series::<B>::parse_episode_data(path, &mut save_data)?;
+
+        let episode_data =
+            EpisodeData::parse_until_valid_pattern(path, &mut save_data.episode_matcher)?;
 
         let series = Series {
             offline_mode,
@@ -41,35 +43,6 @@ where
         };
 
         Ok(series)
-    }
-
-    fn parse_episode_data(
-        path: &Path,
-        save_data: &mut SaveData,
-    ) -> Result<EpisodeData, SeriesError> {
-        loop {
-            match EpisodeData::parse_dir(path, save_data.episode_matcher.as_ref()) {
-                Ok(data) => break Ok(data),
-                Err(SeriesError::NoEpisodesFound) => {
-                    println!("no episodes found");
-                    println!("you will now be prompted to enter a custom regex pattern");
-                    println!("when entering the pattern, please mark the series name and episode number with {{name}} and {{episode}}, respectively");
-                    println!("example:");
-                    println!("  filename: [SubGroup] Series Name - Ep01.mkv");
-                    println!(r"  pattern: \[.+?\] {{name}} - Ep{{episode}}.mkv");
-                    println!("please enter your custom pattern:");
-
-                    save_data.episode_matcher = Some(input::read_line()?);
-                }
-                Err(err @ SeriesError::Regex(_))
-                | Err(err @ SeriesError::UnknownRegexCapture(_)) => {
-                    eprintln!("error parsing regex pattern: {}", err);
-                    println!("please try again:");
-                    save_data.episode_matcher = Some(input::read_line()?);
-                }
-                Err(err) => return Err(err),
-            }
-        }
     }
 
     pub fn load_season(&mut self, season: usize) -> Result<Season<B>, SeriesError> {
@@ -96,7 +69,8 @@ where
 
             // Get new season info up to the desired season
             for cur_season in num_seasons..=season {
-                let series_info = self.get_series_info(&self.episode_data.series_name, cur_season)?;
+                let series_info =
+                    self.get_series_info(&self.episode_data.series_name, cur_season)?;
 
                 let entry = AnimeEntry::new(series_info);
 
@@ -675,7 +649,7 @@ impl EpisodeData {
             .file_name()
             .and_then(|path| path.to_str())
             .ok_or(SeriesError::UnableToGetFilename)?;
-            
+
         let caps = matcher
             .captures(&filename)
             .ok_or(SeriesError::EpisodeRegexCaptureFailed)?;
@@ -704,5 +678,35 @@ impl EpisodeData {
             })?;
 
         Ok((series_name, episode))
+    }
+
+    fn parse_until_valid_pattern(
+        path: &Path,
+        pattern: &mut Option<String>,
+    ) -> Result<EpisodeData, SeriesError> {
+        loop {
+            match EpisodeData::parse_dir(path, pattern.as_ref()) {
+                Ok(data) => break Ok(data),
+                Err(SeriesError::NoEpisodesFound) => {
+                    println!("no episodes found");
+                    println!("you will now be prompted to enter a custom regex pattern");
+                    println!("when entering the pattern, please mark the series name and episode number with {{name}} and {{episode}}, respectively");
+                    println!("example:");
+                    println!("  filename: [SubGroup] Series Name - Ep01.mkv");
+                    println!(r"  pattern: \[.+?\] {{name}} - Ep{{episode}}.mkv");
+                    println!("please enter your custom pattern:");
+
+                    *pattern = Some(input::read_line()?);
+                }
+                Err(err @ SeriesError::Regex(_))
+                | Err(err @ SeriesError::UnknownRegexCapture(_)) => {
+                    eprintln!("error parsing regex pattern: {}", err);
+                    println!("please try again:");
+
+                    *pattern = Some(input::read_line()?);
+                }
+                Err(err) => return Err(err),
+            }
+        }
     }
 }
