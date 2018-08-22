@@ -198,8 +198,7 @@ where
     }
 
     fn prepare_list_entry(&mut self) -> Result<(), SeriesError> {
-        // TODO: remove block when NLL is stable
-        let status = { self.cur_season().state.status };
+        let status = self.cur_season().state.status;
 
         match status {
             Status::Watching | Status::Rewatching => Ok(()),
@@ -236,16 +235,13 @@ where
                 entry.watched_episodes = 0;
             }
             Status::Completed => {
-                // TODO: remove block when NLL is stable
-                {
-                    let entry = &mut self.cur_season_mut().state;
+                let entry = &mut self.cur_season_mut().state;
 
-                    if entry.finish_date.is_none() {
-                        entry.finish_date = Some(Local::today().naive_local());
-                    }
-
-                    println!("[{}] completed!", entry.info.title);
+                if entry.finish_date.is_none() {
+                    entry.finish_date = Some(Local::today().naive_local());
                 }
+
+                println!("[{}] completed!", entry.info.title);
 
                 self.prompt_to_update_score();
             }
@@ -259,11 +255,8 @@ where
             Status::OnHold | Status::PlanToWatch => (),
         }
 
-        // TODO: remove when NLL is stable
-        {
-            let entry = &mut self.cur_season_mut().state;
-            entry.status = status;
-        }
+        let entry = &mut self.cur_season_mut().state;
+        entry.status = status;
 
         self.update_list_entry()?;
 
@@ -272,16 +265,16 @@ where
 
     pub fn update_list_entry(&mut self) -> Result<(), SeriesError> {
         if self.config.offline_mode {
-            {
-                let season = &mut self.cur_season_mut();
-                season.needs_sync = true;
-            }
+            let season = &mut self.cur_season_mut();
+            season.needs_sync = true;
 
             self.dir.save()?;
+
             return Ok(());
         }
 
         self.dir.save()?;
+
         self.config
             .sync_service
             .update_list_entry(&self.cur_season().state)?;
@@ -295,11 +288,8 @@ where
 
         let status = process::open_with_default(path).map_err(SeriesError::FailedToOpenPlayer)?;
 
-        // TODO: remove when NLL is stable
-        {
-            let entry = &mut self.cur_season_mut().state;
-            entry.watched_episodes = episode.max(entry.watched_episodes);
-        }
+        let entry = &mut self.cur_season_mut().state;
+        entry.watched_episodes = episode.max(entry.watched_episodes);
 
         if !status.success() {
             eprintln!("video player not exited normally");
@@ -310,12 +300,7 @@ where
             }
         }
 
-        let total_eps = {
-            let entry = &self.cur_season().state;
-            entry.info.episodes
-        };
-
-        match total_eps {
+        match entry.info.episodes {
             Some(total_eps) if episode >= total_eps => {
                 self.update_list_entry_status(Status::Completed)?;
                 return Err(SeriesError::RequestExit);
@@ -338,21 +323,18 @@ where
     }
 
     fn prompt_episode_completed(&mut self) -> Result<(), SeriesError> {
-        // TODO: remove when NLL is stable
-        {
-            let entry = &self.cur_season().state;
+        let entry = &self.cur_season().state;
 
-            let total_episodes = entry
-                .info
-                .episodes
-                .map(|e| Cow::Owned(e.to_string()))
-                .unwrap_or_else(|| Cow::Borrowed("?"));
+        let total_episodes = entry
+            .info
+            .episodes
+            .map(|e| Cow::Owned(e.to_string()))
+            .unwrap_or_else(|| Cow::Borrowed("?"));
 
-            println!(
-                "[{}] episode {}/{} completed",
-                entry.info.title, entry.watched_episodes, total_episodes
-            );
-        }
+        println!(
+            "[{}] episode {}/{} completed",
+            entry.info.title, entry.watched_episodes, total_episodes
+        );
 
         self.update_list_entry()?;
         Ok(())
@@ -390,15 +372,12 @@ where
     }
 
     fn prompt_to_update_score(&mut self) {
-        // TODO: remove block when NLL is stable
-        {
-            let (min_score, max_score) = self.config.sync_service.formatted_score_range();
+        let (min_score, max_score) = self.config.sync_service.formatted_score_range();
 
-            println!(
-                "enter your score between {} and {} (press return to skip):",
-                min_score, max_score
-            );
-        }
+        println!(
+            "enter your score between {} and {} (press return to skip):",
+            min_score, max_score
+        );
 
         // TODO: use read_range() with empty line bypassing
         let input = match input::read_line() {
@@ -420,20 +399,17 @@ where
     }
 
     fn prompt_to_watch_paused_series(&mut self) -> Result<(), SeriesError> {
-        // TODO: remove block when NLL is stable
-        {
-            let entry = &mut self.cur_season_mut().state;
+        let entry = &mut self.cur_season_mut().state;
 
-            println!(
-                "[{}] was previously put on hold or dropped",
-                entry.info.title
-            );
+        println!(
+            "[{}] was previously put on hold or dropped",
+            entry.info.title
+        );
 
-            println!("do you want to watch it from the beginning? (Y/n)");
+        println!("do you want to watch it from the beginning? (Y/n)");
 
-            if input::read_yn(Answer::Yes)? {
-                entry.watched_episodes = 0;
-            }
+        if input::read_yn(Answer::Yes)? {
+            entry.watched_episodes = 0;
         }
 
         self.update_list_entry_status(Status::Watching)?;

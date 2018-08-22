@@ -20,13 +20,13 @@ anup is written in [Rust](https://www.rust-lang.org), so you will have to compil
 
 Windows
 -------
-1. Install the latest stable version of Rust from [here](https://rustup.rs).
+1. Install the latest nightly version of Rust from [here](https://rustup.rs).
 2. Open CMD / PowerShell in the directory you cloned the project in by pressing Shift + Right click in the directory and selecting "Open command window here" or "Open PowerShell window here".
 3. Run `cargo build --release` and wait for it to finish.
 
 Linux
 -----
-1. Install the latest stable version of Rust from your distribution's package manager, or from [here](https://rustup.rs).
+1. Install the latest nightly version of Rust from your distribution's package manager, or from [here](https://rustup.rs).
 2. Ensure OpenSSL, GCC, pkgconfig, and xdg_utils are installed (note: these packages usually are already).
 3. In the directory you cloned the project in, run `cargo build --release`.
 
