@@ -60,7 +60,7 @@ impl AnimeEntry {
             info,
             watched_episodes: 0,
             score: None,
-            status: Status::Watching,
+            status: Status::PlanToWatch,
             start_date: Some(Local::today().naive_local()),
             finish_date: None,
         }

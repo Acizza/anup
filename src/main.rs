@@ -31,7 +31,8 @@ mod util;
 use backend::{anilist::AniList, SyncBackend};
 use config::Config;
 use error::{Error, SeriesError};
-use series::{EpisodeData, SaveData, Series};
+use series::parse::{EpisodeData, SaveData};
+use series::{FolderData, Series, SeriesConfig};
 use std::path::PathBuf;
 
 fn main() {
@@ -93,9 +94,16 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
         value.saturating_sub(1)
     };
 
-    Series::load(offline_mode, &path, sync_backend)?
-        .load_season(season)?
-        .play_all_episodes()?;
+    let config = SeriesConfig {
+        offline_mode,
+        sync_service: sync_backend,
+        season_num: season,
+    };
+
+    let folder_data = FolderData::load_dir(&path)?;
+
+    let mut series = Series::new(config, folder_data);
+    series.play_all_episodes()?;
 
     Ok(())
 }
