@@ -183,11 +183,10 @@ where
     }
 
     pub fn prepare(&mut self) -> Result<(), SeriesError> {
-        // We want to sync the remote season data before we populate missing seasons to avoid working on the same data twice
-        self.dir
-            .sync_remote_season_info(&self.config, self.config.season_num)?;
         self.dir
             .populate_season_data(&self.config, self.config.season_num)?;
+        self.dir
+            .sync_remote_season_info(&self.config, self.config.season_num)?;
 
         self.ep_offset = self.dir.calculate_season_offset(0..self.config.season_num);
         self.dir.save()?;
@@ -264,16 +263,12 @@ where
     }
 
     pub fn update_list_entry(&mut self) -> Result<(), SeriesError> {
+        self.cur_season_mut().needs_sync = self.config.offline_mode;
+        self.dir.save()?;
+
         if self.config.offline_mode {
-            let season = &mut self.cur_season_mut();
-            season.needs_sync = true;
-
-            self.dir.save()?;
-
             return Ok(());
         }
-
-        self.dir.save()?;
 
         self.config
             .sync_service
