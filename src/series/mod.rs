@@ -36,21 +36,17 @@ impl FolderData {
         self.savefile.write_to_file()
     }
 
-    pub fn populate_season_data<B>(
-        &mut self,
-        config: &SeriesConfig<B>,
-        desired_season: usize,
-    ) -> Result<(), SeriesError>
+    pub fn populate_season_data<B>(&mut self, config: &SeriesConfig<B>) -> Result<(), SeriesError>
     where
         B: SyncBackend,
     {
         let num_seasons = self.seasons().len();
 
-        if num_seasons > desired_season {
+        if num_seasons > config.season_num {
             return Ok(());
         }
 
-        for cur_season in num_seasons..=desired_season {
+        for cur_season in num_seasons..=config.season_num {
             let info = self.fetch_series_info(config, cur_season)?;
             let entry = AnimeEntry::new(info);
 
@@ -69,15 +65,15 @@ impl FolderData {
     pub fn fetch_series_info<B>(
         &mut self,
         config: &SeriesConfig<B>,
-        season: usize,
+        cur_season: usize,
     ) -> Result<AnimeInfo, SeriesError>
     where
         B: SyncBackend,
     {
         if config.offline_mode {
             // Return existing data if we already have it, otherwise return barebones info
-            if self.seasons().len() > season {
-                let info = self.seasons()[season].state.info.clone();
+            if self.seasons().len() > config.season_num {
+                let info = self.seasons()[config.season_num].state.info.clone();
                 Ok(info)
             } else {
                 let mut info = AnimeInfo::default();
@@ -86,26 +82,25 @@ impl FolderData {
                 Ok(info)
             }
         } else {
-            search_for_series_info(&config.sync_service, &self.episodes.series_name, season)
+            search_for_series_info(&config.sync_service, &self.episodes.series_name, cur_season)
         }
     }
 
     pub fn sync_remote_season_info<B>(
         &mut self,
         config: &SeriesConfig<B>,
-        season: usize,
     ) -> Result<(), SeriesError>
     where
         B: SyncBackend,
     {
-        if season >= self.seasons().len() {
+        if config.season_num >= self.seasons().len() {
             return Ok(());
         }
 
-        let mut season_data = self.seasons_mut()[season].clone();
+        let mut season_data = self.seasons_mut()[config.season_num].clone();
 
         if season_data.needs_info {
-            season_data.state.info = self.fetch_series_info(config, season)?;
+            season_data.state.info = self.fetch_series_info(config, config.season_num)?;
 
             // We want to stay in a needs-sync state in offline mode so the "real" info
             // can be inserted when the series is played in online mode
@@ -129,7 +124,7 @@ impl FolderData {
             }
         }
 
-        self.seasons_mut()[season] = season_data;
+        self.seasons_mut()[config.season_num] = season_data;
         Ok(())
     }
 
@@ -183,10 +178,8 @@ where
     }
 
     pub fn prepare(&mut self) -> Result<(), SeriesError> {
-        self.dir
-            .populate_season_data(&self.config, self.config.season_num)?;
-        self.dir
-            .sync_remote_season_info(&self.config, self.config.season_num)?;
+        self.dir.populate_season_data(&self.config)?;
+        self.dir.sync_remote_season_info(&self.config)?;
 
         self.ep_offset = self.dir.calculate_season_offset(0..self.config.season_num);
         self.dir.save()?;
