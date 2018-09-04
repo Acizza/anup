@@ -7,8 +7,9 @@ use error::SeriesError;
 use input::{self, Answer};
 use process;
 use std::borrow::Cow;
+use std::fs;
 use std::ops::Range;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub struct SeriesConfig<B>
 where
@@ -22,6 +23,7 @@ where
 pub struct FolderData {
     pub episodes: EpisodeData,
     pub savefile: SaveData,
+    pub path: PathBuf,
 }
 
 impl FolderData {
@@ -29,7 +31,11 @@ impl FolderData {
         let mut savefile = SaveData::from_dir(path)?;
         let episodes = EpisodeData::parse_until_valid_pattern(path, &mut savefile.episode_matcher)?;
 
-        Ok(FolderData { episodes, savefile })
+        Ok(FolderData {
+            episodes,
+            savefile,
+            path: PathBuf::from(path),
+        })
     }
 
     pub fn save(&self) -> Result<(), SeriesError> {
@@ -147,6 +153,26 @@ impl FolderData {
         offset
     }
 
+    pub fn try_remove_dir(&self) {
+        let path = self.path.to_string_lossy();
+
+        println!("WARNING: {} will be deleted", path);
+        println!("is this ok? (y/N)");
+
+        match input::read_yn(Answer::No) {
+            Ok(true) => match fs::remove_dir_all(&self.path) {
+                Ok(_) => (),
+                Err(err) => {
+                    eprintln!("failed to remove directory: {}", err);
+                }
+            },
+            Ok(false) => (),
+            Err(err) => {
+                eprintln!("failed to read input: {}", err);
+            }
+        }
+    }
+
     pub fn seasons(&self) -> &Vec<SeasonState> {
         &self.savefile.season_states
     }
@@ -190,10 +216,21 @@ where
     }
 
     fn prepare_list_entry(&mut self) -> Result<(), SeriesError> {
-        let status = self.cur_season().state.status;
+        let state = &self.cur_season().state;
 
-        match status {
-            Status::Watching | Status::Rewatching => Ok(()),
+        match state.status {
+            Status::Watching | Status::Rewatching => {
+                // Handle potential edge-case where all episodes have already been watched
+                // but the series is still set in a watching state
+                if let Some(total_eps) = state.info.episodes {
+                    if state.watched_episodes >= total_eps {
+                        self.update_list_entry_status(Status::Completed)?;
+                        self.prompt_series_completed_options()?;
+                    }
+                }
+
+                Ok(())
+            }
             Status::PlanToWatch => self.update_list_entry_status(Status::Watching),
             Status::Completed => self.update_list_entry_status(Status::Rewatching),
             Status::OnHold | Status::Dropped => self.prompt_to_watch_paused_series(),
@@ -216,7 +253,7 @@ where
             Status::Rewatching => {
                 let entry = &mut self.cur_season_mut().state;
 
-                println!("[{}] already completed", entry.info.title);
+                println!("[{}] starting rewatch", entry.info.title);
                 println!("do you want to reset the start and end dates of the series? (Y/n)");
 
                 if input::read_yn(Answer::Yes)? {
@@ -234,8 +271,6 @@ where
                 }
 
                 println!("[{}] completed!", entry.info.title);
-
-                self.prompt_to_update_score();
             }
             Status::Dropped => {
                 let entry = &mut self.cur_season_mut().state;
@@ -291,6 +326,8 @@ where
         match entry.info.episodes {
             Some(total_eps) if episode >= total_eps => {
                 self.update_list_entry_status(Status::Completed)?;
+                self.prompt_series_completed_options()?;
+
                 return Err(SeriesError::RequestExit);
             }
             _ => self.prompt_episode_completed()?,
@@ -353,6 +390,40 @@ where
                 self.update_list_entry()?;
 
                 self.prompt_next_episode_options()
+            }
+            "x" => Err(SeriesError::RequestExit),
+            _ => Ok(()),
+        }
+    }
+
+    fn prompt_series_completed_options(&mut self) -> Result<(), SeriesError> {
+        let current_score_text: Cow<str> = match self.format_entry_score() {
+            Some(score) => Cow::Owned(format!(" [{}]", score)),
+            None => Cow::Borrowed(""),
+        };
+
+        println!("series options:");
+        println!(
+            "\t[r] rate{}\n\t[w] rewatch\n\t[d] delete local files\n\t[x] exit",
+            current_score_text
+        );
+
+        let input = input::read_line()?.to_lowercase();
+
+        match input.as_str() {
+            "r" => {
+                self.prompt_to_update_score();
+                self.update_list_entry()?;
+
+                self.prompt_series_completed_options()
+            }
+            "w" => {
+                self.update_list_entry_status(Status::Rewatching)?;
+                self.play_all_episodes()
+            }
+            "d" => {
+                self.dir.try_remove_dir();
+                Ok(())
             }
             "x" => Err(SeriesError::RequestExit),
             _ => Ok(()),
