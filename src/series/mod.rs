@@ -232,7 +232,10 @@ where
                 Ok(())
             }
             Status::PlanToWatch => self.update_list_entry_status(Status::Watching),
-            Status::Completed => self.update_list_entry_status(Status::Rewatching),
+            Status::Completed => {
+                println!("[{}] already completed", state.info.title);
+                self.prompt_series_completed_options()
+            }
             Status::OnHold | Status::Dropped => self.prompt_to_watch_paused_series(),
         }
     }
