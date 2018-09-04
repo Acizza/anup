@@ -1,14 +1,15 @@
 # anup
-This is a command line application to play downloaded anime and to update its progress on your [AniList](https://anilist.co) account.
+This is a command line application to play downloaded anime and to update its watch progress to your [AniList](https://anilist.co) account.
 
-It is primarily intended for anyone who prefers being able to very quickly play anime from a run prompt or terminal, and anyone looking for (yet) another auto-updater application.
+It tries to make watching anime as easy as possible by letting you watch the next unwatched episode of a series simply by launching the program with a keyword from a terminal or run prompt.
 
 Current features include:
-* Automatic detection of a series based off its filename
+* Automatic detection of a series based off of episode filenames
 * Playing the next unwatched episode(s) of an anime in your default video player
 * Offline mode
 * Options to rate, put on hold, and drop an anime after playing each episode
-* Handling of anime that have already been completed, dropped, or put on hold
+* Support for rewatching an already completed anime
+* Support for continuing an anime that has already been dropped or put on hold
 * Automatic setting of the date you started watching and finished watching an anime
 * Support for anime that have multiple seasons merged together
 
