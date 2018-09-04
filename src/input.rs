@@ -45,13 +45,9 @@ impl Into<bool> for Answer {
 }
 
 pub fn read_yn(default: Answer) -> io::Result<bool> {
-    let line = read_line()?;
-
-    let answer = match line.as_str() {
-        "y" | "Y" => true,
-        "n" | "N" => false,
-        _ => default.into(),
-    };
-
-    Ok(answer)
+    match read_line()?.as_str() {
+        "y" | "Y" => Ok(true),
+        "n" | "N" => Ok(false),
+        _ => Ok(default.into()),
+    }
 }
