@@ -377,12 +377,21 @@ where
         let input = input::read_line()?.to_lowercase();
 
         match input.as_str() {
-            "d" => {
-                self.update_list_entry_status(Status::Dropped)?;
-                Err(SeriesError::RequestExit)
-            }
-            "h" => {
-                self.update_list_entry_status(Status::OnHold)?;
+            "d" | "h" => {
+                let status = if input == "d" {
+                    Status::Dropped
+                } else {
+                    Status::OnHold
+                };
+
+                self.update_list_entry_status(status)?;
+
+                println!("do you want to remove the episodes on disk? (y/N)");
+
+                if input::read_yn(Answer::No)? {
+                    self.dir.try_remove_dir();
+                }
+
                 Err(SeriesError::RequestExit)
             }
             "r" => {
