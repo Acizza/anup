@@ -435,7 +435,7 @@ where
             }
             "d" => {
                 self.dir.try_remove_dir();
-                Ok(())
+                Err(SeriesError::RequestExit)
             }
             "x" => Err(SeriesError::RequestExit),
             _ => Ok(()),
