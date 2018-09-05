@@ -389,9 +389,9 @@ where
 
                 self.update_list_entry_status(status)?;
 
-                println!("do you want to remove the episodes on disk? (y/N)");
+                println!("do you want to remove the episodes on disk? (Y/n)");
 
-                if input::read_yn(Answer::No)? {
+                if input::read_yn(Answer::Yes)? {
                     self.dir.try_remove_dir();
                 }
 
