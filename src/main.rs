@@ -33,8 +33,8 @@ mod util;
 use backend::{anilist::AniList, SyncBackend};
 use config::Config;
 use error::{Error, SeriesError};
-use series::parse::{EpisodeData, SaveData};
-use series::{FolderData, Series, SeriesConfig};
+use series::dir::{EpisodeData, FolderData, SaveData};
+use series::{Series, SeriesConfig};
 use std::path::PathBuf;
 
 fn main() {

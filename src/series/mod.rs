@@ -1,15 +1,12 @@
-pub mod parse;
+pub mod dir;
 
-use self::parse::{EpisodeData, SaveData, SeasonState};
+use self::dir::FolderData;
 use backend::{AnimeEntry, AnimeInfo, Status, SyncBackend};
 use chrono::Local;
 use error::SeriesError;
 use input::{self, Answer};
 use process;
 use std::borrow::Cow;
-use std::fs;
-use std::ops::Range;
-use std::path::{Path, PathBuf};
 
 pub struct SeriesConfig<B>
 where
@@ -18,168 +15,6 @@ where
     pub offline_mode: bool,
     pub sync_service: B,
     pub season_num: usize,
-}
-
-pub struct FolderData {
-    pub episodes: EpisodeData,
-    pub savefile: SaveData,
-    pub path: PathBuf,
-}
-
-impl FolderData {
-    pub fn load_dir(path: &Path) -> Result<FolderData, SeriesError> {
-        let mut savefile = SaveData::from_dir(path)?;
-        let episodes = EpisodeData::parse_until_valid_pattern(path, &mut savefile.episode_matcher)?;
-
-        Ok(FolderData {
-            episodes,
-            savefile,
-            path: PathBuf::from(path),
-        })
-    }
-
-    pub fn save(&self) -> Result<(), SeriesError> {
-        self.savefile.write_to_file()
-    }
-
-    pub fn populate_season_data<B>(&mut self, config: &SeriesConfig<B>) -> Result<(), SeriesError>
-    where
-        B: SyncBackend,
-    {
-        let num_seasons = self.seasons().len();
-
-        if num_seasons > config.season_num {
-            return Ok(());
-        }
-
-        for cur_season in num_seasons..=config.season_num {
-            let info = self.fetch_series_info(config, cur_season)?;
-            let entry = AnimeEntry::new(info);
-
-            let season = SeasonState {
-                state: entry,
-                needs_info: config.offline_mode,
-                needs_sync: config.offline_mode,
-            };
-
-            self.seasons_mut().push(season);
-        }
-
-        Ok(())
-    }
-
-    pub fn fetch_series_info<B>(
-        &mut self,
-        config: &SeriesConfig<B>,
-        cur_season: usize,
-    ) -> Result<AnimeInfo, SeriesError>
-    where
-        B: SyncBackend,
-    {
-        if config.offline_mode {
-            // Return existing data if we already have it, otherwise return barebones info
-            if self.seasons().len() > config.season_num {
-                let info = self.seasons()[config.season_num].state.info.clone();
-                Ok(info)
-            } else {
-                let mut info = AnimeInfo::default();
-                info.title = self.episodes.series_name.clone();
-
-                Ok(info)
-            }
-        } else {
-            search_for_series_info(&config.sync_service, &self.episodes.series_name, cur_season)
-        }
-    }
-
-    pub fn sync_remote_season_info<B>(
-        &mut self,
-        config: &SeriesConfig<B>,
-    ) -> Result<(), SeriesError>
-    where
-        B: SyncBackend,
-    {
-        if config.season_num >= self.seasons().len() {
-            return Ok(());
-        }
-
-        let mut season_data = self.seasons_mut()[config.season_num].clone();
-
-        if season_data.needs_info {
-            season_data.state.info = self.fetch_series_info(config, config.season_num)?;
-
-            // We want to stay in a needs-sync state in offline mode so the "real" info
-            // can be inserted when the series is played in online mode
-            if !config.offline_mode {
-                season_data.needs_info = false;
-            }
-        }
-
-        // Sync data from the backend when not offline
-        if !config.offline_mode {
-            let entry = config
-                .sync_service
-                .get_list_entry(season_data.state.info.clone())?;
-
-            if let Some(entry) = entry {
-                // If we don't have new data to report, we should sync the data from the backend to keep up with
-                // any changes made outside of the program
-                if !season_data.needs_sync {
-                    season_data.state = entry;
-                }
-            }
-        }
-
-        self.seasons_mut()[config.season_num] = season_data;
-        Ok(())
-    }
-
-    pub fn calculate_season_offset(&self, mut range: Range<usize>) -> u32 {
-        let num_seasons = self.savefile.season_states.len();
-        range.start = num_seasons.min(range.start);
-        range.end = num_seasons.min(range.end);
-
-        let mut offset = 0;
-
-        for i in range {
-            let season = &self.savefile.season_states[i];
-
-            match season.state.info.episodes {
-                Some(eps) => offset += eps,
-                None => return offset,
-            }
-        }
-
-        offset
-    }
-
-    pub fn try_remove_dir(&self) {
-        let path = self.path.to_string_lossy();
-
-        println!("WARNING: {} will be deleted", path);
-        println!("is this ok? (y/N)");
-
-        match input::read_yn(Answer::No) {
-            Ok(true) => match fs::remove_dir_all(&self.path) {
-                Ok(_) => (),
-                Err(err) => {
-                    eprintln!("failed to remove directory: {}", err);
-                }
-            },
-            Ok(false) => (),
-            Err(err) => {
-                eprintln!("failed to read input: {}", err);
-            }
-        }
-    }
-
-    pub fn seasons(&self) -> &Vec<SeasonState> {
-        &self.savefile.season_states
-    }
-
-    pub fn seasons_mut(&mut self) -> &mut Vec<SeasonState> {
-        &mut self.savefile.season_states
-    }
 }
 
 pub struct Series<B>
@@ -556,4 +391,12 @@ where
         let name = input::read_line()?;
         search_for_series_info(backend, &name, season)
     }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SeasonState {
+    #[serde(flatten)]
+    pub state: AnimeEntry,
+    pub needs_info: bool,
+    pub needs_sync: bool,
 }
