@@ -1,4 +1,4 @@
-use super::{search_for_series_info, SeasonState, SeriesConfig};
+use super::{SeasonState, SeriesConfig};
 use backend::{AnimeEntry, AnimeInfo, SyncBackend};
 use error::SeriesError;
 use input::{self, Answer};
@@ -43,43 +43,21 @@ impl FolderData {
         }
 
         for cur_season in num_seasons..=config.season_num {
-            let info = self.fetch_series_info(config, cur_season)?;
+            let info = AnimeInfo::default();
             let entry = AnimeEntry::new(info);
 
-            let season = SeasonState {
+            let mut season = SeasonState {
                 state: entry,
-                needs_info: config.offline_mode,
+                needs_info: true,
                 needs_sync: config.offline_mode,
             };
+
+            season.sync_info_from_remote(config, &self, cur_season)?;
 
             self.seasons_mut().push(season);
         }
 
         Ok(())
-    }
-
-    pub fn fetch_series_info<B>(
-        &mut self,
-        config: &SeriesConfig<B>,
-        cur_season: usize,
-    ) -> Result<AnimeInfo, SeriesError>
-    where
-        B: SyncBackend,
-    {
-        if config.offline_mode {
-            // Return existing data if we already have it, otherwise return barebones info
-            if self.seasons().len() > config.season_num {
-                let info = self.seasons()[config.season_num].state.info.clone();
-                Ok(info)
-            } else {
-                let mut info = AnimeInfo::default();
-                info.title = self.episodes.series_name.clone();
-
-                Ok(info)
-            }
-        } else {
-            search_for_series_info(&config.sync_service, &self.episodes.series_name, cur_season)
-        }
     }
 
     pub fn calculate_season_offset(&self, mut range: Range<usize>) -> u32 {
