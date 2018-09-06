@@ -82,48 +82,6 @@ impl FolderData {
         }
     }
 
-    pub fn sync_remote_season_info<B>(
-        &mut self,
-        config: &SeriesConfig<B>,
-    ) -> Result<(), SeriesError>
-    where
-        B: SyncBackend,
-    {
-        if config.season_num >= self.seasons().len() {
-            return Ok(());
-        }
-
-        let mut season_data = self.seasons_mut()[config.season_num].clone();
-
-        if season_data.needs_info {
-            season_data.state.info = self.fetch_series_info(config, config.season_num)?;
-
-            // We want to stay in a needs-sync state in offline mode so the "real" info
-            // can be inserted when the series is played in online mode
-            if !config.offline_mode {
-                season_data.needs_info = false;
-            }
-        }
-
-        // Sync data from the backend when not offline
-        if !config.offline_mode {
-            let entry = config
-                .sync_service
-                .get_list_entry(season_data.state.info.clone())?;
-
-            if let Some(entry) = entry {
-                // If we don't have new data to report, we should sync the data from the backend to keep up with
-                // any changes made outside of the program
-                if !season_data.needs_sync {
-                    season_data.state = entry;
-                }
-            }
-        }
-
-        self.seasons_mut()[config.season_num] = season_data;
-        Ok(())
-    }
-
     pub fn calculate_season_offset(&self, mut range: Range<usize>) -> u32 {
         let num_seasons = self.savefile.season_states.len();
         range.start = num_seasons.min(range.start);

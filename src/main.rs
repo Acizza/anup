@@ -103,8 +103,9 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
     };
 
     let folder_data = FolderData::load_dir(&path)?;
-
-    let mut series = Series::new(config, folder_data);
+    
+    let mut series = Series::init(config, folder_data)?;
+    series.sync_remote_states()?;
     series.play_all_episodes()?;
 
     Ok(())
