@@ -403,7 +403,7 @@ impl SeasonState {
     where
         B: SyncBackend,
     {
-        if !self.needs_info || config.offline_mode {
+        if !self.needs_info {
             return Ok(());
         }
 
