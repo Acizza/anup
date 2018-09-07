@@ -143,7 +143,7 @@ where
 
     pub fn play_episode(&mut self, episode: u32) -> Result<(), SeriesError> {
         let absolute_ep = self.ep_offset + episode;
-        let path = self.dir.episodes.get_episode(absolute_ep)?.clone();
+        let path = self.dir.get_episode(absolute_ep)?.clone();
 
         let status = process::open_with_default(path).map_err(SeriesError::FailedToOpenPlayer)?;
         let state = &mut self.season.state;
@@ -411,12 +411,11 @@ impl SeasonState {
             // The series title is the only thing that can really be used when offline.
             // While things like the number of episode files present could be used as the
             // series episode count, it is common to only partially have a series downloaded
-            self.state.info.title = dir.episodes.series_name.clone();
+            self.state.info.title = dir.series_info.name.clone();
             return Ok(());
         }
 
-        let info =
-            search_for_series_info(&config.sync_service, &dir.episodes.series_name, season_num)?;
+        let info = search_for_series_info(&config.sync_service, &dir.series_info.name, season_num)?;
 
         self.state.info = info;
         // We only want to set this flag when online, since offline mode only provides

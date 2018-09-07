@@ -67,11 +67,8 @@ pub enum SeriesError {
     #[fail(display = "exit requested (note: this is a bug)")]
     RequestExit,
 
-    #[fail(display = "no episodes found")]
-    NoEpisodesFound,
-
-    #[fail(display = "multiple series found")]
-    MultipleSeriesFound,
+    #[fail(display = "no series were found")]
+    NoSeriesFound,
 
     #[fail(display = "unable to get filename")]
     UnableToGetFilename,

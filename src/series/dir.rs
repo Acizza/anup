@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use toml;
 
 pub struct FolderData {
-    pub episodes: EpisodeData,
+    pub series_info: SeriesInfo,
     pub savefile: SaveData,
     pub path: PathBuf,
 }
@@ -19,17 +19,26 @@ pub struct FolderData {
 impl FolderData {
     pub fn load_dir(path: &Path) -> Result<FolderData, SeriesError> {
         let mut savefile = SaveData::from_dir(path)?;
-        let episodes = EpisodeData::parse_until_valid_pattern(path, &mut savefile.episode_matcher)?;
+        let series_info = FolderData::load_series_info(path, &mut savefile)?;
 
         Ok(FolderData {
-            episodes,
+            series_info,
             savefile,
             path: PathBuf::from(path),
         })
     }
 
-    pub fn save(&self) -> Result<(), SeriesError> {
-        self.savefile.write_to_file()
+    fn load_series_info(path: &Path, savefile: &mut SaveData) -> Result<SeriesInfo, SeriesError> {
+        let mut ep_data = parse_episode_files_until_valid(path, &mut savefile.episode_matcher)?;
+
+        if let Some(info) = SeriesInfo::select_from_save(&mut ep_data, savefile) {
+            return Ok(info);
+        }
+
+        let info = prompt_select_series_info(ep_data)?;
+        savefile.files_title = Some(info.name.clone());
+
+        Ok(info)
     }
 
     pub fn populate_season_data<B>(&mut self, config: &SeriesConfig<B>) -> Result<(), SeriesError>
@@ -99,6 +108,14 @@ impl FolderData {
         }
     }
 
+    pub fn get_episode(&self, episode: u32) -> Result<&PathBuf, SeriesError> {
+        self.series_info.get_episode(episode)
+    }
+
+    pub fn save(&self) -> Result<(), SeriesError> {
+        self.savefile.write_to_file()
+    }
+
     pub fn seasons(&self) -> &Vec<SeasonState> {
         &self.savefile.season_states
     }
@@ -108,106 +125,85 @@ impl FolderData {
     }
 }
 
-type SeriesName = String;
-type EpisodeNum = u32;
-
-#[derive(Debug)]
-pub struct EpisodeData {
-    pub series_name: String,
-    pub episodes: HashMap<EpisodeNum, PathBuf>,
-    pub custom_format: Option<String>,
+#[derive(Serialize, Deserialize)]
+pub struct SaveData {
+    pub episode_matcher: Option<String>,
+    pub files_title: Option<String>,
+    pub season_states: Vec<SeasonState>,
+    #[serde(skip)]
+    pub path: PathBuf,
 }
 
-impl EpisodeData {
-    // This default pattern will match episodes in several common formats, such as:
-    // [Group] Series Name - 01.mkv
-    // [Group]_Series_Name_-_01.mkv
-    // [Group].Series.Name.-.01.mkv
-    // [Group] Series Name - 01 [tag 1][tag 2].mkv
-    // [Group]_Series_Name_-_01_[tag1][tag2].mkv
-    // [Group].Series.Name.-.01.[tag1][tag2].mkv
-    // Series Name - 01.mkv
-    // Series_Name_-_01.mkv
-    // Series.Name.-.01.mkv
-    pub const EP_FORMAT_REGEX: &'static str =
-        r"(?:\[.+?\](?:\s+|_+|\.+))?(?P<name>.+?)(?:\s*|_*|\.*)-(?:\s*|_*|\.*)(?P<episode>\d+).*?\..+?";
+impl SaveData {
+    const DATA_FILE_NAME: &'static str = ".anup";
 
-    fn get_matcher<'a, S>(custom_format: Option<S>) -> Result<Cow<'a, Regex>, SeriesError>
-    where
-        S: AsRef<str>,
-    {
-        lazy_static! {
-            static ref EP_FORMAT: Regex = Regex::new(EpisodeData::EP_FORMAT_REGEX).unwrap();
-        }
-
-        match custom_format {
-            Some(raw_pattern) => {
-                let pattern = raw_pattern
-                    .as_ref()
-                    .replace("{name}", "(?P<name>.+?)")
-                    .replace("{episode}", r"(?P<episode>\d+)");
-
-                let regex = Regex::new(&pattern)?;
-                Ok(Cow::Owned(regex))
-            }
-            None => Ok(Cow::Borrowed(&*EP_FORMAT)),
+    pub fn new(path: PathBuf) -> SaveData {
+        SaveData {
+            episode_matcher: None,
+            files_title: None,
+            season_states: Vec::new(),
+            path,
         }
     }
 
-    pub fn parse_dir<S>(dir: &Path, custom_format: Option<S>) -> Result<EpisodeData, SeriesError>
-    where
-        S: AsRef<str>,
-    {
-        if !dir.is_dir() {
-            return Err(SeriesError::NotADirectory(
-                dir.file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "err".into()),
-            ));
+    pub fn from_dir(path: &Path) -> Result<SaveData, SeriesError> {
+        let path = PathBuf::from(path).join(SaveData::DATA_FILE_NAME);
+
+        if !path.exists() {
+            return Ok(SaveData::new(path));
         }
 
-        let matcher = EpisodeData::get_matcher(custom_format)?;
+        let file_contents = fs::read_to_string(&path)?;
 
-        let mut series_name = None;
-        let mut episodes = HashMap::new();
+        let mut save_data: SaveData = toml::from_str(&file_contents)?;
+        save_data.path = path;
 
-        for entry in fs::read_dir(dir).map_err(SeriesError::Io)? {
-            let path = entry.map_err(SeriesError::Io)?.path();
-
-            if !path.is_file() {
-                continue;
-            }
-
-            match EpisodeData::parse_filename(&path, matcher.as_ref()) {
-                Ok((ep_name, ep_num)) => {
-                    match series_name {
-                        Some(ref series_name) if &ep_name != series_name => {
-                            return Err(SeriesError::MultipleSeriesFound);
-                        }
-                        Some(_) => (),
-                        None => series_name = Some(ep_name),
-                    }
-
-                    episodes.insert(ep_num, path);
-                }
-                Err(SeriesError::EpisodeRegexCaptureFailed) => continue,
-                Err(e) => return Err(e),
-            }
-        }
-
-        let name = series_name.ok_or(SeriesError::NoEpisodesFound)?;
-
-        Ok(EpisodeData {
-            series_name: name,
-            episodes,
-            custom_format: None,
-        })
+        Ok(save_data)
     }
 
-    fn parse_filename(
-        path: &Path,
-        matcher: &Regex,
-    ) -> Result<(SeriesName, EpisodeNum), SeriesError> {
+    pub fn write_to_file(&self) -> Result<(), SeriesError> {
+        let toml = toml::to_string_pretty(self)?;
+        fs::write(&self.path, toml)?;
+
+        Ok(())
+    }
+}
+
+pub struct SeriesInfo {
+    pub name: String,
+    pub episodes: HashMap<u32, PathBuf>,
+}
+
+impl SeriesInfo {
+    pub fn get_episode(&self, episode: u32) -> Result<&PathBuf, SeriesError> {
+        self.episodes
+            .get(&episode)
+            .ok_or_else(|| SeriesError::EpisodeNotFound(episode))
+    }
+
+    pub fn select_from_save(
+        ep_data: &mut SeriesEpisodes,
+        savefile: &SaveData,
+    ) -> Option<SeriesInfo> {
+        if let Some(name) = &savefile.files_title {
+            let entry = ep_data.remove_entry(name);
+
+            if let Some((name, episodes)) = entry {
+                return Some(SeriesInfo { name, episodes });
+            }
+        }
+
+        None
+    }
+}
+
+struct EpisodeFile {
+    series_name: String,
+    episode_num: u32,
+}
+
+impl EpisodeFile {
+    fn parse(path: &Path, matcher: &Regex) -> Result<EpisodeFile, SeriesError> {
         // Replace certain characters with spaces since they can prevent proper series
         // identification or prevent it from being found on a sync backend
         let filename = path
@@ -242,84 +238,146 @@ impl EpisodeData {
                     .map_err(SeriesError::EpisodeNumParseFailed)
             })?;
 
-        Ok((series_name, episode))
+        Ok(EpisodeFile {
+            series_name,
+            episode_num: episode,
+        })
+    }
+}
+
+type EpisodePaths = HashMap<u32, PathBuf>;
+type SeriesEpisodes = HashMap<String, EpisodePaths>;
+
+pub fn prompt_select_series_info(info: SeriesEpisodes) -> Result<SeriesInfo, SeriesError> {
+    if info.is_empty() {
+        return Err(SeriesError::NoSeriesFound);
     }
 
-    pub fn parse_until_valid_pattern(
-        path: &Path,
-        pattern: &mut Option<String>,
-    ) -> Result<EpisodeData, SeriesError> {
-        loop {
-            match EpisodeData::parse_dir(path, pattern.as_ref()) {
-                Ok(data) => break Ok(data),
-                Err(SeriesError::NoEpisodesFound) => {
-                    println!("no episodes found");
-                    println!("you will now be prompted to enter a custom regex pattern");
-                    println!("when entering the pattern, please mark the series name and episode number with {{name}} and {{episode}}, respectively");
-                    println!("example:");
-                    println!("  filename: [SubGroup] Series Name - Ep01.mkv");
-                    println!(r"  pattern: \[.+?\] {{name}} - Ep{{episode}}.mkv");
-                    println!("please enter your custom pattern:");
+    let mut info = info
+        .into_iter()
+        .map(|(name, eps)| SeriesInfo {
+            name,
+            episodes: eps,
+        }).collect::<Vec<_>>();
 
-                    *pattern = Some(input::read_line()?);
-                }
-                Err(err @ SeriesError::Regex(_))
-                | Err(err @ SeriesError::UnknownRegexCapture(_)) => {
-                    eprintln!("error parsing regex pattern: {}", err);
-                    println!("please try again:");
+    if info.len() == 1 {
+        return Ok(info.remove(0));
+    }
 
-                    *pattern = Some(input::read_line()?);
-                }
-                Err(err) => return Err(err),
+    println!("multiple series found in directory");
+    println!("please enter the number next to the episode files you want to use:");
+
+    for (i, series) in info.iter().enumerate() {
+        println!("{} [{}]", 1 + i, series.name);
+    }
+
+    let index = input::read_range(1, info.len())? - 1;
+    let series = info.remove(index);
+
+    Ok(series)
+}
+
+// This default pattern will match episodes in several common formats, such as:
+// [Group] Series Name - 01.mkv
+// [Group]_Series_Name_-_01.mkv
+// [Group].Series.Name.-.01.mkv
+// [Group] Series Name - 01 [tag 1][tag 2].mkv
+// [Group]_Series_Name_-_01_[tag1][tag2].mkv
+// [Group].Series.Name.-.01.[tag1][tag2].mkv
+// Series Name - 01.mkv
+// Series_Name_-_01.mkv
+// Series.Name.-.01.mkv
+const EP_FORMAT_REGEX: &str =
+    r"(?:\[.+?\](?:\s+|_+|\.+))?(?P<name>.+?)(?:\s*|_*|\.*)-(?:\s*|_*|\.*)(?P<episode>\d+).*?\..+?";
+
+fn format_episode_parser_regex<'a, S>(pattern: Option<S>) -> Result<Cow<'a, Regex>, SeriesError>
+where
+    S: AsRef<str>,
+{
+    lazy_static! {
+        static ref EP_FORMAT: Regex = Regex::new(EP_FORMAT_REGEX).unwrap();
+    }
+
+    match pattern {
+        Some(pattern) => {
+            let pattern = pattern
+                .as_ref()
+                .replace("{name}", "(?P<name>.+?)")
+                .replace("{episode}", r"(?P<episode>\d+)");
+
+            let regex = Regex::new(&pattern)?;
+            Ok(Cow::Owned(regex))
+        }
+        None => Ok(Cow::Borrowed(&*EP_FORMAT)),
+    }
+}
+
+pub fn parse_episode_files<S>(
+    path: &Path,
+    pattern: Option<S>,
+) -> Result<SeriesEpisodes, SeriesError>
+where
+    S: AsRef<str>,
+{
+    if !path.is_dir() {
+        return Err(SeriesError::NotADirectory(path.to_string_lossy().into()));
+    }
+
+    let pattern = format_episode_parser_regex(pattern)?;
+    let mut data = HashMap::new();
+
+    for entry in fs::read_dir(path).map_err(SeriesError::Io)? {
+        let entry = entry.map_err(SeriesError::Io)?.path();
+
+        if !entry.is_file() {
+            continue;
+        }
+
+        let episode = match EpisodeFile::parse(&entry, pattern.as_ref()) {
+            Ok(episode) => episode,
+            Err(SeriesError::EpisodeRegexCaptureFailed) => continue,
+            Err(err) => return Err(err),
+        };
+
+        let series = data.entry(episode.series_name).or_insert_with(HashMap::new);
+        series.insert(episode.episode_num, entry);
+    }
+
+    if data.is_empty() {
+        return Err(SeriesError::NoSeriesFound);
+    }
+
+    Ok(data)
+}
+
+pub fn parse_episode_files_until_valid<S>(
+    path: &Path,
+    pattern: &mut Option<S>,
+) -> Result<SeriesEpisodes, SeriesError>
+where
+    S: AsRef<str> + From<String>,
+{
+    loop {
+        match parse_episode_files(path, pattern.as_ref()) {
+            Ok(data) => break Ok(data),
+            Err(SeriesError::NoSeriesFound) => {
+                println!("no series found");
+                println!("you will now be prompted to enter a custom regex pattern");
+                println!("when entering the pattern, please mark the series name and episode number with {{name}} and {{episode}}, respectively");
+                println!("example:");
+                println!("  filename: [SubGroup] Series Name - Ep01.mkv");
+                println!(r"  pattern: \[.+?\] {{name}} - Ep{{episode}}.mkv");
+                println!("please enter your custom pattern:");
+
+                *pattern = Some(input::read_line()?.into());
             }
+            Err(err @ SeriesError::Regex(_)) | Err(err @ SeriesError::UnknownRegexCapture(_)) => {
+                eprintln!("error parsing regex pattern: {}", err);
+                println!("please try again:");
+
+                *pattern = Some(input::read_line()?.into());
+            }
+            Err(err) => return Err(err),
         }
-    }
-
-    pub fn get_episode(&self, episode: u32) -> Result<&PathBuf, SeriesError> {
-        self.episodes
-            .get(&episode)
-            .ok_or_else(|| SeriesError::EpisodeNotFound(episode))
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SaveData {
-    pub episode_matcher: Option<String>,
-    pub season_states: Vec<SeasonState>,
-    #[serde(skip)]
-    pub path: PathBuf,
-}
-
-impl SaveData {
-    const DATA_FILE_NAME: &'static str = ".anup";
-
-    pub fn new(path: PathBuf) -> SaveData {
-        SaveData {
-            episode_matcher: None,
-            season_states: Vec::new(),
-            path,
-        }
-    }
-
-    pub fn from_dir(path: &Path) -> Result<SaveData, SeriesError> {
-        let path = PathBuf::from(path).join(SaveData::DATA_FILE_NAME);
-
-        if !path.exists() {
-            return Ok(SaveData::new(path));
-        }
-
-        let file_contents = fs::read_to_string(&path)?;
-
-        let mut save_data: SaveData = toml::from_str(&file_contents)?;
-        save_data.path = path;
-
-        Ok(save_data)
-    }
-
-    pub fn write_to_file(&self) -> Result<(), SeriesError> {
-        let toml = toml::to_string_pretty(self)?;
-        fs::write(&self.path, toml)?;
-
-        Ok(())
     }
 }

@@ -33,7 +33,7 @@ mod util;
 use backend::{anilist::AniList, SyncBackend};
 use config::Config;
 use error::{Error, SeriesError};
-use series::dir::{EpisodeData, FolderData, SaveData};
+use series::dir::{FolderData, SaveData, SeriesInfo};
 use series::{Series, SeriesConfig};
 use std::path::PathBuf;
 
@@ -103,7 +103,7 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
     };
 
     let folder_data = FolderData::load_dir(&path)?;
-    
+
     let mut series = Series::init(config, folder_data)?;
     series.sync_remote_states()?;
     series.play_all_episodes()?;
@@ -118,20 +118,29 @@ fn print_saved_series_info() -> Result<(), Error> {
     println!("found [{}] series:\n", config.series.len());
 
     for (name, path) in config.series {
-        let ep_matcher = match SaveData::from_dir(&path) {
-            Ok(save_data) => save_data.episode_matcher,
-            _ => None,
+        let savefile = match SaveData::from_dir(&path) {
+            Ok(data) => data,
+            Err(_) => continue,
         };
 
-        let ep_list = match EpisodeData::parse_dir(&path, ep_matcher) {
-            Ok(ep_data) => {
-                let mut ep_nums = ep_data.episodes.keys().cloned().collect::<Vec<_>>();
-                ep_nums.sort_unstable();
+        let ep_data = series::dir::parse_episode_files(&path, savefile.episode_matcher.clone());
 
-                util::concat_sequential_values(&ep_nums, "..", " | ")
-                    .unwrap_or_else(|| "none".into())
+        let ep_list = match ep_data {
+            Ok(mut ep_data) => {
+                let series_info = SeriesInfo::select_from_save(&mut ep_data, &savefile);
+
+                match series_info {
+                    Some(info) => {
+                        let mut ep_nums = info.episodes.keys().cloned().collect::<Vec<_>>();
+                        ep_nums.sort_unstable();
+
+                        util::concat_sequential_values(&ep_nums, "..", " | ")
+                            .unwrap_or_else(|| "none".into())
+                    }
+                    None => "needs series info".into(),
+                }
             }
-            Err(SeriesError::NoEpisodesFound) => "none".into(),
+            Err(SeriesError::NoSeriesFound) => "none".into(),
             Err(err) => {
                 eprintln!("failed to parse episode data for [{}]: {}", name, err);
                 continue;
@@ -171,10 +180,11 @@ fn sync_offline_changes() -> Result<(), Error> {
             println!("[{}] syncing..", season_state.state.info.title);
 
             if season_state.needs_info {
-                let ep_data = EpisodeData::parse_dir(&path, save_data.episode_matcher.clone())?;
-
-                season_state.state.info =
-                    series::search_for_series_info(&backend, &ep_data.series_name, season_num)?;
+                season_state.state.info = series::search_for_series_info(
+                    &backend,
+                    &season_state.state.info.title,
+                    season_num,
+                )?;
 
                 season_state.needs_info = false;
             }
