@@ -162,7 +162,7 @@ impl SaveData {
     }
 
     pub fn write_to_file(&self) -> Result<(), SeriesError> {
-        let toml = toml::to_string_pretty(self)?;
+        let toml = toml::to_string(self)?;
         fs::write(&self.path, toml)?;
 
         Ok(())
