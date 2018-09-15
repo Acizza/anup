@@ -1,4 +1,4 @@
-use chrono::{Local, NaiveDate};
+use chrono::NaiveDate;
 use config::Config;
 use error::BackendError;
 use std::borrow::Cow;
@@ -61,7 +61,7 @@ impl AnimeEntry {
             watched_episodes: 0,
             score: None,
             status: Status::PlanToWatch,
-            start_date: Some(Local::today().naive_local()),
+            start_date: None,
             finish_date: None,
         }
     }
