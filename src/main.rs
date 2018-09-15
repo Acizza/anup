@@ -106,6 +106,7 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
 
     let mut series = Series::init(config, folder_data)?;
     series.sync_remote_states()?;
+    series.prepare_initial_state()?;
     series.play_all_episodes()?;
 
     Ok(())
