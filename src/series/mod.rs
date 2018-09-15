@@ -25,6 +25,7 @@ pub enum Prompt {
     AlreadyCompleted,
     BeginRewatch,
     ResumePausedSeries,
+    PauseSeries(Status),
 }
 
 pub struct Series<B>
@@ -161,10 +162,21 @@ where
 
                 self.set_list_entry_status(Status::Watching)
             }
+            Prompt::PauseSeries(status) => {
+                self.set_list_entry_status(status)?;
+
+                println!("do you want to remove the episodes on disk? (Y/n)");
+
+                if input::read_yn(Answer::Yes)? {
+                    self.dir.try_remove_dir();
+                }
+
+                Ok(())
+            }
         }
     }
 
-    fn prompt_next_episode_options(&mut self) -> Result<(), SeriesError> {
+    pub fn prompt_next_episode_options(&mut self) -> Result<(), SeriesError> {
         let current_score_text: Cow<str> = match self.format_entry_score() {
             Some(score) => Cow::Owned(format!(" [{}]", score)),
             None => Cow::Borrowed(""),
@@ -183,14 +195,7 @@ where
                     Status::OnHold
                 };
 
-                self.set_list_entry_status(status)?;
-
-                println!("do you want to remove the episodes on disk? (Y/n)");
-
-                if input::read_yn(Answer::Yes)? {
-                    self.dir.try_remove_dir();
-                }
-
+                self.prompt(Prompt::PauseSeries(status))?;
                 Err(SeriesError::RequestExit)
             }
             "r" => {
@@ -202,7 +207,7 @@ where
         }
     }
 
-    fn prompt_series_completed_options(&mut self) -> Result<(), SeriesError> {
+    pub fn prompt_series_completed_options(&mut self) -> Result<(), SeriesError> {
         let current_score_text: Cow<str> = match self.format_entry_score() {
             Some(score) => Cow::Owned(format!(" [{}]", score)),
             None => Cow::Borrowed(""),
@@ -231,6 +236,44 @@ where
             }
             "x" => Err(SeriesError::RequestExit),
             _ => Ok(()),
+        }
+    }
+
+    pub fn prompt_series_options(&mut self) -> Result<(), SeriesError> {
+        let current_score_text: Cow<str> = match self.format_entry_score() {
+            Some(score) => Cow::Owned(format!(" [{}]", score)),
+            None => Cow::Borrowed(""),
+        };
+
+        println!("[{}] series options:", self.season.state.info.title);
+        println!(
+            "\t[r] rate{}\n\t[dd] delete local files\n\t[d] drop\n\t[h] put on hold\n\t[x] exit",
+            current_score_text
+        );
+
+        let input = input::read_line()?.to_lowercase();
+
+        match input.as_str() {
+            "r" => {
+                self.prompt(Prompt::UpdateScore)?;
+                self.prompt_series_options()
+            }
+            "dd" => {
+                self.dir.try_remove_dir();
+                Err(SeriesError::RequestExit)
+            }
+            "d" | "h" => {
+                let status = if input == "d" {
+                    Status::Dropped
+                } else {
+                    Status::OnHold
+                };
+
+                self.prompt(Prompt::PauseSeries(status))?;
+                Err(SeriesError::RequestExit)
+            }
+            "x" => Err(SeriesError::RequestExit),
+            _ => self.prompt_series_options(),
         }
     }
 

@@ -63,6 +63,7 @@ fn run() -> Result<(), Error> {
         (@arg PATH: -p --path +takes_value "Specifies the directory to look for video files in")
         (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
         (@arg INFO: -i --info "Displays saved series information")
+        (@arg EDIT: -e --edit "Displays options for the series instead of playing it")
         (@arg OFFLINE: -o --offline "Launches the program in offline mode")
         (@arg SYNC: --sync "Synchronizes all changes made offline to AniList")
     ).get_matches();
@@ -106,6 +107,12 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
 
     let mut series = Series::init(config, folder_data)?;
     series.sync_remote_states()?;
+
+    if args.is_present("EDIT") {
+        series.prompt_series_options()?;
+        return Ok(());
+    }
+
     series.prepare_initial_state()?;
     series.play_all_episodes()?;
 
