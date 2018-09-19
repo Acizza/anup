@@ -6,7 +6,6 @@ use config::Config;
 use error::BackendError;
 use input;
 use process;
-use reqwest::header::{Accept, Authorization, Bearer, ContentType, Headers};
 use reqwest::{Client, Response};
 use serde_json as json;
 use std::borrow::Cow;
@@ -52,17 +51,12 @@ impl AniList {
             "variables": variables,
         }).to_string();
 
-        let mut headers = Headers::new();
-        headers.set(ContentType::json());
-        headers.set(Accept::json());
-        headers.set(Authorization(Bearer {
-            token: self.access_token.to_owned(),
-        }));
-
         let response = self
             .client
             .post(API_URL)
-            .headers(headers)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .header("Authorization", format!("Bearer {}", self.access_token))
             .body(body)
             .send()?;
 
