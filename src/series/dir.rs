@@ -229,14 +229,13 @@ impl EpisodeFile {
                 .to_string()
         };
 
-        let episode = caps
-            .name("episode")
-            .ok_or_else(|| SeriesError::UnknownRegexCapture("episode".into()))
-            .and_then(|cap| {
-                cap.as_str()
-                    .parse()
-                    .map_err(SeriesError::EpisodeNumParseFailed)
-            })?;
+        let episode = match caps.name("episode") {
+            Some(capture) => capture
+                .as_str()
+                .parse()
+                .map_err(SeriesError::EpisodeNumParseFailed)?,
+            None => 1,
+        };
 
         Ok(EpisodeFile {
             series_name,
@@ -361,12 +360,13 @@ where
         match parse_episode_files(path, pattern.as_ref()) {
             Ok(data) => break Ok(data),
             Err(SeriesError::NoSeriesFound) => {
-                println!("no series found");
+                eprintln!("error: no series found");
                 println!("you will now be prompted to enter a custom regex pattern");
                 println!("when entering the pattern, please mark the series name and episode number with {{name}} and {{episode}}, respectively");
+                println!("note: if you're trying to play a single file (like a movie) and it doesn't have an episode number, you can omit the {{episode}} marker");
                 println!("example:");
-                println!("  filename: [SubGroup] Series Name - Ep01.mkv");
-                println!(r"  pattern: \[.+?\] {{name}} - Ep{{episode}}.mkv");
+                println!("  filename: [SubGroup] Series Name - Ep01 [1080p].mkv");
+                println!(r"  pattern: \[.+?\] {{name}} - Ep{{episode}} \[1080p\].mkv");
                 println!("please enter your custom pattern:");
 
                 *pattern = Some(input::read_line()?.into());
