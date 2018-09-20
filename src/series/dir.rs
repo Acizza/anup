@@ -261,7 +261,7 @@ pub fn prompt_select_series_info(info: SeriesEpisodes) -> Result<SeriesInfo, Ser
         }).collect::<Vec<_>>();
 
     if info.len() == 1 {
-        return Ok(info.remove(0));
+        return Ok(info.swap_remove(0));
     }
 
     println!("multiple series found in directory");
@@ -272,7 +272,7 @@ pub fn prompt_select_series_info(info: SeriesEpisodes) -> Result<SeriesInfo, Ser
     }
 
     let index = input::read_range(1, info.len())? - 1;
-    let series = info.remove(index);
+    let series = info.swap_remove(index);
 
     Ok(series)
 }
