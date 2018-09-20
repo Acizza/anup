@@ -465,11 +465,18 @@ impl SeasonState {
             return Ok(());
         }
 
+        // When offline, use data from the files on disk
         if config.offline_mode {
-            // The series title is the only thing that can really be used when offline.
-            // While things like the number of episode files present could be used as the
-            // series episode count, it is common to only partially have a series downloaded
+            // We want to use the highest episode number we have on disk to represent the
+            // total number of episodes for a series. While it's possible that only part of the
+            // series is downloaded, it is much more likely that the entire series is there if
+            // the user is using offline mode. This will also allow the user to never have to use
+            // online mode to get the real series information first.
+            let num_eps = dir.series_info.episodes.keys().max();
+
             self.state.info.title = dir.series_info.name.clone();
+            self.state.info.episodes = num_eps.cloned();
+
             return Ok(());
         }
 
