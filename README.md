@@ -67,13 +67,13 @@ The program can automatically detect episodes in multiple common layouts, such a
 * `[Group] Series Title - 01 [1080p].mkv`
 * `Series Title - 01.mkv`
 
-In cases where the automatic detection fails, the program will prompt you to enter a custom regex pattern to use.
-When you enter a custom regex pattern, you **must** include the magic values `{name}` and `{episode}` in the appropriate places so the episode parser knows where to pull important information from.
+In cases where the automatic detection fails, the program will prompt you to enter a custom [regex](https://www.regular-expressions.info/) pattern to use. When entering a custom pattern, you will need to input the `{name}` and `{episode}` magic values in the appropriate places. If you're watching a one-off like a movie, then the `{episode}` marker can be omitted.
+
 For example, to parse episode files that are formatted like this:
 
 `[Group] Ep01 - Series Title.mkv`
 
-You could use the following pattern to parse it:
+You could use this pattern to parse it:
 
 `\[Group\] Ep{episode} - {name}.mkv`
 
