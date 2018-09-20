@@ -108,25 +108,27 @@ where
                     min_score, max_score
                 );
 
-                // TODO: use read_range() with empty line bypassing
-                let input = match input::read_line() {
-                    Ok(ref input) if input.is_empty() => return Ok(()),
-                    Ok(input) => input,
-                    Err(err) => {
-                        eprintln!("failed to read score input: {}", err);
-                        return Ok(());
-                    }
-                };
+                // Read & parse score input until we get a valid one
+                loop {
+                    let input = match input::read_line() {
+                        Ok(ref input) if input.is_empty() => return Ok(()),
+                        Ok(input) => input,
+                        Err(err) => {
+                            eprintln!("failed to read score input: {}", err);
+                            return Ok(());
+                        }
+                    };
 
-                match self.config.sync_service.parse_score(&input) {
-                    Ok(score) => {
-                        state.score = Some(score);
-                        self.update_list_entry()?;
+                    match self.config.sync_service.parse_score(&input) {
+                        Ok(score) => {
+                            state.score = Some(score);
+                            break;
+                        }
+                        Err(err) => eprintln!("error: {}", err),
                     }
-                    Err(err) => eprintln!("failed to parse score: {}", err),
                 }
 
-                Ok(())
+                self.update_list_entry()
             }
             Prompt::SeriesCompleted => {
                 println!("[{}] completed!", state.info.title);
