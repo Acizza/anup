@@ -417,34 +417,27 @@ where
 
     let mut found = backend.search_by_name(name)?;
 
-    if !found.is_empty() {
-        println!(
-            "select season {} by entering the number next to its name:\n",
-            1 + season
-        );
+    println!(
+        "select season {} by entering the number next to its name:\n",
+        1 + season
+    );
 
-        println!("0 [custom search]");
+    println!("0 [manual search]");
 
-        for (i, series) in found.iter().enumerate() {
-            println!("{} [{}]", 1 + i, series.title);
-        }
+    for (i, series) in found.iter().enumerate() {
+        println!("{} [{}]", 1 + i, series.title);
+    }
 
-        let index = input::read_range(0, found.len())?;
+    let index = input::read_range(0, found.len())?;
 
-        if index == 0 {
+    match index {
+        0 => {
             println!("enter the name you want to search for:");
-
             let name = input::read_line()?;
-            search_for_series_info(backend, &name, season)
-        } else {
-            let info = found.swap_remove(index - 1);
-            Ok(info)
-        }
-    } else {
-        println!("no results found\nplease enter a custom search term:");
 
-        let name = input::read_line()?;
-        search_for_series_info(backend, &name, season)
+            search_for_series_info(backend, &name, season)
+        }
+        _ => Ok(found.swap_remove(index - 1)),
     }
 }
 
