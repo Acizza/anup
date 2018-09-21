@@ -353,7 +353,7 @@ where
 
     pub fn play_episode(&mut self, episode: u32) -> Result<(), SeriesError> {
         let absolute_ep = self.ep_offset + episode;
-        let path = self.dir.get_episode(absolute_ep)?.clone();
+        let path = self.dir.get_episode(absolute_ep)?;
 
         let status = process::open_with_default(path).map_err(SeriesError::FailedToOpenPlayer)?;
 
