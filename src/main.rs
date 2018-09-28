@@ -33,8 +33,9 @@ mod util;
 use backend::{anilist::AniList, SyncBackend};
 use config::Config;
 use error::{Error, SeriesError};
-use series::dir::{FolderData, SaveData, SeriesInfo};
-use series::{Series, SeriesConfig};
+use series::dir::{FolderData, SaveData, SeriesEpisodes, SeriesInfo, SubSeriesData};
+use series::{SeasonState, Series, SeriesConfig};
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 fn main() {
@@ -60,13 +61,15 @@ fn run() -> Result<(), Error> {
         (version: env!("CARGO_PKG_VERSION"))
         (author: env!("CARGO_PKG_AUTHORS"))
         (@arg NAME: "The name of the series to watch")
+        (@arg SUBSERIES: "The name of the subseries to watch")
         (@arg PATH: -p --path +takes_value "Specifies the directory to look for video files in")
         (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
         (@arg INFO: -i --info "Displays saved series information")
         (@arg EDIT: -e --edit "Displays options for the series instead of playing it")
         (@arg OFFLINE: -o --offline "Launches the program in offline mode")
         (@arg SYNC: --sync "Synchronizes all changes made offline to AniList")
-    ).get_matches();
+    )
+    .get_matches();
 
     if args.is_present("INFO") {
         print_saved_series_info()
@@ -103,7 +106,8 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
         season_num: season,
     };
 
-    let folder_data = FolderData::load_dir(&path)?;
+    let subseries = args.value_of("SUBSERIES").map(str::to_string);
+    let folder_data = FolderData::load_dir(&path, subseries)?;
 
     let mut series = Series::init(config, folder_data)?;
     series.sync_remote_states()?;
@@ -120,10 +124,52 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
 }
 
 fn print_saved_series_info() -> Result<(), Error> {
+    fn display_subseries(ep_data: &mut SeriesEpisodes, name: &str, data: &SubSeriesData) {
+        println!("{:4}subseries [{}]:", ' ', name);
+
+        let series_info = SeriesInfo::select_from_subseries(ep_data, &data);
+
+        let ep_list = match series_info {
+            Some(info) => {
+                let mut ep_nums = info.episodes.keys().cloned().collect::<Vec<_>>();
+                ep_nums.sort_unstable();
+
+                util::concat_sequential_values(&ep_nums, "..", " | ")
+                    .unwrap_or_else(|| "none".into())
+                    .into()
+            }
+            None => Cow::Borrowed("need series info"),
+        };
+
+        println!("{:8}episodes on disk: {}", ' ', ep_list);
+
+        for (season_num, season) in data.season_states.iter().enumerate() {
+            display_season(season_num, season);
+        }
+    }
+
+    fn display_season(season_num: usize, season: &SeasonState) {
+        println!("{:8}season {}:", ' ', 1 + season_num);
+        println!("{:12}name: {}", ' ', season.state.info.title);
+
+        let total_eps = season
+            .state
+            .info
+            .episodes
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "unknown".into());
+
+        println!("{:12}total episodes: {}", ' ', total_eps);
+        println!(
+            "{:12}watched episodes: {}",
+            ' ', season.state.watched_episodes
+        );
+    }
+
     let mut config = Config::load()?;
     config.remove_invalid_series();
 
-    println!("found [{}] series:\n", config.series.len());
+    println!("found [{}] series:", config.series.len());
 
     for (name, path) in config.series {
         let savefile = match SaveData::from_dir(&path) {
@@ -132,35 +178,20 @@ fn print_saved_series_info() -> Result<(), Error> {
         };
 
         let ep_data = series::dir::parse_episode_files(&path, savefile.episode_matcher.clone());
-
-        let ep_list = match ep_data {
-            Ok(mut ep_data) => {
-                let series_info = SeriesInfo::select_from_save(&mut ep_data, &savefile);
-
-                match series_info {
-                    Some(info) => {
-                        let mut ep_nums = info.episodes.keys().cloned().collect::<Vec<_>>();
-                        ep_nums.sort_unstable();
-
-                        util::concat_sequential_values(&ep_nums, "..", " | ")
-                            .unwrap_or_else(|| "none".into())
-                    }
-                    None => "needs series info".into(),
-                }
-            }
-            Err(SeriesError::NoSeriesFound) => "none".into(),
+        let mut ep_data = match ep_data {
+            Ok(data) => data,
             Err(err) => {
                 eprintln!("failed to parse episode data for [{}]: {}", name, err);
                 continue;
             }
         };
 
-        println!("[{}]:", name);
-        println!(
-            "  path: {}\n  episodes on disk: {}",
-            path.to_string_lossy(),
-            ep_list
-        );
+        println!("\n[{}]:", name);
+        println!("{:4}path: {}", ' ', path.to_string_lossy());
+
+        for (subseries_name, subseries_data) in savefile.subseries {
+            display_subseries(&mut ep_data, &subseries_name, &subseries_data);
+        }
     }
 
     Ok(())
@@ -178,27 +209,32 @@ fn sync_offline_changes() -> Result<(), Error> {
             Err(_) => continue,
         };
 
-        for season_num in 0..save_data.season_states.len() {
-            let season_state = &mut save_data.season_states[season_num];
+        for (subseries_name, subseries_data) in &mut save_data.subseries {
+            for season_num in 0..subseries_data.season_states.len() {
+                let season_state = &mut subseries_data.season_states[season_num];
 
-            if !season_state.needs_sync {
-                continue;
+                if !season_state.needs_sync {
+                    continue;
+                }
+
+                println!(
+                    "[{}] ({}) syncing..",
+                    season_state.state.info.title, subseries_name
+                );
+
+                if season_state.needs_info {
+                    season_state.state.info = series::search_for_series_info(
+                        &backend,
+                        &season_state.state.info.title,
+                        season_num,
+                    )?;
+
+                    season_state.needs_info = false;
+                }
+
+                backend.update_list_entry(&season_state.state)?;
+                season_state.needs_sync = false;
             }
-
-            println!("[{}] syncing..", season_state.state.info.title);
-
-            if season_state.needs_info {
-                season_state.state.info = series::search_for_series_info(
-                    &backend,
-                    &season_state.state.info.title,
-                    season_num,
-                )?;
-
-                season_state.needs_info = false;
-            }
-
-            backend.update_list_entry(&season_state.state)?;
-            season_state.needs_sync = false;
         }
 
         save_data.write_to_file()?;

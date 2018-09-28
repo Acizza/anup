@@ -13,30 +13,41 @@ use toml;
 pub struct FolderData {
     pub series_info: SeriesInfo,
     pub savefile: SaveData,
+    pub subseries: String,
     pub path: PathBuf,
 }
 
 impl FolderData {
-    pub fn load_dir(path: &Path) -> Result<FolderData, SeriesError> {
+    const DEFAULT_SUBSERIES_NAME: &'static str = "main";
+
+    pub fn load_dir(path: &Path, subseries: Option<String>) -> Result<FolderData, SeriesError> {
+        let subseries = subseries.unwrap_or_else(|| FolderData::DEFAULT_SUBSERIES_NAME.into());
+
         let mut savefile = SaveData::from_dir(path)?;
-        let series_info = FolderData::load_series_info(path, &mut savefile)?;
+        let series_info = FolderData::load_series_info(path, &mut savefile, &subseries)?;
 
         Ok(FolderData {
             series_info,
             savefile,
+            subseries,
             path: PathBuf::from(path),
         })
     }
 
-    fn load_series_info(path: &Path, savefile: &mut SaveData) -> Result<SeriesInfo, SeriesError> {
+    fn load_series_info(
+        path: &Path,
+        savefile: &mut SaveData,
+        subseries: &str,
+    ) -> Result<SeriesInfo, SeriesError> {
         let mut ep_data = parse_episode_files_until_valid(path, &mut savefile.episode_matcher)?;
+        let subseries_data = savefile.get_mut_subseries_entry(subseries);
 
-        if let Some(info) = SeriesInfo::select_from_save(&mut ep_data, savefile) {
+        if let Some(info) = SeriesInfo::select_from_subseries(&mut ep_data, &subseries_data) {
             return Ok(info);
         }
 
         let info = prompt_select_series_info(ep_data)?;
-        savefile.files_title = Some(info.name.clone());
+        subseries_data.files_title = Some(info.name.clone());
 
         Ok(info)
     }
@@ -63,21 +74,26 @@ impl FolderData {
 
             season.sync_info_from_remote(config, &self, cur_season)?;
 
-            self.seasons_mut().push(season);
+            let subseries = self
+                .savefile
+                .get_mut_subseries_entry(self.subseries.clone());
+
+            subseries.season_states.push(season);
         }
 
         Ok(())
     }
 
     pub fn calculate_season_offset(&self, mut range: Range<usize>) -> u32 {
-        let num_seasons = self.savefile.season_states.len();
+        let num_seasons = self.seasons().len();
         range.start = num_seasons.min(range.start);
         range.end = num_seasons.min(range.end);
 
         let mut offset = 0;
+        let seasons = self.seasons();
 
         for i in range {
-            let season = &self.savefile.season_states[i];
+            let season = &seasons[i];
 
             match season.state.info.episodes {
                 Some(eps) => offset += eps,
@@ -117,19 +133,24 @@ impl FolderData {
     }
 
     pub fn seasons(&self) -> &Vec<SeasonState> {
-        &self.savefile.season_states
+        &self.savefile.subseries[&self.subseries].season_states
     }
 
     pub fn seasons_mut(&mut self) -> &mut Vec<SeasonState> {
-        &mut self.savefile.season_states
+        &mut self
+            .savefile
+            .get_mut_subseries_entry(self.subseries.clone())
+            .season_states
     }
 }
+
+pub type SubSeriesName = String;
 
 #[derive(Serialize, Deserialize)]
 pub struct SaveData {
     pub episode_matcher: Option<String>,
-    pub files_title: Option<String>,
-    pub season_states: Vec<SeasonState>,
+    #[serde(flatten)]
+    pub subseries: HashMap<SubSeriesName, SubSeriesData>,
     #[serde(skip)]
     pub path: PathBuf,
 }
@@ -140,10 +161,18 @@ impl SaveData {
     pub fn new(path: PathBuf) -> SaveData {
         SaveData {
             episode_matcher: None,
-            files_title: None,
-            season_states: Vec::new(),
+            subseries: HashMap::new(),
             path,
         }
+    }
+
+    pub fn get_mut_subseries_entry<S>(&mut self, name: S) -> &mut SubSeriesData
+    where
+        S: Into<String>,
+    {
+        self.subseries
+            .entry(name.into())
+            .or_insert_with(SubSeriesData::new)
     }
 
     pub fn from_dir(path: &Path) -> Result<SaveData, SeriesError> {
@@ -169,6 +198,21 @@ impl SaveData {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct SubSeriesData {
+    pub files_title: Option<String>,
+    pub season_states: Vec<SeasonState>,
+}
+
+impl SubSeriesData {
+    pub fn new() -> SubSeriesData {
+        SubSeriesData {
+            files_title: None,
+            season_states: Vec::new(),
+        }
+    }
+}
+
 pub struct SeriesInfo {
     pub name: String,
     pub episodes: HashMap<u32, PathBuf>,
@@ -181,11 +225,11 @@ impl SeriesInfo {
             .ok_or_else(|| SeriesError::EpisodeNotFound(episode))
     }
 
-    pub fn select_from_save(
+    pub fn select_from_subseries(
         ep_data: &mut SeriesEpisodes,
-        savefile: &SaveData,
+        subseries: &SubSeriesData,
     ) -> Option<SeriesInfo> {
-        if let Some(name) = &savefile.files_title {
+        if let Some(name) = &subseries.files_title {
             let entry = ep_data.remove_entry(name);
 
             if let Some((name, episodes)) = entry {
@@ -244,8 +288,8 @@ impl EpisodeFile {
     }
 }
 
-type EpisodePaths = HashMap<u32, PathBuf>;
-type SeriesEpisodes = HashMap<String, EpisodePaths>;
+pub type EpisodePaths = HashMap<u32, PathBuf>;
+pub type SeriesEpisodes = HashMap<String, EpisodePaths>;
 
 pub fn prompt_select_series_info(info: SeriesEpisodes) -> Result<SeriesInfo, SeriesError> {
     if info.is_empty() {
@@ -257,7 +301,8 @@ pub fn prompt_select_series_info(info: SeriesEpisodes) -> Result<SeriesInfo, Ser
         .map(|(name, eps)| SeriesInfo {
             name,
             episodes: eps,
-        }).collect::<Vec<_>>();
+        })
+        .collect::<Vec<_>>();
 
     if info.len() == 1 {
         return Ok(info.swap_remove(0));
