@@ -11,6 +11,7 @@ Current features include:
 * Support for rewatching an already completed anime
 * Support for continuing an anime that has already been dropped or put on hold
 * Automatic setting of the date you started watching and finished watching an anime
+* Tracking multiple series in a single folder
 * Support for anime that have multiple seasons merged together
 
 The program is developed for Linux and Windows, with Linux being the primary platform.
@@ -48,6 +49,16 @@ The next time you want to watch the same series, you can simply launch the progr
 * Linux: `anup.sh tora`
 * Windows: `anup.exe tora`
 * macOS: `anup tora`
+
+Tracking Multiple Series In A Single Folder
+-------------------------------------------
+Often, places you obtain anime from will be bundled together with specials or movies in the same folder as the main series. To track them separately, you can launch the program with a `subseries` parameter. For example, if you wanted to watch Toradora's specials and name the subseries "sp", you can launch the program like so:
+
+* Linux: `anup.sh tora sp`
+* Windows: `anup.exe tora sp`
+* macOS: `anup tora sp`
+
+The program will then prompt you to select which series in the folder you want to track, and save it for the next time you want to play the same subseries.
 
 Offline Mode
 ------------
