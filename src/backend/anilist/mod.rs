@@ -29,7 +29,7 @@ macro_rules! send_query {
 
 fn minimize_graphql_query(query: &str) -> String {
     let mut minimized = String::from(query);
-    minimized.retain(|c| c != ' ');
+    minimized.retain(|c| c != ' ' && c != '\n');
 
     minimized
 }
@@ -49,7 +49,8 @@ impl AniList {
         let body = json!({
             "query": query_str,
             "variables": variables,
-        }).to_string();
+        })
+        .to_string();
 
         let response = self
             .client
@@ -89,7 +90,7 @@ impl AniList {
             r#"
                 query {
                     Viewer {
-                        id
+                        id,
                         mediaListOptions {
                             scoreFormat
                         }
@@ -194,10 +195,10 @@ impl SyncBackend for AniList {
                 query ($name: String) {
                     Page (page: 1, perPage: 30) {
                         media (search: $name, type: ANIME) {
-                            id
+                            id,
                             title {
                                 romaji
-                            }
+                            },
                             episodes
                         }
                     }
@@ -228,10 +229,10 @@ impl SyncBackend for AniList {
             r#"
                 query ($id: Int) {
                     Media (id: $id) {
-                        id
+                        id,
                         title {
                             romaji
-                        }
+                        },
                         episodes
                     }
                 }
@@ -249,17 +250,17 @@ impl SyncBackend for AniList {
             r#"
                 query ($id: Int, $userID: Int) {
                     MediaList(mediaId: $id, userId: $userID) {
-                        progress
-                        status
-                        score
+                        progress,
+                        status,
+                        score,
                         startedAt {
-                            year
-                            month
+                            year,
+                            month,
                             day
-                        }
+                        },
                         completedAt {
-                            year
-                            month
+                            year,
+                            month,
                             day
                         }
                     }
