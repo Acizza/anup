@@ -46,7 +46,7 @@ impl FolderData {
             return Ok(info);
         }
 
-        let info = prompt_select_series_info(ep_data)?;
+        let info = SeriesInfo::prompt_select_from_episodes(ep_data)?;
         subseries_data.files_title = Some(info.name.clone());
 
         Ok(info)
@@ -213,6 +213,9 @@ impl SubSeriesData {
     }
 }
 
+pub type EpisodePaths = HashMap<u32, PathBuf>;
+pub type SeriesEpisodes = HashMap<String, EpisodePaths>;
+
 pub struct SeriesInfo {
     pub name: String,
     pub episodes: HashMap<u32, PathBuf>,
@@ -238,6 +241,36 @@ impl SeriesInfo {
         }
 
         None
+    }
+
+    pub fn prompt_select_from_episodes(info: SeriesEpisodes) -> Result<SeriesInfo, SeriesError> {
+        if info.is_empty() {
+            return Err(SeriesError::NoSeriesFound);
+        }
+
+        let mut info = info
+            .into_iter()
+            .map(|(name, eps)| SeriesInfo {
+                name,
+                episodes: eps,
+            })
+            .collect::<Vec<_>>();
+
+        if info.len() == 1 {
+            return Ok(info.swap_remove(0));
+        }
+
+        println!("multiple series found in directory");
+        println!("please enter the number next to the episode files you want to use:");
+
+        for (i, series) in info.iter().enumerate() {
+            println!("{} [{}]", 1 + i, series.name);
+        }
+
+        let index = input::read_range(1, info.len())? - 1;
+        let series = info.swap_remove(index);
+
+        Ok(series)
     }
 }
 
@@ -291,39 +324,6 @@ impl EpisodeFile {
 
         clean_title
     }
-}
-
-pub type EpisodePaths = HashMap<u32, PathBuf>;
-pub type SeriesEpisodes = HashMap<String, EpisodePaths>;
-
-pub fn prompt_select_series_info(info: SeriesEpisodes) -> Result<SeriesInfo, SeriesError> {
-    if info.is_empty() {
-        return Err(SeriesError::NoSeriesFound);
-    }
-
-    let mut info = info
-        .into_iter()
-        .map(|(name, eps)| SeriesInfo {
-            name,
-            episodes: eps,
-        })
-        .collect::<Vec<_>>();
-
-    if info.len() == 1 {
-        return Ok(info.swap_remove(0));
-    }
-
-    println!("multiple series found in directory");
-    println!("please enter the number next to the episode files you want to use:");
-
-    for (i, series) in info.iter().enumerate() {
-        println!("{} [{}]", 1 + i, series.name);
-    }
-
-    let index = input::read_range(1, info.len())? - 1;
-    let series = info.swap_remove(index);
-
-    Ok(series)
 }
 
 // This default pattern will match episodes in several common formats, such as:
