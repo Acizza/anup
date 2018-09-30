@@ -279,18 +279,14 @@ impl EpisodeFile {
     }
 
     fn cleanup_title(title: &str) -> String {
-        let mut clean_title = String::with_capacity(title.len());
-        let mut last_char = ' ';
+        let mut clean_title = String::from(title);
+        let bytes = unsafe { clean_title.as_bytes_mut() };
 
-        for ch in title.chars() {
-            match ch {
-                '.' => clean_title.push(' '),
-                '_' => clean_title.push(' '),
-                ' ' if last_char == ' ' => (),
-                ch => clean_title.push(ch),
+        for byte in bytes {
+            match byte {
+                b'.' | b'_' => *byte = b' ',
+                _ => (),
             }
-
-            last_char = ch;
         }
 
         clean_title
