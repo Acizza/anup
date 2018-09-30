@@ -411,7 +411,7 @@ where
 {
     loop {
         match parse_episode_files(path, pattern.as_ref()) {
-            Ok(data) => break Ok(data),
+            Ok(data) => return Ok(data),
             Err(SeriesError::NoSeriesFound) => {
                 eprintln!("error: no series found");
                 println!("you will now be prompted to enter a custom regex pattern");
@@ -421,16 +421,15 @@ where
                 println!("  filename: [SubGroup] Series Name - Ep01 [1080p].mkv");
                 println!(r"  pattern: \[.+?\] {{name}} - Ep{{episode}} \[1080p\].mkv");
                 println!("please enter your custom pattern:");
-
-                *pattern = Some(input::read_line()?.into());
             }
             Err(err @ SeriesError::Regex(_)) | Err(err @ SeriesError::UnknownRegexCapture(_)) => {
                 eprintln!("error parsing regex pattern: {}", err);
                 println!("please try again:");
-
-                *pattern = Some(input::read_line()?.into());
             }
             Err(err) => return Err(err),
         }
+
+        let line = input::read_line()?;
+        *pattern = Some(line.into());
     }
 }
