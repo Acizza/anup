@@ -259,19 +259,10 @@ impl EpisodeFile {
             .captures(&filename)
             .ok_or(SeriesError::EpisodeRegexCaptureFailed)?;
 
-        let series_name = {
-            let raw_name = caps
-                .name("name")
-                .map(|c| c.as_str())
-                .ok_or_else(|| SeriesError::UnknownRegexCapture("name".into()))?;
-
-            raw_name
-                .replace('.', " ")
-                .replace(" -", ":") // Dashes typically represent a colon in file names
-                .replace('_', " ")
-                .trim()
-                .to_string()
-        };
+        let series_name = caps
+            .name("name")
+            .ok_or_else(|| SeriesError::UnknownRegexCapture("name".into()))
+            .map(|name| EpisodeFile::cleanup_title(name.as_str()))?;
 
         let episode = match caps.name("episode") {
             Some(capture) => capture
@@ -285,6 +276,24 @@ impl EpisodeFile {
             series_name,
             episode_num: episode,
         })
+    }
+
+    fn cleanup_title(title: &str) -> String {
+        let mut clean_title = String::with_capacity(title.len());
+        let mut last_char = ' ';
+
+        for ch in title.chars() {
+            match ch {
+                '.' => clean_title.push(' '),
+                '_' => clean_title.push(' '),
+                ' ' if last_char == ' ' => (),
+                ch => clean_title.push(ch),
+            }
+
+            last_char = ch;
+        }
+
+        clean_title
     }
 }
 
@@ -368,7 +377,7 @@ where
     }
 
     let pattern = format_episode_parser_regex(pattern)?;
-    let mut data = HashMap::new();
+    let mut data = HashMap::with_capacity(1);
 
     for entry in fs::read_dir(path).map_err(SeriesError::Io)? {
         let entry = entry.map_err(SeriesError::Io)?.path();
@@ -383,7 +392,10 @@ where
             Err(err) => return Err(err),
         };
 
-        let series = data.entry(episode.series_name).or_insert_with(HashMap::new);
+        let series = data
+            .entry(episode.series_name)
+            .or_insert_with(|| HashMap::with_capacity(1));
+
         series.insert(episode.episode_num, entry);
     }
 
