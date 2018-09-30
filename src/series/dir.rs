@@ -337,7 +337,7 @@ pub fn prompt_select_series_info(info: SeriesEpisodes) -> Result<SeriesInfo, Ser
 // Series_Name_-_01.mkv
 // Series.Name.-.01.mkv
 const EP_FORMAT_REGEX: &str =
-    r"(?:\[.+?\](?:_+|\.+|\s*))?(?P<name>.+?)(?:\s*|_*|\.*)-(?:\s*|_*|\.*)(?P<episode>\d+).*?\..+?";
+    r"(?:\[.+?\](?:_+|\.+|\s*))?(?P<name>.+?)(?:\s*|_*|\.*)-(?:\s*|_*|\.*)(?P<episode>\d+)";
 
 fn format_episode_parser_regex<'a, S>(pattern: Option<S>) -> Result<Cow<'a, Regex>, SeriesError>
 where
