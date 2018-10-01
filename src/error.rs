@@ -70,6 +70,9 @@ pub enum SeriesError {
     #[fail(display = "no series were found")]
     NoSeriesFound,
 
+    #[fail(display = "no episodes were found for the specified series")]
+    NoSeriesEpisodes,
+
     #[fail(display = "unable to get filename")]
     UnableToGetFilename,
 

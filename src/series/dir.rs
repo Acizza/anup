@@ -42,7 +42,7 @@ impl FolderData {
         let mut ep_data = parse_episode_files_until_valid(path, &mut savefile.episode_matcher)?;
         let subseries_data = savefile.get_mut_subseries_entry(subseries);
 
-        if let Some(info) = SeriesInfo::select_from_subseries(&mut ep_data, &subseries_data) {
+        if let Some(info) = SeriesInfo::select_from_subseries(&mut ep_data, &subseries_data)? {
             return Ok(info);
         }
 
@@ -231,16 +231,17 @@ impl SeriesInfo {
     pub fn select_from_subseries(
         ep_data: &mut SeriesEpisodes,
         subseries: &SubSeriesData,
-    ) -> Option<SeriesInfo> {
+    ) -> Result<Option<SeriesInfo>, SeriesError> {
         if let Some(name) = &subseries.files_title {
             let entry = ep_data.remove_entry(name);
 
-            if let Some((name, episodes)) = entry {
-                return Some(SeriesInfo { name, episodes });
+            match entry {
+                Some((name, episodes)) => return Ok(Some(SeriesInfo { name, episodes })),
+                None => return Err(SeriesError::NoSeriesEpisodes),
             }
         }
 
-        None
+        Ok(None)
     }
 
     pub fn prompt_select_from_episodes(info: SeriesEpisodes) -> Result<SeriesInfo, SeriesError> {

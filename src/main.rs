@@ -124,10 +124,14 @@ fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
 }
 
 fn print_saved_series_info() -> Result<(), Error> {
-    fn display_subseries(ep_data: &mut SeriesEpisodes, name: &str, data: &SubSeriesData) {
+    fn display_subseries(
+        ep_data: &mut SeriesEpisodes,
+        name: &str,
+        data: &SubSeriesData,
+    ) -> Result<(), Error> {
         println!("{:4}subseries [{}]:", ' ', name);
 
-        let series_info = SeriesInfo::select_from_subseries(ep_data, &data);
+        let series_info = SeriesInfo::select_from_subseries(ep_data, &data)?;
 
         let ep_list = match series_info {
             Some(info) => {
@@ -146,6 +150,8 @@ fn print_saved_series_info() -> Result<(), Error> {
         for (season_num, season) in data.season_states.iter().enumerate() {
             display_season(season_num, season);
         }
+
+        Ok(())
     }
 
     fn display_season(season_num: usize, season: &SeasonState) {
@@ -190,7 +196,7 @@ fn print_saved_series_info() -> Result<(), Error> {
         println!("{:4}path: {}", ' ', path.to_string_lossy());
 
         for (subseries_name, subseries_data) in savefile.subseries {
-            display_subseries(&mut ep_data, &subseries_name, &subseries_data);
+            display_subseries(&mut ep_data, &subseries_name, &subseries_data)?;
         }
     }
 
