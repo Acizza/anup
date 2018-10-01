@@ -104,24 +104,16 @@ impl FolderData {
         offset
     }
 
-    pub fn try_remove_dir(&self) {
-        let path = self.path.to_string_lossy();
-
-        println!("WARNING: {} will be deleted", path);
+    pub fn delete_series_dir(&self) -> Result<(), SeriesError> {
+        println!("WARNING: {} will be deleted", self.path.to_string_lossy());
         println!("is this ok? (y/N)");
 
-        match input::read_yn(Answer::No) {
-            Ok(true) => match fs::remove_dir_all(&self.path) {
-                Ok(_) => (),
-                Err(err) => {
-                    eprintln!("failed to remove directory: {}", err);
-                }
-            },
-            Ok(false) => (),
-            Err(err) => {
-                eprintln!("failed to read input: {}", err);
-            }
+        if !input::read_yn(Answer::No)? {
+            return Ok(());
         }
+
+        fs::remove_dir_all(&self.path)?;
+        Ok(())
     }
 
     pub fn get_episode(&self, episode: u32) -> Result<&PathBuf, SeriesError> {

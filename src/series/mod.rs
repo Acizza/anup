@@ -167,10 +167,10 @@ where
             Prompt::PauseSeries(status) => {
                 self.set_list_entry_status(status)?;
 
-                println!("do you want to remove the episodes on disk? (Y/n)");
+                println!("do you want to delete the series from disk? (Y/n)");
 
                 if input::read_yn(Answer::Yes)? {
-                    self.dir.try_remove_dir();
+                    self.dir.delete_series_dir()?;
                 }
 
                 Ok(())
@@ -233,7 +233,7 @@ where
                 self.play_all_episodes()
             }
             "d" => {
-                self.dir.try_remove_dir();
+                self.dir.delete_series_dir()?;
                 Err(SeriesError::RequestExit)
             }
             "x" => Err(SeriesError::RequestExit),
@@ -249,7 +249,7 @@ where
 
         println!("[{}] series options:", self.season.state.info.title);
         println!(
-            "\t[r] rate{}\n\t[dd] delete local files\n\t[d] drop\n\t[h] put on hold\n\t[x] exit",
+            "\t[r] rate{}\n\t[d] drop\n\t[h] put on hold\n\t[dd] delete local files\n\t[x] exit",
             current_score_text
         );
 
@@ -260,10 +260,6 @@ where
                 self.prompt(Prompt::UpdateScore)?;
                 self.prompt_series_options()
             }
-            "dd" => {
-                self.dir.try_remove_dir();
-                Err(SeriesError::RequestExit)
-            }
             "d" | "h" => {
                 let status = if input == "d" {
                     Status::Dropped
@@ -272,6 +268,10 @@ where
                 };
 
                 self.prompt(Prompt::PauseSeries(status))?;
+                Err(SeriesError::RequestExit)
+            }
+            "dd" => {
+                self.dir.delete_series_dir()?;
                 Err(SeriesError::RequestExit)
             }
             "x" => Err(SeriesError::RequestExit),
