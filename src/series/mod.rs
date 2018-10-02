@@ -500,8 +500,9 @@ impl SeasonState {
     {
         self.sync_info_from_remote(config, dir, season_num)?;
 
-        // There's no information we can sync when offline
-        if config.offline_mode {
+        // We shouldn't continue if we have data to report to the backend, since we
+        // don't want to overwrite any changes made in offline mode
+        if config.offline_mode || self.needs_sync {
             return Ok(());
         }
 
@@ -510,11 +511,7 @@ impl SeasonState {
             .get_list_entry(self.state.info.clone())?;
 
         if let Some(entry) = entry {
-            // If we don't have new data to report, we should sync the data from the backend to keep up with
-            // any changes made outside of the program
-            if !self.needs_sync {
-                self.state = entry;
-            }
+            self.state = entry;
         }
 
         Ok(())
