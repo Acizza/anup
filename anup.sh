@@ -19,9 +19,14 @@ elif [ "$TERM" != "" ]; then
 fi
 
 LAUNCH_FLAGS="-e"
+# Some terminals don't work properly when the launch command is wrapped in quotes, so this
+# is a hacky way to bypass them when necessary
+QUOTE_CHAR="\""
 
 if [ "$LAUNCH_TERM" == "gnome-terminal" ]; then
     LAUNCH_FLAGS="-- bash -c "
+elif [ "$LAUNCH_TERM" == "alacritty" ]; then
+    QUOTE_CHAR=""
 fi
 
-exec $LAUNCH_TERM $LAUNCH_FLAGS "sh -c '$EXE_NAME "$@"; read'"
+exec $LAUNCH_TERM $LAUNCH_FLAGS ${QUOTE_CHAR}sh -c ''$EXE_NAME' '"$@"'; read'${QUOTE_CHAR}
