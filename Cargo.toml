@@ -9,7 +9,7 @@ lto = true
 codegen-units = 1
 
 [dependencies]
-base64       = "0.9"
+base64       = "0.10"
 chrono       = { version = "0.4", features = ["serde"] }
 clap         = "2"
 failure      = "0.1"
