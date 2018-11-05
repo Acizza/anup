@@ -84,24 +84,26 @@ impl FolderData {
         Ok(())
     }
 
-    pub fn calculate_season_offset(&self, mut range: Range<usize>) -> u32 {
-        let num_seasons = self.seasons().len();
-        range.start = num_seasons.min(range.start);
-        range.end = num_seasons.min(range.end);
+    pub fn calculate_season_offset(&self, range: Range<usize>) -> Option<u32> {
+        let seasons = self.seasons();
+        let num_seasons = seasons.len();
+
+        if range.end >= num_seasons {
+            return None;
+        }
 
         let mut offset = 0;
-        let seasons = self.seasons();
 
         for i in range {
             let season = &seasons[i];
 
             match season.state.info.episodes {
                 Some(eps) => offset += eps,
-                None => return offset,
+                None => return Some(offset),
             }
         }
 
-        offset
+        Some(offset)
     }
 
     pub fn delete_series_dir(&self) -> Result<(), SeriesError> {
