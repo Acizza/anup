@@ -60,7 +60,7 @@ fn run() -> Result<(), Error> {
     let args = clap_app!(anup =>
         (version: env!("CARGO_PKG_VERSION"))
         (author: env!("CARGO_PKG_AUTHORS"))
-        (@arg NAME: "The name of the series to watch")
+        (@arg SERIES: "The name of the series to watch")
         (@arg SUBSERIES: "The name of the subseries to watch")
         (@arg PATH: -p --path +takes_value "Specifies the directory to look for video files in")
         (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
@@ -252,14 +252,14 @@ fn sync_offline_changes() -> Result<(), Error> {
 fn get_series_path(config: &mut Config, args: &clap::ArgMatches) -> Result<PathBuf, Error> {
     match args.value_of("PATH") {
         Some(path) => {
-            if let Some(series_name) = args.value_of("NAME") {
+            if let Some(series_name) = args.value_of("SERIES") {
                 config.series.insert(series_name.into(), path.into());
             }
 
             Ok(path.into())
         }
         None => {
-            let name = args.value_of("NAME").ok_or(Error::NoSeriesInfoProvided)?;
+            let name = args.value_of("SERIES").ok_or(Error::NoSeriesInfoProvided)?;
 
             config
                 .series
