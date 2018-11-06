@@ -45,7 +45,10 @@ where
     pub fn init(config: SeriesConfig<B>, mut dir: FolderData) -> Result<Series<B>, SeriesError> {
         dir.populate_season_data(&config)?;
         let season = dir.seasons()[config.season_num].clone();
-        let ep_offset = dir.calculate_season_offset(0..config.season_num).unwrap_or(0);
+
+        let ep_offset = dir
+            .calculate_season_offset(0..config.season_num)
+            .unwrap_or(0);
 
         let series = Series {
             config,
