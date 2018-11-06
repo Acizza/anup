@@ -7,8 +7,6 @@ use std::path::PathBuf;
 use toml;
 use util;
 
-pub const DEFAULT_CONFIG_NAME: &str = "config.toml";
-
 #[derive(Deserialize, Serialize)]
 pub struct Config {
     pub series: HashMap<String, PathBuf>,
@@ -16,6 +14,8 @@ pub struct Config {
 }
 
 impl Config {
+    pub const DEFAULT_FILE: &'static str = "config.toml";
+
     pub fn new() -> Config {
         Config {
             series: HashMap::new(),
@@ -24,7 +24,7 @@ impl Config {
     }
 
     pub fn load() -> Result<Config, ConfigError> {
-        let path = util::get_valid_config_path(DEFAULT_CONFIG_NAME)?;
+        let path = util::get_valid_config_path(Config::DEFAULT_FILE)?;
 
         let file_contents = match fs::read_to_string(&path) {
             Ok(contents) => contents,
@@ -39,7 +39,7 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<(), ConfigError> {
-        let path = util::get_valid_config_path(DEFAULT_CONFIG_NAME)?;
+        let path = util::get_valid_config_path(Config::DEFAULT_FILE)?;
         let mut file = File::create(path)?;
         let toml = toml::to_string_pretty(self)?;
 
