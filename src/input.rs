@@ -1,4 +1,4 @@
-use error::InputError;
+use crate::error::InputError;
 use std::fmt::{Debug, Display};
 use std::io;
 use std::str::FromStr;

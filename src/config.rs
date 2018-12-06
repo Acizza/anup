@@ -1,11 +1,12 @@
+use crate::error::ConfigError;
+use crate::util;
 use base64;
-use error::ConfigError;
+use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 use toml;
-use util;
 
 #[derive(Deserialize, Serialize)]
 pub struct Config {

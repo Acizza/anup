@@ -1,5 +1,6 @@
 use super::{AnimeEntry, AnimeInfo, Status};
 use chrono::{Datelike, NaiveDate};
+use serde_derive::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct User {

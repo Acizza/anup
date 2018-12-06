@@ -3,6 +3,7 @@ name = "anup"
 version = "0.1.0"
 authors = ["Acizza <jonathanmce@pm.me>"]
 build = "build.rs"
+edition = "2018"
 
 [profile.release]
 lto = true

@@ -1,8 +1,10 @@
 use super::{SeasonState, SeriesConfig};
-use backend::{AnimeEntry, AnimeInfo, SyncBackend};
-use error::SeriesError;
-use input::{self, Answer};
+use crate::backend::{AnimeEntry, AnimeInfo, SyncBackend};
+use crate::error::SeriesError;
+use crate::input::{self, Answer};
+use lazy_static::lazy_static;
 use regex::Regex;
+use serde_derive::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;

@@ -1,27 +1,3 @@
-#![feature(nll)]
-
-#[cfg(windows)]
-extern crate winapi;
-
-#[macro_use]
-extern crate clap;
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate serde_derive;
-#[macro_use]
-extern crate serde_json;
-
-extern crate base64;
-extern crate chrono;
-extern crate directories;
-extern crate regex;
-extern crate reqwest;
-extern crate serde;
-extern crate toml;
-
 mod backend;
 mod config;
 mod error;
@@ -30,11 +6,12 @@ mod process;
 mod series;
 mod util;
 
-use backend::{anilist::AniList, SyncBackend};
-use config::Config;
-use error::{Error, SeriesError};
-use series::dir::{FolderData, SaveData, SeriesEpisodes, SeriesInfo, SubSeriesData};
-use series::{SeasonState, Series, SeriesConfig};
+use crate::backend::{anilist::AniList, SyncBackend};
+use crate::config::Config;
+use crate::error::{Error, SeriesError};
+use crate::series::dir::{FolderData, SaveData, SeriesEpisodes, SeriesInfo, SubSeriesData};
+use crate::series::{SeasonState, Series, SeriesConfig};
+use clap::clap_app;
 use std::borrow::Cow;
 use std::path::PathBuf;
 

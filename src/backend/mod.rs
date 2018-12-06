@@ -1,6 +1,7 @@
+use crate::config::Config;
+use crate::error::BackendError;
 use chrono::NaiveDate;
-use config::Config;
-use error::BackendError;
+use serde_derive::{Deserialize, Serialize};
 use std::borrow::Cow;
 
 pub mod anilist;

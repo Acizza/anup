@@ -1,4 +1,5 @@
 use directories::ProjectDirs;
+use lazy_static::lazy_static;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};

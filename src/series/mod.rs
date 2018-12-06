@@ -1,11 +1,12 @@
 pub mod dir;
 
 use self::dir::FolderData;
-use backend::{AnimeEntry, AnimeInfo, Status, SyncBackend};
+use crate::backend::{AnimeEntry, AnimeInfo, Status, SyncBackend};
+use crate::error::SeriesError;
+use crate::input::{self, Answer};
+use crate::process;
 use chrono::Local;
-use error::SeriesError;
-use input::{self, Answer};
-use process;
+use serde_derive::{Deserialize, Serialize};
 use std::borrow::Cow;
 
 pub struct SeriesConfig<B>

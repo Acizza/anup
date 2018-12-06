@@ -1,3 +1,5 @@
+use failure::Fail;
+
 macro_rules! impl_error_conversion {
     ($err_name:ident, $($from_ty:ty => $to_ty:ident,)+) => {
         $(

@@ -2,12 +2,12 @@ mod serialize;
 
 use self::serialize::{Media, MediaDate, MediaListEntry, MediaStatus, ScoreFormat, User};
 use super::{AnimeEntry, AnimeInfo, ScoreParser, Status, SyncBackend};
-use config::Config;
-use error::BackendError;
-use input;
-use process;
+use crate::config::Config;
+use crate::error::BackendError;
+use crate::{input, process};
 use reqwest::{Client, Response};
 use serde_json as json;
+use serde_json::json;
 use std::borrow::Cow;
 
 const LOGIN_URL: &str =
