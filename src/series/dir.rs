@@ -319,7 +319,7 @@ impl EpisodeFile {
             }
         }
 
-        clean_title
+        clean_title.trim_right().to_string()
     }
 }
 
@@ -334,7 +334,7 @@ impl EpisodeFile {
 // Series_Name_-_01.mkv
 // Series.Name.-.01.mkv
 const EP_FORMAT_REGEX: &str =
-    r"(?:\[.+?\](?:_+|\.+|\s*))?(?P<name>.+?)(?:\s*|_*|\.*)-(?:\s*|_*|\.*)(?P<episode>\d+)";
+    r"(?:\[.+?\](?:_+|\.+|\s*))?(?P<name>.+)(?:\s*|_*|\.*)(?:-|\.|_).*?(?P<episode>\d+)";
 
 fn format_episode_parser_regex<'a, S>(pattern: Option<S>) -> Result<Cow<'a, Regex>, SeriesError>
 where
