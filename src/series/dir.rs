@@ -379,6 +379,13 @@ where
             continue;
         }
 
+        // Skip files with a .part extension as they are most likely being downloaded
+        if let Some(extension) = entry.extension() {
+            if extension == "part" {
+                continue;
+            }
+        }
+
         let episode = match EpisodeFile::parse(&entry, pattern.as_ref()) {
             Ok(episode) => episode,
             Err(SeriesError::EpisodeRegexCaptureFailed) => continue,
