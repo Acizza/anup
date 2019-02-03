@@ -14,23 +14,22 @@ Current features include:
 * Tracking multiple series in a single folder
 * Support for anime that have multiple seasons merged together
 
-The program is developed for Linux and Windows, with Linux being the primary platform.
-Base macOS support is included but untested.
+The program is only intended to be used on Linux, but untested support is included for Windows and macOS.
 
 # Building
 anup is written in [Rust](https://www.rust-lang.org), so you will have to compile the application before you can use it.
-
-Windows
--------
-1. Install the latest nightly version of Rust from [here](https://rustup.rs).
-2. Open CMD / PowerShell in the directory you cloned the project in by pressing Shift + Right click in the directory and selecting "Open command window here" or "Open PowerShell window here".
-3. Run `cargo build --release` and wait for it to finish.
 
 Linux
 -----
 1. Install the latest nightly version of Rust from your distribution's package manager, or from [here](https://rustup.rs).
 2. Ensure OpenSSL, GCC, pkgconfig, and xdg_utils are installed (note: these packages usually are already).
 3. In the directory you cloned the project in, run `cargo build --release`.
+
+Windows
+-------
+1. Install the latest nightly version of Rust from [here](https://rustup.rs).
+2. Open CMD / PowerShell in the directory you cloned the project in by pressing Shift + Right click in the directory and selecting "Open command window here" or "Open PowerShell window here".
+3. Run `cargo build --release` and wait for it to finish.
 
 Once the application has finished compiling, you will find the resulting executable in the `target/release/` directory.
 
@@ -89,10 +88,9 @@ You could use this pattern to parse it:
 `\[Group\] Ep{episode} - {name}.mkv`
 
 # Playing An Anime With Merged Seasons
-Often, **\*cough\*** torrents **\*cough\*** will have multiple seasons of a series combined into one, and not bother to separate the seasons into separate folders.
-When that happens, you can use the `-s` flag with the season number you want to watch and the program will automatically figure out which episodes belong to the appropriate anime.
+Occasionally, you may come across a series that has multiple seasons of it combined into the same name. For these cases, you can use the `-s` flag with the season number you want to watch.
 
-Note that the program will prompt you to select the correct series for every season older than the one you want to watch, unless you have already watched those seasons through the program.
+Note that the program will prompt you to select the name of every season before the one that you want to watch, unless you have already watched them through the program. This is necessary so the program can calculate the correct offset in episodes.
 
 # Configuration
 
