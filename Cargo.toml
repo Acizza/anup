@@ -1,7 +1,7 @@
 [package]
 name = "anup"
 version = "0.1.0"
-authors = ["Acizza <jonathanmce@pm.me>"]
+authors = ["Acizza <jgit@tuta.io>"]
 build = "build.rs"
 edition = "2018"
 
