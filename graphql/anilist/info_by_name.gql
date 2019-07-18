@@ -1,4 +1,4 @@
-query ($name: String) {
+query ($name: String!) {
     Page (page: 1, perPage: 30) {
         media (search: $name, type: ANIME) {
             id,
