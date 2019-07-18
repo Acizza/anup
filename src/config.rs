@@ -1,95 +1,33 @@
-use crate::error::ConfigError;
-use crate::util;
-use base64;
+use crate::file::{FileType, SaveDir, SaveFile};
 use serde_derive::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
-use toml;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
-    pub series: HashMap<String, PathBuf>,
-    pub anilist: AniList,
+    pub series_dir: PathBuf,
 }
 
 impl Config {
-    pub const DEFAULT_FILE: &'static str = "config.toml";
-
-    pub fn new() -> Config {
+    pub fn new<P>(series_dir: P) -> Config
+    where
+        P: Into<PathBuf>,
+    {
         Config {
-            series: HashMap::new(),
-            anilist: AniList::new(),
+            series_dir: series_dir.into(),
         }
     }
-
-    pub fn load() -> Result<Config, ConfigError> {
-        let path = util::get_valid_config_path(Config::DEFAULT_FILE)?;
-
-        let file_contents = match fs::read_to_string(&path) {
-            Ok(contents) => contents,
-            Err(err) => match err.kind() {
-                ErrorKind::NotFound => return Ok(Config::new()),
-                _ => return Err(err.into()),
-            },
-        };
-
-        let config = toml::from_str(&file_contents)?;
-        Ok(config)
-    }
-
-    pub fn save(&self) -> Result<(), ConfigError> {
-        let path = util::get_valid_config_path(Config::DEFAULT_FILE)?;
-        let mut file = File::create(path)?;
-        let toml = toml::to_string_pretty(self)?;
-
-        write!(file, "{}", toml)?;
-        Ok(())
-    }
-
-    pub fn remove_invalid_series(&mut self) {
-        self.series.retain(|_, path: &mut PathBuf| path.exists());
-    }
 }
 
-#[derive(Clone, Deserialize, Serialize)]
-pub struct AccessToken {
-    pub token: Option<String>,
-}
-
-impl AccessToken {
-    pub fn new(token: Option<String>) -> AccessToken {
-        AccessToken { token }
+impl SaveFile for Config {
+    fn filename() -> &'static str {
+        "config.toml"
     }
 
-    pub fn encode(&mut self, token: &str) {
-        self.token = Some(base64::encode(token));
+    fn save_dir() -> SaveDir {
+        SaveDir::Config
     }
 
-    pub fn decode(&self) -> Result<String, ConfigError> {
-        let token = self.token.as_ref().ok_or(ConfigError::TokenNotSet)?;
-        let bytes = base64::decode(token).map_err(ConfigError::FailedTokenDecode)?;
-        let string = String::from_utf8(bytes)?;
-
-        Ok(string)
-    }
-
-    pub fn is_set(&self) -> bool {
-        self.token.is_some()
-    }
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-pub struct AniList {
-    #[serde(flatten)]
-    pub token: AccessToken,
-}
-
-impl AniList {
-    pub fn new() -> AniList {
-        AniList {
-            token: AccessToken::new(None),
-        }
+    fn file_type() -> FileType {
+        FileType::Toml
     }
 }

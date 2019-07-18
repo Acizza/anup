@@ -1,248 +1,194 @@
-mod backend;
 mod config;
-mod error;
-mod input;
+mod err;
+mod file;
 mod process;
 mod series;
-mod util;
 
-use crate::backend::{anilist::AniList, SyncBackend};
 use crate::config::Config;
-use crate::error::{Error, SeriesError};
-use crate::series::dir::{FolderData, SaveData, SeriesEpisodes, SeriesInfo, SubSeriesData};
-use crate::series::{SeasonState, Series, SeriesConfig};
+use crate::err::Result;
+use crate::file::{SaveFile, SaveFileInDir};
+use crate::series::local::{EpisodeList, EpisodeMatcher};
+use crate::series::remote::anilist::{self, AniList, AniListConfig};
+use crate::series::remote::offline::Offline;
+use crate::series::remote::{RemoteService, SeriesInfo};
+use crate::series::{detect, SeasonInfoList};
 use clap::clap_app;
-use std::borrow::Cow;
+use snafu::{ensure, OptionExt, ResultExt};
+use std::io;
 use std::path::PathBuf;
 
 fn main() {
-    match run() {
-        Ok(_) => (),
-        Err(Error::Series(SeriesError::RequestExit)) => (),
-        Err(e) => {
-            let e: failure::Error = e.into();
-            eprintln!("fatal error: {}", e);
-
-            for cause in e.iter_chain().skip(1) {
-                eprintln!("cause: {}", cause);
-            }
-
-            eprintln!("{}", e.backtrace());
-            std::process::exit(1);
-        }
-    }
-}
-
-fn run() -> Result<(), Error> {
     let args = clap_app!(anup =>
         (version: env!("CARGO_PKG_VERSION"))
         (author: env!("CARGO_PKG_AUTHORS"))
-        (@arg SERIES: "The name of the series to watch")
-        (@arg SUBSERIES: "The name of the subseries to watch")
-        (@arg PATH: -p --path +takes_value "Specifies the directory to look for video files in")
-        (@arg SEASON: -s --season +takes_value "Specifies which season you want to watch")
-        (@arg INFO: -i --info "Displays saved series information")
-        (@arg EDIT: -e --edit "Displays options for the series instead of playing it")
-        (@arg OFFLINE: -o --offline "Launches the program in offline mode")
-        (@arg SYNC: --sync "Synchronizes all changes made offline to AniList")
+        (@arg SERIES: +takes_value +required "The name of the series to watch")
+        (@arg season: -s --season +takes_value "The season to watch. Meant to be used when playing from a folder that has multiple seasons merged together under one name")
+        (@arg matcher: -m --matcher +takes_value "The custom pattern to match episode files with")
+        (@arg offline: -o --offline "Run in offline mode")
+        (@arg prefetch: --prefetch "Fetch series info from AniList. For use with offline mode")
     )
     .get_matches();
 
-    if args.is_present("INFO") {
-        print_saved_series_info()
-    } else if args.is_present("SYNC") {
-        sync_offline_changes()
+    if let Err(err) = run(&args) {
+        err::display_error(err);
+        std::process::exit(1);
+    }
+}
+
+fn run(args: &clap::ArgMatches) -> Result<()> {
+    let keyword = args.value_of("SERIES").unwrap();
+    let is_offline = args.is_present("offline");
+
+    let config = load_config()?;
+
+    // TODO: use -p argument if specified
+    let dir = detect::best_matching_folder(keyword, &config.series_dir)?;
+    println!("detected dir: {:?}\n\n", dir);
+
+    let episodes = {
+        let matcher = load_episode_matcher(keyword, args.value_of("matcher"))?;
+        EpisodeList::parse(&dir, &matcher)?
+    };
+
+    let remote: Box<RemoteService> = if is_offline {
+        Box::new(Offline::new())
     } else {
-        watch_series(&args)
-    }
-}
-
-fn watch_series(args: &clap::ArgMatches) -> Result<(), Error> {
-    let mut config = Config::load()?;
-    config.remove_invalid_series();
-
-    let path = get_series_path(&mut config, args)?;
-    let offline_mode = args.is_present("OFFLINE");
-
-    let sync_backend = AniList::init(offline_mode, &mut config)?;
-
-    config.save()?;
-
-    let season = {
-        let value: usize = args
-            .value_of("SEASON")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-
-        value.saturating_sub(1)
+        Box::new(init_anilist()?)
     };
 
-    let config = SeriesConfig {
-        offline_mode,
-        sync_service: sync_backend,
-        season_num: season,
+    let season_num = args
+        .value_of("season")
+        .and_then(|num_str| num_str.parse().ok())
+        .map(|num: usize| num.saturating_sub(1))
+        .unwrap_or(0);
+
+    let info = get_series_info(&remote, keyword, season_num, &dir, is_offline)?;
+
+    let entry = series::remote::SeriesEntry::new(info.id);
+    entry.save(keyword)?;
+
+    let series = series::Series {
+        info,
+        episodes,
+        episode_range: None,
     };
 
-    let subseries = args.value_of("SUBSERIES").map(str::to_string);
-    let folder_data = FolderData::load_dir(&path, subseries)?;
+    println!("series:\n{:?}\n\n", series);
 
-    let mut series = Series::init(config, folder_data)?;
-    series.sync_remote_states()?;
-
-    if args.is_present("EDIT") {
-        series.prompt_series_options()?;
-        return Ok(());
-    }
-
-    series.prepare_initial_state()?;
-    series.play_all_episodes()?;
+    let episode = series.get_episode(1).expect("no episode");
+    println!("episode:\n{:?}\n\n", episode);
 
     Ok(())
 }
 
-fn print_saved_series_info() -> Result<(), Error> {
-    fn display_subseries(
-        ep_data: &mut SeriesEpisodes,
-        name: &str,
-        data: &SubSeriesData,
-    ) -> Result<(), Error> {
-        println!("{:4}subseries [{}]:", ' ', name);
+fn load_config() -> Result<Config> {
+    match Config::load() {
+        Ok(config) => Ok(config),
+        Err(ref err) if err.is_file_nonexistant() => {
+            // Default base directory: ~/anime/
+            let mut dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("~/"));
+            dir.push("anime");
 
-        let series_info = SeriesInfo::select_from_subseries(ep_data, &data)?;
-
-        let ep_list = match series_info {
-            Some(info) => {
-                let mut ep_nums = info.episodes.keys().cloned().collect::<Vec<_>>();
-                ep_nums.sort_unstable();
-
-                util::concat_sequential_values(&ep_nums, "..", " | ")
-                    .unwrap_or_else(|| "none".into())
-                    .into()
-            }
-            None => Cow::Borrowed("need series info"),
-        };
-
-        println!("{:8}episodes on disk: {}", ' ', ep_list);
-
-        for (season_num, season) in data.season_states.iter().enumerate() {
-            display_season(season_num, season);
+            let config = Config::new(dir);
+            config.save()?;
+            Ok(config)
         }
-
-        Ok(())
+        Err(err) => Err(err),
     }
-
-    fn display_season(season_num: usize, season: &SeasonState) {
-        println!("{:8}season {}:", ' ', 1 + season_num);
-        println!("{:12}name: {}", ' ', season.state.info.title);
-
-        let total_eps = season
-            .state
-            .info
-            .episodes
-            .map(|e| e.to_string())
-            .unwrap_or_else(|| "unknown".into());
-
-        println!("{:12}total episodes: {}", ' ', total_eps);
-        println!(
-            "{:12}watched episodes: {}",
-            ' ', season.state.watched_episodes
-        );
-    }
-
-    let mut config = Config::load()?;
-    config.remove_invalid_series();
-
-    println!("found [{}] series:", config.series.len());
-
-    for (name, path) in config.series {
-        let savefile = match SaveData::from_dir(&path) {
-            Ok(data) => data,
-            Err(_) => continue,
-        };
-
-        let ep_data = series::dir::parse_episode_files(&path, savefile.episode_matcher.clone());
-        let mut ep_data = match ep_data {
-            Ok(data) => data,
-            Err(err) => {
-                eprintln!("failed to parse episode data for [{}]: {}", name, err);
-                continue;
-            }
-        };
-
-        println!("\n[{}]:", name);
-        println!("{:4}path: {}", ' ', path.to_string_lossy());
-
-        for (subseries_name, subseries_data) in savefile.subseries {
-            display_subseries(&mut ep_data, &subseries_name, &subseries_data)?;
-        }
-    }
-
-    Ok(())
 }
 
-fn sync_offline_changes() -> Result<(), Error> {
-    let mut config = Config::load()?;
-    config.remove_invalid_series();
-
-    let backend = AniList::init(false, &mut config)?;
-
-    for (_, path) in config.series {
-        let mut save_data = match SaveData::from_dir(&path) {
-            Ok(save_data) => save_data,
-            Err(_) => continue,
-        };
-
-        for (subseries_name, subseries_data) in &mut save_data.subseries {
-            for season_num in 0..subseries_data.season_states.len() {
-                let season_state = &mut subseries_data.season_states[season_num];
-
-                if !season_state.needs_sync {
-                    continue;
-                }
-
-                println!(
-                    "[{}] ({}) syncing..",
-                    season_state.state.info.title, subseries_name
-                );
-
-                if season_state.needs_info {
-                    season_state.state.info = series::search_for_series_info(
-                        &backend,
-                        &season_state.state.info.title,
-                        season_num,
-                    )?;
-
-                    season_state.needs_info = false;
-                }
-
-                backend.update_list_entry(&season_state.state)?;
-                season_state.needs_sync = false;
+fn load_episode_matcher<S>(keyword: S, matcher: Option<S>) -> Result<EpisodeMatcher>
+where
+    S: AsRef<str> + Into<String>,
+{
+    match EpisodeMatcher::load(&keyword) {
+        Ok(matcher) => Ok(matcher),
+        Err(ref err) if err.is_file_nonexistant() => match matcher {
+            Some(matcher) => {
+                let matcher = EpisodeMatcher::with_matcher(matcher)?;
+                matcher.save(keyword)?;
+                Ok(matcher)
             }
-        }
-
-        save_data.write_to_file()?;
+            None => Ok(EpisodeMatcher::new()),
+        },
+        Err(err) => Err(err),
     }
-
-    Ok(())
 }
 
-fn get_series_path(config: &mut Config, args: &clap::ArgMatches) -> Result<PathBuf, Error> {
-    match args.value_of("PATH") {
-        Some(path) => {
-            if let Some(series_name) = args.value_of("SERIES") {
-                config.series.insert(series_name.into(), path.into());
-            }
+fn init_anilist() -> Result<AniList> {
+    use crate::series::remote::anilist::AccessToken;
 
-            Ok(path.into())
-        }
-        None => {
-            let name = args.value_of("SERIES").ok_or(Error::NoSeriesInfoProvided)?;
+    let config = match AniListConfig::load() {
+        Ok(config) => config,
+        Err(ref err) if err.is_file_nonexistant() => {
+            println!(
+                "need AniList login token\ngo to {}\n\npaste your token:",
+                anilist::LOGIN_URL
+            );
 
+            let token = {
+                let mut buffer = String::new();
+                io::stdin().read_line(&mut buffer).context(err::IO)?;
+                let buffer = buffer.trim_end();
+
+                AccessToken::new(buffer)
+            };
+
+            let config = AniListConfig::new(token);
+            config.save()?;
             config
-                .series
-                .get(name)
-                .ok_or_else(|| Error::SeriesNotFound(name.into()))
-                .map(|path| path.into())
         }
-    }
+        Err(err) => return Err(err),
+    };
+
+    AniList::login(config)
+}
+
+fn get_series_info<R, S>(
+    remote: R,
+    keyword: S,
+    season_num: usize,
+    dir: &PathBuf,
+    offline: bool,
+) -> Result<SeriesInfo>
+where
+    R: AsRef<RemoteService>,
+    S: AsRef<str>,
+{
+    let keyword = keyword.as_ref();
+
+    let seasons = match SeasonInfoList::load(keyword) {
+        Ok(mut seasons) => {
+            if offline {
+                ensure!(seasons.has(season_num), err::RunWithPrefetch);
+            }
+
+            if seasons.add_from_remote_upto(&remote, season_num)? {
+                seasons.save(keyword)?;
+            }
+
+            seasons
+        }
+        Err(ref err) if err.is_file_nonexistant() => {
+            ensure!(!offline, err::RunWithPrefetch);
+
+            // The directory is more likely to have a complete name, which will likely match
+            // better than just a keyword, which could be an abstract identifier
+            let dir_name = dir
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| keyword.into());
+
+            let info = SeriesInfo::best_matching_from_remote(&remote, dir_name)?;
+
+            let seasons = SeasonInfoList::from_info_and_remote(info, &remote, Some(season_num))?;
+            seasons.save(keyword)?;
+            seasons
+        }
+        Err(err) => return Err(err),
+    };
+
+    seasons.take(season_num).context(err::NoSeason {
+        season: 1 + season_num,
+    })
 }
