@@ -10,6 +10,8 @@ use snafu::OptionExt;
 pub trait RemoteService {
     fn search_info_by_name(&self, name: &str) -> Result<Vec<SeriesInfo>>;
     fn search_info_by_id(&self, id: u32) -> Result<SeriesInfo>;
+
+    fn get_list_entry(&self, id: u32) -> Result<Option<SeriesEntry>>;
     fn update_list_entry(&self, entry: &SeriesEntry) -> Result<()>;
 }
 
@@ -45,8 +47,8 @@ pub struct SeriesEntry {
     pub watched_eps: u32,
     pub score: Option<f32>,
     pub status: Status,
-    pub start_date: Option<usize>,
-    pub end_date: Option<usize>,
+    pub start_date: Option<chrono::NaiveDate>,
+    pub end_date: Option<chrono::NaiveDate>,
 }
 
 impl SeriesEntry {

@@ -1,0 +1,17 @@
+query ($id: Int!, $userID: Int!) {
+    MediaList(mediaId: $id, userId: $userID, type: ANIME) {
+        status,
+        score(format: POINT_100),
+        progress,
+        startedAt {
+            year,
+            month,
+            day
+        },
+        completedAt {
+            year,
+            month,
+            day
+        }
+    }
+}

@@ -133,7 +133,7 @@ pub enum Error {
     RunWithPrefetch {},
 
     #[snafu(display("received bad response from AniList (code {}): {}", code, message))]
-    BadAniListResponse { code: u32, message: String },
+    BadAniListResponse { code: u16, message: String },
 
     #[snafu(display("no data found for season {}", season))]
     NoSeason { season: usize },
@@ -143,6 +143,21 @@ impl Error {
     pub fn is_file_nonexistant(&self) -> bool {
         match self {
             Error::FileIO { source, .. } => source.kind() == io::ErrorKind::NotFound,
+            _ => false,
+        }
+    }
+
+    pub fn is_http_code(&self, http_code: u16) -> bool {
+        match self {
+            Error::BadAniListResponse { code, .. } if http_code == *code => true,
+            Error::Reqwest { source, .. } => {
+                let status = match source.status() {
+                    Some(status) => status,
+                    None => return false,
+                };
+
+                status.as_u16() == http_code
+            }
             _ => false,
         }
     }

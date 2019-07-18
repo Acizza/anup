@@ -1,4 +1,4 @@
-use super::{RemoteService, SeriesEntry, SeriesInfo};
+use super::{RemoteService, SeriesEntry, SeriesInfo, Status};
 use crate::err::{self, Result};
 use crate::file::{FileType, SaveDir, SaveFile};
 use lazy_static::lazy_static;
@@ -7,7 +7,9 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json as json;
 use serde_json::json;
 use snafu::ResultExt;
+use std::convert::TryInto;
 use std::fmt;
+use std::result;
 
 pub const LOGIN_URL: &str =
     "https://anilist.co/api/v2/oauth/authorize?client_id=427&response_type=token";
@@ -66,6 +68,22 @@ impl RemoteService for AniList {
         let info: Media = send_query!(&token, "info_by_id", { "id": id }, "data" => "Media")?;
 
         Ok(info.into())
+    }
+
+    fn get_list_entry(&self, id: u32) -> Result<Option<SeriesEntry>> {
+        let token = self.config.token.decode()?;
+        let query: Result<MediaEntry> = send_query!(
+            &token,
+            "get_list_entry",
+            { "id": id, "userID": self.user.id },
+            "data" => "MediaList"
+        );
+
+        match query {
+            Ok(entry) => Ok(Some(entry.into_series_entry(id))),
+            Err(ref err) if err.is_http_code(404) => Ok(None),
+            Err(err) => Err(err),
+        }
     }
 
     fn update_list_entry(&self, _: &SeriesEntry) -> Result<()> {
@@ -167,7 +185,7 @@ where
         let err = &json["errors"][0];
 
         let message = err["message"].as_str().unwrap_or("unknown").to_string();
-        let code = err["status"].as_u64().unwrap_or(0) as u32;
+        let code = err["status"].as_u64().unwrap_or(0) as u16;
 
         return Err(err::Error::BadAniListResponse { code, message });
     }
@@ -262,4 +280,83 @@ impl MediaEdge {
 #[derive(Debug, Deserialize)]
 struct MediaNode {
     id: u32,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaEntry {
+    status: MediaStatus,
+    score: f32,
+    progress: u32,
+    #[serde(rename = "startedAt")]
+    start_date: Option<MediaDate>,
+    #[serde(rename = "completedAt")]
+    complete_date: Option<MediaDate>,
+}
+
+impl MediaEntry {
+    fn into_series_entry(self, id: u32) -> SeriesEntry {
+        let score = if self.score > 0.0 {
+            Some(self.score)
+        } else {
+            None
+        };
+
+        SeriesEntry {
+            id,
+            watched_eps: self.progress,
+            score,
+            status: self.status.into(),
+            start_date: self.start_date.and_then(|d| d.try_into().ok()),
+            end_date: self.complete_date.and_then(|d| d.try_into().ok()),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+enum MediaStatus {
+    #[serde(rename = "CURRENT")]
+    Current,
+    #[serde(rename = "COMPLETED")]
+    Completed,
+    #[serde(rename = "PAUSED")]
+    Paused,
+    #[serde(rename = "DROPPED")]
+    Dropped,
+    #[serde(rename = "PLANNING")]
+    Planning,
+    #[serde(rename = "REPEATING")]
+    Repeating,
+}
+
+impl Into<Status> for MediaStatus {
+    fn into(self) -> Status {
+        match self {
+            MediaStatus::Current => Status::Watching,
+            MediaStatus::Completed => Status::Completed,
+            MediaStatus::Paused => Status::OnHold,
+            MediaStatus::Dropped => Status::Dropped,
+            MediaStatus::Planning => Status::PlanToWatch,
+            MediaStatus::Repeating => Status::Rewatching,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaDate {
+    year: Option<i32>,
+    month: Option<u32>,
+    day: Option<u32>,
+}
+
+impl TryInto<chrono::NaiveDate> for MediaDate {
+    type Error = ();
+
+    fn try_into(self) -> result::Result<chrono::NaiveDate, Self::Error> {
+        use chrono::NaiveDate;
+
+        match (self.year, self.month, self.day) {
+            (Some(y), Some(m), Some(d)) => Ok(NaiveDate::from_ymd(y, m, d)),
+            _ => Err(()),
+        }
+    }
 }

@@ -18,6 +18,10 @@ impl RemoteService for Offline {
         unimplemented!()
     }
 
+    fn get_list_entry(&self, _: u32) -> Result<Option<SeriesEntry>> {
+        Ok(None)
+    }
+
     fn update_list_entry(&self, _: &SeriesEntry) -> Result<()> {
         Ok(())
     }
