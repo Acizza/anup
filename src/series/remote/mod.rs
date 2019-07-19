@@ -78,7 +78,7 @@ impl SaveFileInDir for SeriesEntry {
     }
 }
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Status {
     Watching,
     Completed,

@@ -1,6 +1,7 @@
 use super::{RemoteService, SeriesEntry, SeriesInfo, Status};
 use crate::err::{self, Result};
 use crate::file::{FileType, SaveDir, SaveFile};
+use chrono::{Datelike, NaiveDate};
 use lazy_static::lazy_static;
 use reqwest::Client;
 use serde_derive::{Deserialize, Serialize};
@@ -16,7 +17,7 @@ pub const LOGIN_URL: &str =
 
 pub const API_URL: &str = "https://graphql.anilist.co";
 
-macro_rules! send_query {
+macro_rules! send {
     ($token:expr, $file:expr, {$($vars:tt)*}, $($resp_root:expr)=>*) => {{
         let vars = json!({
             $($vars)*
@@ -24,14 +25,24 @@ macro_rules! send_query {
 
         let query = include_str!(concat!("../../../graphql/anilist/", $file, ".gql"));
 
+        // We must bind the json variable mutably, but the compiler warns that it can be removed.
+        #[allow(unused_mut)]
         match send_gql_request(query, &vars, $token) {
             Ok(mut json) => {
                 $(json = json[$resp_root].take();)*
-                json::from_value(json).context(err::JsonDecode)
+                Ok(json)
             },
             Err(err) => Err(err),
         }
     }};
+}
+
+macro_rules! query {
+    ($token:expr, $file:expr, {$($vars:tt)*}, $($resp_root:expr)=>*) => {
+        send!($token, $file, {$($vars)*}, $($resp_root)=>*).and_then(|json| {
+            json::from_value(json).context(err::JsonDecode)
+        })
+    };
 }
 
 #[derive(Debug)]
@@ -43,7 +54,7 @@ pub struct AniList {
 impl AniList {
     pub fn login(config: AniListConfig) -> Result<AniList> {
         let token = config.token.decode()?;
-        let user = send_query!(&token, "user", {}, "data" => "Viewer")?;
+        let user = query!(&token, "user", {}, "data" => "Viewer")?;
 
         Ok(AniList { config, user })
     }
@@ -52,7 +63,7 @@ impl AniList {
 impl RemoteService for AniList {
     fn search_info_by_name(&self, name: &str) -> Result<Vec<SeriesInfo>> {
         let token = self.config.token.decode()?;
-        let entries: Vec<Media> = send_query!(
+        let entries: Vec<Media> = query!(
             &token,
             "info_by_name",
             { "name": name },
@@ -65,14 +76,14 @@ impl RemoteService for AniList {
 
     fn search_info_by_id(&self, id: u32) -> Result<SeriesInfo> {
         let token = self.config.token.decode()?;
-        let info: Media = send_query!(&token, "info_by_id", { "id": id }, "data" => "Media")?;
+        let info: Media = query!(&token, "info_by_id", { "id": id }, "data" => "Media")?;
 
         Ok(info.into())
     }
 
     fn get_list_entry(&self, id: u32) -> Result<Option<SeriesEntry>> {
         let token = self.config.token.decode()?;
-        let query: Result<MediaEntry> = send_query!(
+        let query: Result<MediaEntry> = query!(
             &token,
             "get_list_entry",
             { "id": id, "userID": self.user.id },
@@ -86,8 +97,23 @@ impl RemoteService for AniList {
         }
     }
 
-    fn update_list_entry(&self, _: &SeriesEntry) -> Result<()> {
-        unimplemented!()
+    fn update_list_entry(&self, entry: &SeriesEntry) -> Result<()> {
+        let token = self.config.token.decode()?;
+
+        send!(
+            &token,
+            "update_list_entry",
+            {
+                "mediaId": entry.id,
+                "watched_eps": entry.watched_eps,
+                "score": entry.score.unwrap_or(0.0),
+                "status": MediaStatus::from(entry.status),
+                "start_date": entry.start_date.map(|date| MediaDate::from(&date)),
+                "finish_date": entry.end_date.map(|date| MediaDate::from(&date)),
+            },
+        )?;
+
+        Ok(())
     }
 }
 
@@ -312,7 +338,7 @@ impl MediaEntry {
     }
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 enum MediaStatus {
     #[serde(rename = "CURRENT")]
     Current,
@@ -341,22 +367,43 @@ impl Into<Status> for MediaStatus {
     }
 }
 
-#[derive(Debug, Deserialize)]
+impl From<Status> for MediaStatus {
+    fn from(status: Status) -> MediaStatus {
+        match status {
+            Status::Watching => MediaStatus::Current,
+            Status::Completed => MediaStatus::Completed,
+            Status::OnHold => MediaStatus::Paused,
+            Status::Dropped => MediaStatus::Dropped,
+            Status::PlanToWatch => MediaStatus::Planning,
+            Status::Rewatching => MediaStatus::Repeating,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct MediaDate {
     year: Option<i32>,
     month: Option<u32>,
     day: Option<u32>,
 }
 
-impl TryInto<chrono::NaiveDate> for MediaDate {
+impl TryInto<NaiveDate> for MediaDate {
     type Error = ();
 
-    fn try_into(self) -> result::Result<chrono::NaiveDate, Self::Error> {
-        use chrono::NaiveDate;
-
+    fn try_into(self) -> result::Result<NaiveDate, Self::Error> {
         match (self.year, self.month, self.day) {
             (Some(y), Some(m), Some(d)) => Ok(NaiveDate::from_ymd(y, m, d)),
             _ => Err(()),
+        }
+    }
+}
+
+impl From<&NaiveDate> for MediaDate {
+    fn from(date: &NaiveDate) -> MediaDate {
+        MediaDate {
+            year: Some(date.year()),
+            month: Some(date.month()),
+            day: Some(date.day()),
         }
     }
 }
