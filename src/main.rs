@@ -11,9 +11,9 @@ use crate::series::local::{EpisodeList, EpisodeMatcher};
 use crate::series::remote::anilist::{self, AniList, AniListConfig};
 use crate::series::remote::offline::Offline;
 use crate::series::remote::{RemoteService, SeriesInfo};
-use crate::series::{detect, SeasonInfoList};
+use crate::series::{detect, SeasonInfoList, Series};
 use clap::clap_app;
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::{ensure, ResultExt};
 use std::io;
 use std::path::PathBuf;
 
@@ -62,16 +62,11 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
         .map(|num: usize| num.saturating_sub(1))
         .unwrap_or(0);
 
-    let info = get_series_info(&remote, keyword, season_num, &dir, is_offline)?;
+    let seasons = get_season_list(&remote, keyword, season_num, &dir, is_offline)?;
+    let series = Series::from_season_list(seasons, season_num, episodes)?;
 
-    let entry = series::remote::SeriesEntry::new(info.id);
+    let entry = series::remote::SeriesEntry::new(series.info.id);
     entry.save(keyword)?;
-
-    let series = series::Series {
-        info,
-        episodes,
-        episode_range: None,
-    };
 
     println!("series:\n{:?}\n\n", series);
 
@@ -144,20 +139,20 @@ fn init_anilist() -> Result<AniList> {
     AniList::login(config)
 }
 
-fn get_series_info<R, S>(
+fn get_season_list<R, S>(
     remote: R,
     keyword: S,
     season_num: usize,
     dir: &PathBuf,
     offline: bool,
-) -> Result<SeriesInfo>
+) -> Result<SeasonInfoList>
 where
     R: AsRef<RemoteService>,
     S: AsRef<str>,
 {
     let keyword = keyword.as_ref();
 
-    let seasons = match SeasonInfoList::load(keyword) {
+    match SeasonInfoList::load(keyword) {
         Ok(mut seasons) => {
             if offline {
                 ensure!(seasons.has(season_num), err::RunWithPrefetch);
@@ -167,7 +162,7 @@ where
                 seasons.save(keyword)?;
             }
 
-            seasons
+            Ok(seasons)
         }
         Err(ref err) if err.is_file_nonexistant() => {
             ensure!(!offline, err::RunWithPrefetch);
@@ -183,12 +178,8 @@ where
 
             let seasons = SeasonInfoList::from_info_and_remote(info, &remote, Some(season_num))?;
             seasons.save(keyword)?;
-            seasons
+            Ok(seasons)
         }
-        Err(err) => return Err(err),
-    };
-
-    seasons.take(season_num).context(err::NoSeason {
-        season: 1 + season_num,
-    })
+        Err(err) => Err(err),
+    }
 }

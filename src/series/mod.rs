@@ -9,29 +9,51 @@ use local::EpisodeList;
 use remote::{RemoteService, SeriesInfo};
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
-use std::ops::Range;
+use std::ops::Index;
 use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct Series {
     pub info: SeriesInfo,
     pub episodes: EpisodeList,
-    pub episode_range: Option<Range<u32>>,
+    pub episode_offset: u32,
 }
 
 impl Series {
-    fn abs_episode_number(&self, episode: u32) -> u32 {
-        match &self.episode_range {
-            Some(range) => range.start + episode,
-            None => episode,
+    pub fn from_season_list(
+        seasons: SeasonInfoList,
+        season_num: usize,
+        episodes: EpisodeList,
+    ) -> Result<Series> {
+        ensure!(
+            seasons.has(season_num),
+            err::NoSeason {
+                season: 1 + season_num
+            }
+        );
+
+        let mut episode_offset = 0;
+
+        for i in 0..season_num {
+            episode_offset += seasons[i].episodes;
         }
+
+        let info = seasons.take_unchecked(season_num);
+
+        Ok(Series {
+            info,
+            episodes,
+            episode_offset,
+        })
+    }
+
+    fn abs_episode_number(&self, episode: u32) -> u32 {
+        self.episode_offset + episode
     }
 
     pub fn get_episode(&self, episode: u32) -> Option<&PathBuf> {
-        if let Some(range) = &self.episode_range {
-            if episode >= range.end {
-                return None;
-            }
+        if episode == 0 || episode > self.info.episodes {
+            return None;
         }
 
         let ep_num = self.abs_episode_number(episode);
@@ -143,12 +165,13 @@ impl SeasonInfoList {
         season < self.0.len()
     }
 
-    pub fn take(mut self, season: usize) -> Option<SeriesInfo> {
-        if season >= self.0.len() {
-            return None;
-        }
-
-        Some(self.0.swap_remove(season))
+    /// Consumes the SeasonInfoList and returns the info for the season specified.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `season` is out of bounds.
+    pub fn take_unchecked(mut self, season: usize) -> SeriesInfo {
+        self.0.swap_remove(season)
     }
 }
 
@@ -163,5 +186,13 @@ impl SaveFileInDir for SeasonInfoList {
 
     fn file_type() -> FileType {
         FileType::MessagePack
+    }
+}
+
+impl Index<usize> for SeasonInfoList {
+    type Output = SeriesInfo;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
     }
 }
