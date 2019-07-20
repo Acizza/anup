@@ -19,6 +19,10 @@ pub const API_URL: &str = "https://graphql.anilist.co";
 
 macro_rules! send {
     ($token:expr, $file:expr, {$($vars:tt)*}, $($resp_root:expr)=>*) => {{
+        if cfg!(debug_assertions) {
+            println!("DEBUG: AniList request: {}", $file);
+        }
+
         let vars = json!({
             $($vars)*
         });
