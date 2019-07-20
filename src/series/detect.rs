@@ -10,12 +10,16 @@ use std::path::{Path, PathBuf};
 
 pub fn best_matching_title<S, I>(name: S, titles: I) -> Option<usize>
 where
-    S: AsRef<str>,
+    S: Into<String>,
     I: IntoIterator<Item = String>,
 {
     const MIN_CONFIDENCE: f32 = 0.6;
 
-    let name = name.as_ref();
+    let name = {
+        let mut name = name.into();
+        name.make_ascii_lowercase();
+        name
+    };
 
     let mut max_score = 0.0;
     let mut title_idx = None;
@@ -29,7 +33,7 @@ where
             None => continue,
         };
 
-        let score = strsim::jaro_winkler(&title, name) as f32;
+        let score = strsim::jaro(&title, &name) as f32;
 
         if score > max_score {
             if score >= 0.99 {
@@ -83,7 +87,7 @@ where
 
 pub fn best_matching_info<S>(name: S, items: &[SeriesInfo]) -> Option<usize>
 where
-    S: AsRef<str>,
+    S: Into<String>,
 {
     // TODO: avoid cloning?
     let items = items
