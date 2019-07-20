@@ -5,6 +5,7 @@ use std::path::PathBuf;
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     pub series_dir: PathBuf,
+    pub reset_dates_on_rewatch: bool,
 }
 
 impl Config {
@@ -14,6 +15,7 @@ impl Config {
     {
         Config {
             series_dir: series_dir.into(),
+            reset_dates_on_rewatch: false,
         }
     }
 }
