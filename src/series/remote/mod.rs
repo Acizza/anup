@@ -3,7 +3,6 @@ pub mod offline;
 
 use super::detect;
 use crate::err::{self, Result};
-use crate::file::{FileType, SaveDir, SaveFileInDir};
 use serde_derive::{Deserialize, Serialize};
 use snafu::OptionExt;
 
@@ -67,20 +66,6 @@ impl SeriesEntry {
             start_date: None,
             end_date: None,
         }
-    }
-}
-
-impl SaveFileInDir for SeriesEntry {
-    fn filename() -> &'static str {
-        "entry.mpack"
-    }
-
-    fn save_dir() -> SaveDir {
-        SaveDir::LocalData
-    }
-
-    fn file_type() -> FileType {
-        FileType::MessagePack
     }
 }
 

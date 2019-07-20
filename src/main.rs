@@ -3,6 +3,7 @@ mod err;
 mod file;
 mod process;
 mod series;
+mod track;
 
 use crate::config::Config;
 use crate::err::Result;
@@ -10,10 +11,11 @@ use crate::file::{SaveFile, SaveFileInDir};
 use crate::series::local::{EpisodeList, EpisodeMatcher};
 use crate::series::remote::anilist::{self, AniList, AniListConfig};
 use crate::series::remote::offline::Offline;
-use crate::series::remote::{RemoteService, SeriesInfo};
+use crate::series::remote::{RemoteService, SeriesInfo, Status};
 use crate::series::{detect, SeasonInfoList, Series};
+use crate::track::SeriesTracker;
 use clap::clap_app;
-use snafu::{ensure, ResultExt};
+use snafu::ResultExt;
 use std::io;
 use std::path::PathBuf;
 
@@ -37,20 +39,9 @@ fn main() {
 
 fn run(args: &clap::ArgMatches) -> Result<()> {
     let keyword = args.value_of("SERIES").unwrap();
-    let is_offline = args.is_present("offline");
-
     let config = load_config()?;
 
-    // TODO: use -p argument if specified
-    let dir = detect::best_matching_folder(keyword, &config.series_dir)?;
-    println!("detected dir: {:?}\n\n", dir);
-
-    let episodes = {
-        let matcher = load_episode_matcher(keyword, args.value_of("matcher"))?;
-        EpisodeList::parse(&dir, &matcher)?
-    };
-
-    let remote: Box<RemoteService> = if is_offline {
+    let remote: Box<RemoteService> = if args.is_present("offline") {
         Box::new(Offline::new())
     } else {
         Box::new(init_anilist()?)
@@ -62,17 +53,18 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
         .map(|num: usize| num.saturating_sub(1))
         .unwrap_or(0);
 
-    let seasons = get_season_list(&remote, keyword, season_num, &dir, is_offline)?;
-    let series = Series::from_season_list(seasons, season_num, episodes)?;
+    let series = get_series(
+        keyword,
+        &remote,
+        &config,
+        season_num,
+        args.value_of("matcher"),
+    )?;
 
-    let entry = series::remote::SeriesEntry::new(series.info.id);
-    entry.save(keyword)?;
+    let mut tracker = SeriesTracker::init(&remote, &series.info, keyword)?;
+    tracker.begin_watching(&remote, &config)?;
 
-    println!("series:\n{:?}\n\n", series);
-
-    let episode = series.get_episode(1).expect("no episode");
-    println!("episode:\n{:?}\n\n", episode);
-
+    play_episode_loop(remote, &config, &series, &mut tracker)?;
     Ok(())
 }
 
@@ -92,9 +84,9 @@ fn load_config() -> Result<Config> {
     }
 }
 
-fn load_episode_matcher<S>(keyword: S, matcher: Option<S>) -> Result<EpisodeMatcher>
+fn load_episode_matcher<S>(keyword: S, matcher: Option<&str>) -> Result<EpisodeMatcher>
 where
-    S: AsRef<str> + Into<String>,
+    S: AsRef<str>,
 {
     match EpisodeMatcher::load(&keyword) {
         Ok(matcher) => Ok(matcher),
@@ -144,7 +136,6 @@ fn get_season_list<R, S>(
     keyword: S,
     season_num: usize,
     dir: &PathBuf,
-    offline: bool,
 ) -> Result<SeasonInfoList>
 where
     R: AsRef<RemoteService>,
@@ -154,10 +145,6 @@ where
 
     match SeasonInfoList::load(keyword) {
         Ok(mut seasons) => {
-            if offline {
-                ensure!(seasons.has(season_num), err::RunWithPrefetch);
-            }
-
             if seasons.add_from_remote_upto(&remote, season_num)? {
                 seasons.save(keyword)?;
             }
@@ -165,8 +152,6 @@ where
             Ok(seasons)
         }
         Err(ref err) if err.is_file_nonexistant() => {
-            ensure!(!offline, err::RunWithPrefetch);
-
             // The directory is more likely to have a complete name, which will likely match
             // better than just a keyword, which could be an abstract identifier
             let dir_name = dir
@@ -181,5 +166,73 @@ where
             Ok(seasons)
         }
         Err(err) => Err(err),
+    }
+}
+
+fn get_series<R, S>(
+    name: S,
+    remote: R,
+    config: &Config,
+    season_num: usize,
+    matcher: Option<&str>,
+) -> Result<Series>
+where
+    R: AsRef<RemoteService>,
+    S: AsRef<str>,
+{
+    // TODO: allow overriding with argument
+    let dir = detect::best_matching_folder(&name, &config.series_dir)?;
+
+    let episodes = {
+        let matcher = load_episode_matcher(&name, matcher)?;
+        EpisodeList::parse(&dir, &matcher)?
+    };
+
+    let seasons = get_season_list(&remote, &name, season_num, &dir)?;
+    Series::from_season_list(seasons, season_num, episodes)
+}
+
+fn play_episode<R>(
+    remote: R,
+    config: &Config,
+    series: &Series,
+    tracker: &mut SeriesTracker,
+) -> Result<()>
+where
+    R: AsRef<RemoteService>,
+{
+    let ep_num = tracker.state.watched_eps() + 1;
+
+    series.play_episode(ep_num)?;
+    tracker.episode_completed(&remote, config)?;
+
+    match tracker.state.status() {
+        Status::Completed => {
+            println!("[{}] completed!", series.info.title);
+        }
+        _ => println!(
+            "[{}] episode {}/{} completed",
+            series.info.title, ep_num, series.info.episodes
+        ),
+    }
+
+    Ok(())
+}
+
+fn play_episode_loop<R>(
+    remote: R,
+    config: &Config,
+    series: &Series,
+    tracker: &mut SeriesTracker,
+) -> Result<()>
+where
+    R: AsRef<RemoteService>,
+{
+    loop {
+        play_episode(&remote, config, series, tracker)?;
+
+        if tracker.state.status() == Status::Completed {
+            break Ok(());
+        }
     }
 }
