@@ -3,6 +3,7 @@ query ($id: Int!, $userID: Int!) {
         status,
         score(format: POINT_100),
         progress,
+        repeat,
         startedAt {
             year,
             month,

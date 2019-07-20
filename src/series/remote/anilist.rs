@@ -112,6 +112,7 @@ impl RemoteService for AniList {
                 "watched_eps": entry.watched_eps,
                 "score": entry.score.unwrap_or(0.0),
                 "status": MediaStatus::from(entry.status),
+                "times_rewatched": entry.times_rewatched,
                 "start_date": entry.start_date.map(|date| MediaDate::from(&date)),
                 "finish_date": entry.end_date.map(|date| MediaDate::from(&date)),
             },
@@ -343,6 +344,7 @@ struct MediaEntry {
     status: MediaStatus,
     score: f32,
     progress: u32,
+    repeat: u32,
     #[serde(rename = "startedAt")]
     start_date: Option<MediaDate>,
     #[serde(rename = "completedAt")]
@@ -362,6 +364,7 @@ impl MediaEntry {
             watched_eps: self.progress,
             score,
             status: self.status.into(),
+            times_rewatched: self.repeat,
             start_date: self.start_date.and_then(|d| d.try_into().ok()),
             end_date: self.complete_date.and_then(|d| d.try_into().ok()),
         }

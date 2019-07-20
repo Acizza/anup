@@ -3,6 +3,7 @@ mutation (
     $watched_eps: Int!,
     $score: Float!,
     $status: MediaListStatus!,
+    $times_rewatched: Int!,
     $start_date: FuzzyDateInput,
     $finish_date: FuzzyDateInput) {
 
@@ -11,6 +12,7 @@ mutation (
         progress: $watched_eps,
         score: $score,
         status: $status,
+        repeat: $times_rewatched,
         startedAt: $start_date,
         completedAt: $finish_date) {
             

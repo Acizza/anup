@@ -51,6 +51,7 @@ pub struct SeriesEntry {
     pub watched_eps: u32,
     pub score: Option<f32>,
     pub status: Status,
+    pub times_rewatched: u32,
     pub start_date: Option<chrono::NaiveDate>,
     pub end_date: Option<chrono::NaiveDate>,
 }
@@ -62,6 +63,7 @@ impl SeriesEntry {
             watched_eps: 0,
             score: None,
             status: Status::default(),
+            times_rewatched: 0,
             start_date: None,
             end_date: None,
         }
