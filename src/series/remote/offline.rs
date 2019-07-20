@@ -25,4 +25,8 @@ impl RemoteService for Offline {
     fn update_list_entry(&self, _: &SeriesEntry) -> Result<()> {
         Ok(())
     }
+
+    fn is_offline(&self) -> bool {
+        true
+    }
 }

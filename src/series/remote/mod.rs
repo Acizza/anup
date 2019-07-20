@@ -13,6 +13,10 @@ pub trait RemoteService {
 
     fn get_list_entry(&self, id: u32) -> Result<Option<SeriesEntry>>;
     fn update_list_entry(&self, entry: &SeriesEntry) -> Result<()>;
+
+    fn is_offline(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
