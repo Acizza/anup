@@ -129,7 +129,7 @@ pub enum Error {
     #[snafu(display("no series found with name similar to {}", name))]
     NoMatchingSeries { name: String },
 
-    #[snafu(display("need series data to run in offline mode\nrun the program with --prefetch first when an internet connection is available"))]
+    #[snafu(display("need existing series info to run in offline mode\nrun the program with --prefetch first when an internet connection is available"))]
     RunWithPrefetch {},
 
     #[snafu(display("received bad response from AniList (code {}): {}", code, message))]
