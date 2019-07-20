@@ -266,14 +266,31 @@ struct Media {
     title: MediaTitle,
     episodes: Option<u32>,
     relations: Option<MediaRelation>,
+    format: String,
+}
+
+impl Media {
+    /// Returns the media ID of the series that is listed as a sequel and matches the same format.
+    fn direct_sequel_id(&self) -> Option<u32> {
+        let relations = match &self.relations {
+            Some(relations) => relations,
+            None => return None,
+        };
+
+        let is_direct_sequel =
+            |edge: &&MediaEdge| edge.is_sequel() && edge.node.format == self.format;
+
+        relations
+            .edges
+            .iter()
+            .find(is_direct_sequel)
+            .map(|edge| edge.node.id)
+    }
 }
 
 impl Into<SeriesInfo> for Media {
     fn into(self) -> SeriesInfo {
-        let sequel = self
-            .relations
-            .and_then(|rel| rel.edges.into_iter().find(|e| e.is_sequel()))
-            .map(|e| e.node.id);
+        let sequel = self.direct_sequel_id();
 
         SeriesInfo {
             id: self.id,
@@ -297,19 +314,28 @@ struct MediaRelation {
 #[derive(Debug, Deserialize)]
 struct MediaEdge {
     #[serde(rename = "relationType")]
-    relation: String,
+    relation: MediaRelationType,
     node: MediaNode,
 }
 
 impl MediaEdge {
     fn is_sequel(&self) -> bool {
-        self.relation == "SEQUEL"
+        self.relation == MediaRelationType::Sequel
     }
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+enum MediaRelationType {
+    #[serde(rename = "SEQUEL")]
+    Sequel,
+    #[serde(other)]
+    Other,
 }
 
 #[derive(Debug, Deserialize)]
 struct MediaNode {
     id: u32,
+    format: String,
 }
 
 #[derive(Debug, Deserialize)]

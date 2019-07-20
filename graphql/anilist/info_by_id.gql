@@ -5,11 +5,13 @@ query ($id: Int!) {
             romaji
         },
         episodes,
+        format,
         relations {
             edges {
                 relationType,
                 node {
-                    id
+                    id,
+                    format
                 }
             }
         }
