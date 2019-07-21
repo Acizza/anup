@@ -14,6 +14,7 @@ use crate::series::remote::offline::Offline;
 use crate::series::remote::{RemoteService, SeriesInfo, Status};
 use crate::series::{detect, SeasonInfoList, Series};
 use crate::track::SeriesTracker;
+use chrono::Utc;
 use clap::clap_app;
 use snafu::ResultExt;
 use std::io;
@@ -192,31 +193,62 @@ where
     Series::from_season_list(seasons, season_num, episodes)
 }
 
+#[derive(PartialEq)]
+enum PlayResult {
+    Continue,
+    Finished,
+}
+
 fn play_episode<R>(
     remote: R,
     config: &Config,
     series: &Series,
     tracker: &mut SeriesTracker,
-) -> Result<()>
+) -> Result<PlayResult>
 where
     R: AsRef<RemoteService>,
 {
     let ep_num = tracker.state.watched_eps() + 1;
+    let start_time = Utc::now();
 
     series.play_episode(ep_num)?;
+
+    let end_time = Utc::now();
+
+    let mins_watched = {
+        let watch_time = end_time - start_time;
+        watch_time.num_seconds() as f32 / 60.0
+    };
+
+    let mins_must_watch =
+        series.info.episode_length as f32 * config.ep_percent_watched_to_count.as_multiplier();
+
+    if mins_watched < mins_must_watch {
+        println!(
+            "must watch for {:02}:{:02} minutes to count episode as watched\nexiting",
+            mins_must_watch.floor() as u32,
+            (mins_must_watch * 60.0 % 60.0) as u32,
+        );
+
+        return Ok(PlayResult::Finished);
+    }
+
     tracker.episode_completed(&remote, config)?;
 
     match tracker.state.status() {
         Status::Completed => {
             println!("[{}] completed!", series.info.title);
+            Ok(PlayResult::Finished)
         }
-        _ => println!(
-            "[{}] episode {}/{} completed",
-            series.info.title, ep_num, series.info.episodes
-        ),
-    }
+        _ => {
+            println!(
+                "[{}] episode {}/{} completed",
+                series.info.title, ep_num, series.info.episodes
+            );
 
-    Ok(())
+            Ok(PlayResult::Continue)
+        }
+    }
 }
 
 fn play_episode_loop<R>(
@@ -229,9 +261,7 @@ where
     R: AsRef<RemoteService>,
 {
     loop {
-        play_episode(&remote, config, series, tracker)?;
-
-        if tracker.state.status() == Status::Completed {
+        if let PlayResult::Finished = play_episode(&remote, config, series, tracker)? {
             break Ok(());
         }
     }
