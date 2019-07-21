@@ -118,7 +118,7 @@ impl Percentage {
     }
 
     #[inline(always)]
-    pub fn as_multiplier(&self) -> f32 {
+    pub fn as_multiplier(self) -> f32 {
         self.0
     }
 }
