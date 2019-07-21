@@ -5,6 +5,7 @@ query ($id: Int!) {
             romaji
         },
         episodes,
+        duration,
         format,
         relations {
             edges {

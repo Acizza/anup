@@ -18,11 +18,14 @@ pub trait RemoteService {
     }
 }
 
+pub type Minutes = u32;
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SeriesInfo {
     pub id: u32,
     pub title: String,
     pub episodes: u32,
+    pub episode_length: Minutes,
     pub sequel: Option<u32>,
 }
 

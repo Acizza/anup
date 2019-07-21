@@ -266,6 +266,7 @@ struct Media {
     id: u32,
     title: MediaTitle,
     episodes: Option<u32>,
+    duration: Option<u32>,
     relations: Option<MediaRelation>,
     format: String,
 }
@@ -297,6 +298,7 @@ impl Into<SeriesInfo> for Media {
             id: self.id,
             title: self.title.romaji,
             episodes: self.episodes.unwrap_or(1),
+            episode_length: self.duration.unwrap_or(24),
             sequel,
         }
     }
