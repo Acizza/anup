@@ -29,7 +29,7 @@ fn main() {
         (@arg matcher: -m --matcher +takes_value "The custom pattern to match episode files with")
         (@arg offline: -o --offline "Run in offline mode")
         (@arg prefetch: --prefetch "Fetch series info from AniList. For use with offline mode")
-        (@arg noinfo: --noinfo "Disables printing of series information")
+        (@arg quiet: -q --quiet "Don't print series information")
     )
     .get_matches();
 
@@ -66,7 +66,7 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
     let mut tracker = SeriesTracker::init(&remote, &series.info, keyword)?;
     tracker.begin_watching(&remote, &config)?;
 
-    if !args.is_present("noinfo") {
+    if !args.is_present("quiet") {
         print_info(&config, &series, &tracker);
     }
 
