@@ -10,7 +10,7 @@ use std::result;
 pub struct Config {
     pub series_dir: PathBuf,
     pub reset_dates_on_rewatch: bool,
-    pub ep_percent_watched_to_count: Percentage,
+    pub episode: EpisodeConfig,
 }
 
 impl Config {
@@ -21,7 +21,7 @@ impl Config {
         Config {
             series_dir: series_dir.into(),
             reset_dates_on_rewatch: false,
-            ep_percent_watched_to_count: Percentage::new(50.0),
+            episode: EpisodeConfig::new(),
         }
     }
 }
@@ -37,6 +37,20 @@ impl SaveFile for Config {
 
     fn file_type() -> FileType {
         FileType::Toml
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct EpisodeConfig {
+    #[serde(rename = "percent_watched_to_progress")]
+    pub pcnt_must_watch: Percentage,
+}
+
+impl EpisodeConfig {
+    pub fn new() -> EpisodeConfig {
+        EpisodeConfig {
+            pcnt_must_watch: Percentage::new(50.0),
+        }
     }
 }
 
