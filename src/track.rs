@@ -86,6 +86,11 @@ impl EntryState {
     }
 
     #[inline(always)]
+    pub fn score(&self) -> Option<f32> {
+        self.entry.score
+    }
+
+    #[inline(always)]
     pub fn status(&self) -> Status {
         self.entry.status
     }

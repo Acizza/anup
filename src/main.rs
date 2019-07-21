@@ -29,6 +29,7 @@ fn main() {
         (@arg matcher: -m --matcher +takes_value "The custom pattern to match episode files with")
         (@arg offline: -o --offline "Run in offline mode")
         (@arg prefetch: --prefetch "Fetch series info from AniList. For use with offline mode")
+        (@arg noinfo: --noinfo "Disables printing of series information")
     )
     .get_matches();
 
@@ -64,6 +65,10 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
 
     let mut tracker = SeriesTracker::init(&remote, &series.info, keyword)?;
     tracker.begin_watching(&remote, &config)?;
+
+    if !args.is_present("noinfo") {
+        print_info(&config, &series, &tracker);
+    }
 
     play_episode_loop(remote, &config, &series, &mut tracker)?;
     Ok(())
@@ -193,6 +198,59 @@ where
     Series::from_season_list(seasons, season_num, episodes)
 }
 
+fn print_info(config: &Config, series: &Series, tracker: &SeriesTracker) {
+    use std::borrow::Cow;
+
+    let repeater = "-".repeat(series.info.title.len() + 2);
+
+    println!("+{}+\n@ {} @\n+{}+", repeater, series.info.title, repeater);
+    println!();
+
+    println!(
+        "watched: {}/{}",
+        tracker.state.watched_eps(),
+        series.info.episodes
+    );
+    println!(
+        "score: {}",
+        tracker
+            .state
+            .score()
+            .map(|s| Cow::Owned(s.to_string()))
+            .unwrap_or_else(|| Cow::Borrowed("none"))
+    );
+
+    println!();
+
+    let watch_time =
+        series.info.episode_length * (series.info.episodes - tracker.state.watched_eps());
+
+    let minutes_must_watch =
+        series.info.episode_length as f32 * config.ep_percent_watched_to_count.as_multiplier();
+
+    println!("time to finish: {}", hms_from_mins(watch_time as f32));
+    println!("progress time: {}", ms_from_mins(minutes_must_watch as f32));
+
+    println!();
+    println!("+{}+", repeater);
+    println!();
+}
+
+fn ms_from_mins(mins: f32) -> String {
+    let m = mins.floor() as u32;
+    let s = (mins * 60.0 % 60.0).floor() as u32;
+
+    format!("{:02}:{:02}", m, s)
+}
+
+fn hms_from_mins(mins: f32) -> String {
+    let h = (mins / 60.0).floor() as u32;
+    let m = (mins % 60.0).floor() as u32;
+    let s = m * 60 % 60;
+
+    format!("{:02}:{:02}:{:02}", h, m, s)
+}
+
 #[derive(PartialEq)]
 enum PlayResult {
     Continue,
@@ -224,12 +282,7 @@ where
         series.info.episode_length as f32 * config.ep_percent_watched_to_count.as_multiplier();
 
     if mins_watched < mins_must_watch {
-        println!(
-            "must watch for {:02}:{:02} minutes to count episode as watched\nexiting",
-            mins_must_watch.floor() as u32,
-            (mins_must_watch * 60.0 % 60.0) as u32,
-        );
-
+        println!("did not watch episode long enough\nexiting");
         return Ok(PlayResult::Finished);
     }
 
@@ -237,15 +290,11 @@ where
 
     match tracker.state.status() {
         Status::Completed => {
-            println!("[{}] completed!", series.info.title);
+            println!("completed!");
             Ok(PlayResult::Finished)
         }
         _ => {
-            println!(
-                "[{}] episode {}/{} completed",
-                series.info.title, ep_num, series.info.episodes
-            );
-
+            println!("{}/{} completed", ep_num, series.info.episodes);
             Ok(PlayResult::Continue)
         }
     }
