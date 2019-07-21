@@ -137,6 +137,9 @@ pub enum Error {
 
     #[snafu(display("no data found for season {}", season))]
     NoSeason { season: usize },
+
+    #[snafu(display("series name must be specified as there is no last played series"))]
+    NoSavedSeriesName,
 }
 
 impl Error {

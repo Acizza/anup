@@ -7,7 +7,7 @@ mod track;
 
 use crate::config::Config;
 use crate::err::Result;
-use crate::file::{SaveFile, SaveFileInDir};
+use crate::file::{FileType, SaveDir, SaveFile, SaveFileInDir};
 use crate::series::local::{EpisodeList, EpisodeMatcher};
 use crate::series::remote::anilist::{self, AniList, AniListConfig};
 use crate::series::remote::offline::Offline;
@@ -16,6 +16,7 @@ use crate::series::{detect, SeasonInfoList, Series};
 use crate::track::SeriesTracker;
 use chrono::Utc;
 use clap::clap_app;
+use serde_derive::{Deserialize, Serialize};
 use snafu::ResultExt;
 use std::io;
 use std::path::PathBuf;
@@ -24,7 +25,7 @@ fn main() {
     let args = clap_app!(anup =>
         (version: env!("CARGO_PKG_VERSION"))
         (author: env!("CARGO_PKG_AUTHORS"))
-        (@arg SERIES: +takes_value +required "The name of the series to watch")
+        (@arg series: +takes_value "The name of the series to watch")
         (@arg season: -s --season +takes_value "The season to watch. Meant to be used when playing from a folder that has multiple seasons merged together under one name")
         (@arg matcher: -m --matcher +takes_value "The custom pattern to match episode files with")
         (@arg offline: -o --offline "Run in offline mode")
@@ -40,7 +41,7 @@ fn main() {
 }
 
 fn run(args: &clap::ArgMatches) -> Result<()> {
-    let keyword = args.value_of("SERIES").unwrap();
+    let name = get_series_name(args)?;
     let config = load_config()?;
 
     let remote: Box<RemoteService> = if args.is_present("offline") {
@@ -56,14 +57,14 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
         .unwrap_or(0);
 
     let series = get_series(
-        keyword,
+        &name,
         &remote,
         &config,
         season_num,
         args.value_of("matcher"),
     )?;
 
-    let mut tracker = SeriesTracker::init(&remote, &series.info, keyword)?;
+    let mut tracker = SeriesTracker::init(&remote, &series.info, &name)?;
     tracker.begin_watching(&remote, &config)?;
 
     if !args.is_present("quiet") {
@@ -72,6 +73,52 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
 
     play_episode_loop(remote, &config, &series, &mut tracker)?;
     Ok(())
+}
+
+#[derive(Deserialize, Serialize)]
+struct SeriesName(String);
+
+impl SeriesName {
+    fn new<S>(name: S) -> SeriesName
+    where
+        S: Into<String>,
+    {
+        SeriesName(name.into())
+    }
+
+    #[inline(always)]
+    fn take(self) -> String {
+        self.0
+    }
+}
+
+impl SaveFile for SeriesName {
+    fn filename() -> &'static str {
+        ".last_watched"
+    }
+
+    fn save_dir() -> SaveDir {
+        SaveDir::LocalData
+    }
+
+    fn file_type() -> FileType {
+        FileType::MessagePack
+    }
+}
+
+fn get_series_name(args: &clap::ArgMatches) -> Result<String> {
+    if let Some(name) = args.value_of("series") {
+        let sname = SeriesName::new(name);
+        sname.save()?;
+
+        return Ok(sname.take());
+    }
+
+    match SeriesName::load() {
+        Ok(sname) => Ok(sname.take()),
+        Err(ref err) if err.is_file_nonexistant() => Err(err::Error::NoSavedSeriesName),
+        Err(err) => Err(err),
+    }
 }
 
 fn load_config() -> Result<Config> {
