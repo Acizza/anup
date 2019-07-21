@@ -224,9 +224,7 @@ fn print_info(config: &Config, series: &Series, tracker: &SeriesTracker) {
 
     let watch_time =
         series.info.episode_length * (series.info.episodes - tracker.state.watched_eps());
-
-    let minutes_must_watch =
-        series.info.episode_length as f32 * config.ep_percent_watched_to_count.as_multiplier();
+    let minutes_must_watch = series.info.episode_length as f32 * config.episode.pcnt_must_watch;
 
     println!("time to finish: {}", hms_from_mins(watch_time as f32));
     println!("progress time: {}", ms_from_mins(minutes_must_watch as f32));
@@ -278,8 +276,7 @@ where
         watch_time.num_seconds() as f32 / 60.0
     };
 
-    let mins_must_watch =
-        series.info.episode_length as f32 * config.ep_percent_watched_to_count.as_multiplier();
+    let mins_must_watch = series.info.episode_length as f32 * config.episode.pcnt_must_watch;
 
     if mins_watched < mins_must_watch {
         println!("did not watch episode long enough\nexiting");

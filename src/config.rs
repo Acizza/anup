@@ -2,6 +2,7 @@ use crate::file::{FileType, SaveDir, SaveFile};
 use serde::de::{self, Deserializer, Visitor};
 use serde::ser::Serializer;
 use serde_derive::{Deserialize, Serialize};
+use std::ops::Mul;
 use std::path::PathBuf;
 use std::result;
 
@@ -39,7 +40,7 @@ impl SaveFile for Config {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct Percentage(#[serde(with = "Percentage")] f32);
 
 impl Percentage {
@@ -105,5 +106,13 @@ impl Percentage {
     #[inline(always)]
     pub fn as_multiplier(&self) -> f32 {
         self.0
+    }
+}
+
+impl Mul<Percentage> for f32 {
+    type Output = f32;
+
+    fn mul(self, other: Percentage) -> Self::Output {
+        self * other.as_multiplier()
     }
 }
