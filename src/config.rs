@@ -44,12 +44,14 @@ impl SaveFile for Config {
 pub struct EpisodeConfig {
     #[serde(rename = "percent_watched_to_progress")]
     pub pcnt_must_watch: Percentage,
+    pub seconds_before_next: f32,
 }
 
 impl EpisodeConfig {
     pub fn new() -> EpisodeConfig {
         EpisodeConfig {
             pcnt_must_watch: Percentage::new(50.0),
+            seconds_before_next: 5.0,
         }
     }
 }

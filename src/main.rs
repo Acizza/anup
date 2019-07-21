@@ -279,7 +279,7 @@ where
     let mins_must_watch = series.info.episode_length as f32 * config.episode.pcnt_must_watch;
 
     if mins_watched < mins_must_watch {
-        println!("did not watch episode long enough\nexiting");
+        println!("did not watch episode long enough");
         return Ok(PlayResult::Finished);
     }
 
@@ -306,9 +306,18 @@ fn play_episode_loop<R>(
 where
     R: AsRef<RemoteService>,
 {
+    use std::thread;
+    use std::time::Duration;
+
     loop {
         if let PlayResult::Finished = play_episode(&remote, config, series, tracker)? {
             break Ok(());
+        }
+
+        if config.episode.seconds_before_next > 0.0 {
+            let millis = (config.episode.seconds_before_next * 1000.0) as u64;
+            let duration = Duration::from_millis(millis);
+            thread::sleep(duration);
         }
     }
 }
