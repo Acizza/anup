@@ -30,6 +30,7 @@ fn main() {
         (@arg matcher: -m --matcher +takes_value "The custom pattern to match episode files with")
         (@arg offline: -o --offline "Run in offline mode")
         (@arg prefetch: --prefetch "Fetch series info from AniList. For use with offline mode")
+        (@arg oneshot: --oneshot "Play the next episode and exit")
         (@arg quiet: -q --quiet "Don't print series information")
     )
     .get_matches();
@@ -71,7 +72,12 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
         print_info(&config, &series, &tracker);
     }
 
-    play_episode_loop(remote, &config, &series, &mut tracker)?;
+    if args.is_present("oneshot") {
+        play_episode(remote, &config, &series, &mut tracker)?;
+    } else {
+        play_episode_loop(remote, &config, &series, &mut tracker)?;
+    }
+
     Ok(())
 }
 
