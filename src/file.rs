@@ -13,9 +13,10 @@ where
     fn save_dir() -> SaveDir;
     fn file_type() -> FileType;
 
-    fn save_path<'a, S>(subdir: S) -> PathBuf
+    fn save_path<'a, S, D>(prefix: S, subdir: D) -> PathBuf
     where
-        S: Into<Option<&'a str>>,
+        S: Into<Option<String>>,
+        D: Into<Option<&'a str>>,
     {
         let mut path = Self::save_dir().path();
 
@@ -23,7 +24,12 @@ where
             path.push(subdir);
         }
 
-        path.push(Self::filename());
+        if let Some(prefix) = prefix.into() {
+            path.push(format!("{}_{}", prefix, Self::filename()));
+        } else {
+            path.push(Self::filename());
+        }
+
         path
     }
 
@@ -31,7 +37,17 @@ where
     where
         S: Into<Option<&'a str>>,
     {
-        let path = Self::save_path(subdir);
+        let path = Self::save_path(None, subdir);
+        let ftype = Self::file_type();
+        ftype.deserialize_from_file(path)
+    }
+
+    fn load_with_id<'a, S>(id: u32, subdir: S) -> Result<Self>
+    where
+        S: Into<Option<&'a str>>,
+    {
+        let id = id.to_string();
+        let path = Self::save_path(id, subdir);
         let ftype = Self::file_type();
         ftype.deserialize_from_file(path)
     }
@@ -40,7 +56,17 @@ where
     where
         S: Into<Option<&'a str>>,
     {
-        let path = Self::save_path(subdir);
+        let path = Self::save_path(None, subdir.into());
+        let ftype = Self::file_type();
+        ftype.serialize_to_file(self, path)
+    }
+
+    fn save_with_id<'a, S>(&self, id: u32, subdir: S) -> Result<()>
+    where
+        S: Into<Option<&'a str>>,
+    {
+        let id = id.to_string();
+        let path = Self::save_path(id, subdir);
         let ftype = Self::file_type();
         ftype.serialize_to_file(self, path)
     }

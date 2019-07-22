@@ -13,7 +13,7 @@ use crate::series::remote::anilist::{self, AniList, AniListConfig};
 use crate::series::remote::offline::Offline;
 use crate::series::remote::{RemoteService, SeriesInfo, Status};
 use crate::series::{detect, SeasonInfoList, Series};
-use crate::track::SeriesTracker;
+use crate::track::{EntryState, SeriesTracker};
 use chrono::Utc;
 use clap::clap_app;
 use clap::ArgMatches;
@@ -61,16 +61,21 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
     }
 }
 
-// TODO: save list entry state once handling of per-season entry states is implemented
 fn prefetch(args: &ArgMatches, name: String, episodes: EpisodeList) -> Result<()> {
     ensure!(!args.is_present("offline"), err::MustRunPrefetchOnline);
 
     let remote: Box<RemoteService> = Box::new(init_anilist()?);
     let info = SeriesInfo::best_matching_from_remote(&remote, &episodes.title)?;
     let seasons = SeasonInfoList::from_info_and_remote(info, &remote, None)?;
+
     seasons.save(name.as_ref())?;
 
     for (season_num, season) in seasons.inner().iter().enumerate() {
+        if let Some(entry) = remote.get_list_entry(season.id)? {
+            let state = EntryState::new(entry);
+            state.save_with_id(season.id, name.as_ref())?;
+        }
+
         println!("season {} -> {}", 1 + season_num, season.title);
     }
 

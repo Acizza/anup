@@ -31,14 +31,14 @@ impl EntryState {
         let remote = remote.as_ref();
 
         if remote.is_offline() {
-            self.save(name.as_ref())?;
+            self.save_with_id(self.entry.id, name.as_ref())?;
             return Ok(());
         }
 
         remote.update_list_entry(&self.entry)?;
 
         self.needs_sync = false;
-        self.save(name.as_ref())?;
+        self.save_with_id(self.entry.id, name.as_ref())?;
 
         Ok(())
     }
@@ -60,7 +60,7 @@ impl EntryState {
         };
 
         self.entry = entry;
-        self.save(name.as_ref())?;
+        self.save_with_id(self.entry.id, name.as_ref())?;
 
         Ok(())
     }
@@ -149,6 +149,13 @@ impl SaveFile for EntryState {
     }
 }
 
+impl From<u32> for EntryState {
+    fn from(id: u32) -> EntryState {
+        let entry = SeriesEntry::new(id);
+        EntryState::new(entry)
+    }
+}
+
 #[derive(Debug)]
 pub struct SeriesTracker<'a> {
     pub info: &'a SeriesInfo,
@@ -164,12 +171,9 @@ impl<'a> SeriesTracker<'a> {
     {
         let name = name.into();
 
-        let mut state = match EntryState::load(name.as_ref()) {
+        let mut state = match EntryState::load_with_id(info.id, name.as_ref()) {
             Ok(state) => state,
-            Err(ref err) if err.is_file_nonexistant() => {
-                let entry = SeriesEntry::new(info.id);
-                EntryState::new(entry)
-            }
+            Err(ref err) if err.is_file_nonexistant() => EntryState::from(info.id),
             Err(err) => return Err(err),
         };
 
