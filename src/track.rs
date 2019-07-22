@@ -200,7 +200,6 @@ impl<'a> SeriesTracker<'a> {
             }
             Status::Completed => {
                 state.set_status(Status::Rewatching);
-                state.set_times_rewatched(state.times_rewatched() + 1);
                 state.set_watched_eps(0);
             }
             Status::PlanToWatch => state.set_status(Status::Watching),
