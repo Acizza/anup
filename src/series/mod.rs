@@ -170,6 +170,11 @@ impl SeasonInfoList {
     pub fn take_unchecked(mut self, season: usize) -> SeriesInfo {
         self.0.swap_remove(season)
     }
+
+    #[inline(always)]
+    pub fn inner(&self) -> &Vec<SeriesInfo> {
+        &self.0
+    }
 }
 
 impl SaveFileInDir for SeasonInfoList {

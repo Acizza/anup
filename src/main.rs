@@ -16,8 +16,9 @@ use crate::series::{detect, SeasonInfoList, Series};
 use crate::track::SeriesTracker;
 use chrono::Utc;
 use clap::clap_app;
+use clap::ArgMatches;
 use serde_derive::{Deserialize, Serialize};
-use snafu::ResultExt;
+use snafu::{ensure, ResultExt};
 use std::io;
 use std::path::PathBuf;
 
@@ -45,6 +46,39 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
     let name = get_series_name(args)?;
     let config = load_config()?;
 
+    // TODO: allow overriding with argument
+    let dir = detect::best_matching_folder(&name, &config.series_dir)?;
+
+    let episodes = {
+        let matcher = load_episode_matcher(&name, args.value_of("matcher"))?;
+        EpisodeList::parse(&dir, &matcher)?
+    };
+
+    if args.is_present("prefetch") {
+        prefetch(args, name, episodes)
+    } else {
+        play(args, config, name, episodes)
+    }
+}
+
+// TODO: save list entry state once handling of per-season entry states is implemented
+fn prefetch(args: &ArgMatches, name: String, episodes: EpisodeList) -> Result<()> {
+    ensure!(!args.is_present("offline"), err::MustRunPrefetchOnline);
+
+    let remote: Box<RemoteService> = Box::new(init_anilist()?);
+    let info = SeriesInfo::best_matching_from_remote(&remote, &episodes.title)?;
+    let seasons = SeasonInfoList::from_info_and_remote(info, &remote, None)?;
+    seasons.save(name)?;
+
+    for (season_num, season) in seasons.inner().iter().enumerate() {
+        println!("season {} -> {}", 1 + season_num, season.title);
+    }
+
+    println!("\nprefetch complete\nyou can now fully watch this series offline");
+    Ok(())
+}
+
+fn play(args: &ArgMatches, config: Config, name: String, episodes: EpisodeList) -> Result<()> {
     let remote: Box<RemoteService> = if args.is_present("offline") {
         Box::new(Offline::new())
     } else {
@@ -57,13 +91,7 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
         .map(|num: usize| num.saturating_sub(1))
         .unwrap_or(0);
 
-    let series = get_series(
-        &name,
-        &remote,
-        &config,
-        season_num,
-        args.value_of("matcher"),
-    )?;
+    let series = get_series(&name, &remote, episodes, season_num)?;
 
     let mut tracker = SeriesTracker::init(&remote, &series.info, &name)?;
     tracker.begin_watching(&remote, &config)?;
@@ -190,64 +218,28 @@ fn init_anilist() -> Result<AniList> {
     AniList::login(config)
 }
 
-fn get_season_list<R, S>(
-    remote: R,
-    keyword: S,
-    season_num: usize,
-    dir: &PathBuf,
-) -> Result<SeasonInfoList>
+fn get_series<R, S>(name: S, remote: R, episodes: EpisodeList, season_num: usize) -> Result<Series>
 where
     R: AsRef<RemoteService>,
     S: AsRef<str>,
 {
-    let keyword = keyword.as_ref();
-
-    match SeasonInfoList::load(keyword) {
+    let seasons = match SeasonInfoList::load(&name) {
         Ok(mut seasons) => {
             if seasons.add_from_remote_upto(&remote, season_num)? {
-                seasons.save(keyword)?;
+                seasons.save(name)?;
             }
 
-            Ok(seasons)
+            seasons
         }
         Err(ref err) if err.is_file_nonexistant() => {
-            // The directory is more likely to have a complete name, which will likely match
-            // better than just a keyword, which could be an abstract identifier
-            let dir_name = dir
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_else(|| keyword.into());
-
-            let info = SeriesInfo::best_matching_from_remote(&remote, dir_name)?;
-
+            let info = SeriesInfo::best_matching_from_remote(&remote, &episodes.title)?;
             let seasons = SeasonInfoList::from_info_and_remote(info, &remote, Some(season_num))?;
-            seasons.save(keyword)?;
-            Ok(seasons)
+            seasons.save(name)?;
+            seasons
         }
-        Err(err) => Err(err),
-    }
-}
-
-fn get_series<R, S>(
-    name: S,
-    remote: R,
-    config: &Config,
-    season_num: usize,
-    matcher: Option<&str>,
-) -> Result<Series>
-where
-    R: AsRef<RemoteService>,
-    S: AsRef<str>,
-{
-    // TODO: allow overriding with argument
-    let dir = detect::best_matching_folder(&name, &config.series_dir)?;
-
-    let episodes = {
-        let matcher = load_episode_matcher(&name, matcher)?;
-        EpisodeList::parse(&dir, &matcher)?
+        Err(err) => return Err(err),
     };
 
-    let seasons = get_season_list(&remote, &name, season_num, &dir)?;
     Series::from_season_list(seasons, season_num, episodes)
 }
 

@@ -130,6 +130,9 @@ pub enum Error {
 
     #[snafu(display("series name must be specified as there is no last played series"))]
     NoSavedSeriesName,
+
+    #[snafu(display("prefetch can only be ran in online mode"))]
+    MustRunPrefetchOnline,
 }
 
 impl Error {
