@@ -51,7 +51,7 @@ impl EpisodeConfig {
     pub fn new() -> EpisodeConfig {
         EpisodeConfig {
             pcnt_must_watch: Percentage::new(50.0),
-            seconds_before_next: 5.0,
+            seconds_before_next: 3.0,
         }
     }
 }
