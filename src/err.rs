@@ -91,9 +91,6 @@ pub enum Error {
     #[snafu(display("failed to parse episode title: {}", name))]
     NoEpisodeTitle { name: String },
 
-    #[snafu(display("series should only have one episode, but found multiple\n\tshould only be: {}\n\tfound: {}", original, conflict))]
-    MultipleEpsInSingleEpSeries { original: String, conflict: String },
-
     #[snafu(display("expected episode number for file: {}", name))]
     ExpectedEpNumber { name: String },
 
@@ -110,27 +107,20 @@ pub enum Error {
     #[snafu(display("no episodes found at path: {:?}", path))]
     NoEpisodes { path: path::PathBuf },
 
-    #[snafu(display("episode {} not found for {}", episode, series))]
-    EpisodeNotFound { episode: u32, series: String },
+    #[snafu(display("episode {} not found", episode))]
+    EpisodeNotFound { episode: u32 },
 
-    #[snafu(display("failed to play episode {} of {}: {}", episode, series, source))]
-    FailedToPlayEpisode {
-        episode: u32,
-        series: String,
-        source: io::Error,
-    },
+    #[snafu(display("failed to play episode {}: {}", episode, source))]
+    FailedToPlayEpisode { episode: u32, source: io::Error },
 
     #[snafu(display("video player didn't exit normally while playing: {:?}", path))]
     AbnormalPlayerExit { path: path::PathBuf },
-
-    #[snafu(display("no series with id {} found", id))]
-    NoSeriesWithID { id: u32 },
 
     #[snafu(display("no series found with name similar to {}", name))]
     NoMatchingSeries { name: String },
 
     #[snafu(display("need existing series info to run in offline mode\nrun the program with --prefetch first when an internet connection is available"))]
-    RunWithPrefetch {},
+    RunWithPrefetch,
 
     #[snafu(display("received bad response from AniList (code {}): {}", code, message))]
     BadAniListResponse { code: u16, message: String },

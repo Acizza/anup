@@ -61,15 +61,12 @@ impl Series {
     }
 
     pub fn play_episode(&self, episode: u32) -> Result<()> {
-        let path = self.get_episode(episode).context(err::EpisodeNotFound {
-            episode,
-            series: &self.info.title,
-        })?;
+        let path = self
+            .get_episode(episode)
+            .context(err::EpisodeNotFound { episode })?;
 
-        let status = process::open_with_default(path).context(err::FailedToPlayEpisode {
-            episode,
-            series: &self.info.title,
-        })?;
+        let status =
+            process::open_with_default(path).context(err::FailedToPlayEpisode { episode })?;
 
         ensure!(status.success(), err::AbnormalPlayerExit { path });
         Ok(())
