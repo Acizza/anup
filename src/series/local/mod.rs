@@ -1,5 +1,5 @@
 use crate::err::{self, Result};
-use crate::file::{FileType, SaveDir, SaveFileInDir};
+use crate::file::{FileType, SaveDir, SaveFile};
 use hashbrown::HashMap;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -61,7 +61,7 @@ impl EpisodeMatcher {
     }
 }
 
-impl SaveFileInDir for EpisodeMatcher {
+impl SaveFile for EpisodeMatcher {
     fn filename() -> &'static str {
         "file_matcher.mpack"
     }

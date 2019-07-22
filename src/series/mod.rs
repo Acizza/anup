@@ -3,7 +3,7 @@ pub mod local;
 pub mod remote;
 
 use crate::err::{self, Result};
-use crate::file::{FileType, SaveDir, SaveFileInDir};
+use crate::file::{FileType, SaveDir, SaveFile};
 use crate::process;
 use local::EpisodeList;
 use remote::{RemoteService, SeriesInfo};
@@ -177,7 +177,7 @@ impl SeasonInfoList {
     }
 }
 
-impl SaveFileInDir for SeasonInfoList {
+impl SaveFile for SeasonInfoList {
     fn filename() -> &'static str {
         "season_info.mpack"
     }

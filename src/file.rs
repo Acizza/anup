@@ -13,57 +13,34 @@ where
     fn save_dir() -> SaveDir;
     fn file_type() -> FileType;
 
-    fn save_path() -> PathBuf {
-        let mut dir = Self::save_dir().path();
-        dir.push(Self::filename());
-        dir
-    }
-
-    fn load() -> Result<Self> {
-        let path = Self::save_path();
-        let ftype = Self::file_type();
-        ftype.deserialize_from_file(path)
-    }
-
-    fn save(&self) -> Result<()> {
-        let path = Self::save_path();
-        let ftype = Self::file_type();
-        ftype.serialize_to_file(self, path)
-    }
-}
-
-pub trait SaveFileInDir
-where
-    Self: DeserializeOwned + Serialize,
-{
-    fn filename() -> &'static str;
-    fn save_dir() -> SaveDir;
-    fn file_type() -> FileType;
-
-    fn save_path<S>(dir: S) -> PathBuf
+    fn save_path<'a, S>(subdir: S) -> PathBuf
     where
-        S: AsRef<str>,
+        S: Into<Option<&'a str>>,
     {
         let mut path = Self::save_dir().path();
-        path.push(dir.as_ref());
+
+        if let Some(subdir) = subdir.into() {
+            path.push(subdir);
+        }
+
         path.push(Self::filename());
         path
     }
 
-    fn load<S>(dir: S) -> Result<Self>
+    fn load<'a, S>(subdir: S) -> Result<Self>
     where
-        S: AsRef<str>,
+        S: Into<Option<&'a str>>,
     {
-        let path = Self::save_path(dir);
+        let path = Self::save_path(subdir);
         let ftype = Self::file_type();
         ftype.deserialize_from_file(path)
     }
 
-    fn save<S>(&self, dir: S) -> Result<()>
+    fn save<'a, S>(&self, subdir: S) -> Result<()>
     where
-        S: AsRef<str>,
+        S: Into<Option<&'a str>>,
     {
-        let path = Self::save_path(dir);
+        let path = Self::save_path(subdir);
         let ftype = Self::file_type();
         ftype.serialize_to_file(self, path)
     }
