@@ -18,7 +18,7 @@ use chrono::Utc;
 use clap::clap_app;
 use clap::ArgMatches;
 use serde_derive::{Deserialize, Serialize};
-use snafu::{ensure, ResultExt};
+use snafu::{ensure, OptionExt, ResultExt};
 use std::io;
 use std::path::PathBuf;
 
@@ -34,6 +34,7 @@ fn main() {
         (@arg sync: --sync "Syncronize changes made while offline to AniList")
         (@arg oneshot: --oneshot "Play the next episode and exit")
         (@arg quiet: -q --quiet "Don't print series information")
+        (@arg rate: -r --rate +takes_value "Rate a series")
     )
     .get_matches();
 
@@ -59,6 +60,8 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
         prefetch(args, name, episodes)
     } else if args.is_present("sync") {
         sync(args, name)
+    } else if args.is_present("rate") {
+        modify_series(args, name)
     } else {
         play(args, config, name, episodes)
     }
@@ -116,6 +119,34 @@ fn sync(args: &ArgMatches, name: String) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn modify_series(args: &ArgMatches, name: String) -> Result<()> {
+    let remote: Box<RemoteService> = if args.is_present("offline") {
+        Box::new(Offline::new())
+    } else {
+        Box::new(init_anilist()?)
+    };
+
+    let season_num = args
+        .value_of("season")
+        .and_then(|num_str| num_str.parse().ok())
+        .map(|num: usize| num.saturating_sub(1))
+        .unwrap_or(0);
+
+    let season = {
+        let seasons = SeasonInfoList::load(name.as_ref())?;
+        seasons.take_unchecked(season_num)
+    };
+
+    let mut state = EntryState::load_with_id(season.id, name.as_ref())?;
+
+    if let Some(score) = args.value_of("rate") {
+        let score = remote.parse_score(score).context(err::ScoreParseFailed)?;
+        state.set_score(Some(score));
+    }
+
+    state.sync_changes_to_remote(&remote, &name)
 }
 
 fn play(args: &ArgMatches, config: Config, name: String, episodes: EpisodeList) -> Result<()> {

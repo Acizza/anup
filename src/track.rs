@@ -96,6 +96,12 @@ impl EntryState {
     }
 
     #[inline(always)]
+    pub fn set_score(&mut self, score: Option<u8>) {
+        self.entry.score = score;
+        self.needs_sync = true;
+    }
+
+    #[inline(always)]
     pub fn status(&self) -> Status {
         self.entry.status
     }
