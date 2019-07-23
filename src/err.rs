@@ -133,6 +133,9 @@ pub enum Error {
 
     #[snafu(display("{} can only be ran in online mode", command))]
     MustRunOnline { command: String },
+
+    #[snafu(display("failed to parse score"))]
+    ScoreParseFailed,
 }
 
 impl Error {
