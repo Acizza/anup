@@ -36,6 +36,7 @@ fn main() {
         (@arg quiet: -q --quiet "Don't print series information")
         (@arg rate: -r --rate +takes_value "Rate a series")
         (@arg drop: -d --drop "Drop a series")
+        (@arg hold: -h --hold "Put a series on hold")
     )
     .get_matches();
 
@@ -61,7 +62,7 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
         prefetch(args, name, episodes)
     } else if args.is_present("sync") {
         sync(args, name)
-    } else if args.is_present("rate") || args.is_present("drop") {
+    } else if args.is_present("rate") || args.is_present("drop") || args.is_present("hold") {
         modify_series(args, name)
     } else {
         play(args, config, name, episodes)
@@ -150,8 +151,11 @@ fn modify_series(args: &ArgMatches, name: String) -> Result<()> {
         state.set_score(Some(score));
     }
 
-    if args.is_present("drop") {
-        state.mark_as_dropped(&config);
+    match (args.is_present("drop"), args.is_present("hold")) {
+        (true, true) => return Err(err::Error::CantDropAndHold),
+        (true, false) => state.mark_as_dropped(&config),
+        (false, true) => state.mark_as_on_hold(),
+        (false, false) => (),
     }
 
     state.sync_changes_to_remote(&remote, &name)

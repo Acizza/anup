@@ -136,6 +136,9 @@ pub enum Error {
 
     #[snafu(display("failed to parse score"))]
     ScoreParseFailed,
+
+    #[snafu(display("cannot drop and put series on hold at the same time"))]
+    CantDropAndHold,
 }
 
 impl Error {

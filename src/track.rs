@@ -85,6 +85,11 @@ impl EntryState {
         self.needs_sync = true;
     }
 
+    pub fn mark_as_on_hold(&mut self) {
+        self.entry.status = Status::OnHold;
+        self.needs_sync = true;
+    }
+
     #[inline(always)]
     pub fn needs_sync(&self) -> bool {
         self.needs_sync
