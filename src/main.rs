@@ -140,6 +140,7 @@ fn modify_series(args: &ArgMatches, name: String) -> Result<()> {
     };
 
     let mut state = EntryState::load_with_id(season.id, name.as_ref())?;
+    state.sync_changes_from_remote(&remote, &name)?;
 
     if let Some(score) = args.value_of("rate") {
         let score = remote.parse_score(score).context(err::ScoreParseFailed)?;
