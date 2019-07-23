@@ -1,7 +1,5 @@
 [package]
-# TODO: rename to anup when rewrite is usable. It is currently named this to avoid conflicts
-# with existing configurations made with the old version.
-name = "anup-rewrite"
+name = "anup"
 version = "0.0.0"
 authors = ["Acizza <jgit@tuta.io>"]
 edition = "2018"
