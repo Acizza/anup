@@ -10,7 +10,7 @@ mutation (
     SaveMediaListEntry (
         mediaId: $mediaId,
         progress: $watched_eps,
-        score: $score,
+        scoreRaw: $score,
         status: $status,
         repeat: $times_rewatched,
         startedAt: $start_date,

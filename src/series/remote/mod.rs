@@ -51,7 +51,7 @@ impl SeriesInfo {
 pub struct SeriesEntry {
     pub id: u32,
     pub watched_eps: u32,
-    pub score: Option<f32>,
+    pub score: Option<u8>,
     pub status: Status,
     pub times_rewatched: u32,
     pub start_date: Option<chrono::NaiveDate>,

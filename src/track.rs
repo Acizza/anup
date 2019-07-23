@@ -91,7 +91,7 @@ impl EntryState {
     }
 
     #[inline(always)]
-    pub fn score(&self) -> Option<f32> {
+    pub fn score(&self) -> Option<u8> {
         self.entry.score
     }
 

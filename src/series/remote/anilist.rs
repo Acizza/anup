@@ -110,7 +110,7 @@ impl RemoteService for AniList {
             {
                 "mediaId": entry.id,
                 "watched_eps": entry.watched_eps,
-                "score": entry.score.unwrap_or(0.0),
+                "score": entry.score.unwrap_or(0),
                 "status": MediaStatus::from(entry.status),
                 "times_rewatched": entry.times_rewatched,
                 "start_date": entry.start_date.map(|date| MediaDate::from(&date)),
@@ -344,7 +344,7 @@ struct MediaNode {
 #[derive(Debug, Deserialize)]
 struct MediaEntry {
     status: MediaStatus,
-    score: f32,
+    score: u8,
     progress: u32,
     repeat: u32,
     #[serde(rename = "startedAt")]
@@ -355,7 +355,7 @@ struct MediaEntry {
 
 impl MediaEntry {
     fn into_series_entry(self, id: u32) -> SeriesEntry {
-        let score = if self.score > 0.0 {
+        let score = if self.score > 0 {
             Some(self.score)
         } else {
             None
