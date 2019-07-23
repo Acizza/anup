@@ -35,6 +35,7 @@ fn main() {
         (@arg oneshot: --oneshot "Play the next episode and exit")
         (@arg quiet: -q --quiet "Don't print series information")
         (@arg rate: -r --rate +takes_value "Rate a series")
+        (@arg drop: -d --drop "Drop a series")
     )
     .get_matches();
 
@@ -60,7 +61,7 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
         prefetch(args, name, episodes)
     } else if args.is_present("sync") {
         sync(args, name)
-    } else if args.is_present("rate") {
+    } else if args.is_present("rate") || args.is_present("drop") {
         modify_series(args, name)
     } else {
         play(args, config, name, episodes)
@@ -122,6 +123,8 @@ fn sync(args: &ArgMatches, name: String) -> Result<()> {
 }
 
 fn modify_series(args: &ArgMatches, name: String) -> Result<()> {
+    let config = load_config()?;
+
     let remote: Box<RemoteService> = if args.is_present("offline") {
         Box::new(Offline::new())
     } else {
@@ -145,6 +148,10 @@ fn modify_series(args: &ArgMatches, name: String) -> Result<()> {
     if let Some(score) = args.value_of("rate") {
         let score = remote.parse_score(score).context(err::ScoreParseFailed)?;
         state.set_score(Some(score));
+    }
+
+    if args.is_present("drop") {
+        state.mark_as_dropped(&config);
     }
 
     state.sync_changes_to_remote(&remote, &name)

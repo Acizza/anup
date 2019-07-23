@@ -74,6 +74,17 @@ impl EntryState {
         self.sync_changes_to_remote(&remote, &name)
     }
 
+    pub fn mark_as_dropped(&mut self, config: &Config) {
+        if self.end_date().is_none()
+            || (self.status() == Status::Rewatching && config.reset_dates_on_rewatch)
+        {
+            self.entry.end_date = Some(Local::today().naive_local());
+        }
+
+        self.entry.status = Status::Dropped;
+        self.needs_sync = true;
+    }
+
     #[inline(always)]
     pub fn needs_sync(&self) -> bool {
         self.needs_sync
