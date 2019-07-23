@@ -30,7 +30,8 @@ fn main() {
         (@arg season: -s --season +takes_value "The season to watch. Meant to be used when playing from a folder that has multiple seasons merged together under one name")
         (@arg matcher: -m --matcher +takes_value "The custom pattern to match episode files with")
         (@arg offline: -o --offline "Run in offline mode")
-        (@arg prefetch: --prefetch "Fetch series info from AniList. For use with offline mode")
+        (@arg prefetch: --prefetch "Fetch series info from AniList (for use with offline mode)")
+        (@arg sync: --sync "Syncronize changes made while offline to AniList")
         (@arg oneshot: --oneshot "Play the next episode and exit")
         (@arg quiet: -q --quiet "Don't print series information")
     )
@@ -56,13 +57,20 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
 
     if args.is_present("prefetch") {
         prefetch(args, name, episodes)
+    } else if args.is_present("sync") {
+        sync(args, name)
     } else {
         play(args, config, name, episodes)
     }
 }
 
 fn prefetch(args: &ArgMatches, name: String, episodes: EpisodeList) -> Result<()> {
-    ensure!(!args.is_present("offline"), err::MustRunPrefetchOnline);
+    ensure!(
+        !args.is_present("offline"),
+        err::MustRunOnline {
+            command: "prefetch"
+        }
+    );
 
     let remote: Box<RemoteService> = Box::new(init_anilist()?);
     let info = SeriesInfo::best_matching_from_remote(&remote, &episodes.title)?;
@@ -80,6 +88,33 @@ fn prefetch(args: &ArgMatches, name: String, episodes: EpisodeList) -> Result<()
     }
 
     println!("\nprefetch complete\nyou can now fully watch this series offline");
+    Ok(())
+}
+
+fn sync(args: &ArgMatches, name: String) -> Result<()> {
+    ensure!(
+        !args.is_present("offline"),
+        err::MustRunOnline { command: "sync" }
+    );
+
+    let remote: Box<RemoteService> = Box::new(init_anilist()?);
+    let seasons = SeasonInfoList::load(name.as_ref())?;
+
+    for (season_num, season) in seasons.inner().iter().enumerate() {
+        let mut state = match EntryState::load_with_id(season.id, name.as_ref()) {
+            Ok(state) => state,
+            Err(ref err) if err.is_file_nonexistant() => continue,
+            Err(err) => return Err(err),
+        };
+
+        if !state.needs_sync() {
+            continue;
+        }
+
+        println!("syncing season {}: {}", 1 + season_num, season.title);
+        state.sync_changes_to_remote(&remote, &name)?;
+    }
+
     Ok(())
 }
 

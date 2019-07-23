@@ -75,6 +75,11 @@ impl EntryState {
     }
 
     #[inline(always)]
+    pub fn needs_sync(&self) -> bool {
+        self.needs_sync
+    }
+
+    #[inline(always)]
     pub fn watched_eps(&self) -> u32 {
         self.entry.watched_eps
     }
