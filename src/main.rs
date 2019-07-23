@@ -330,10 +330,18 @@ where
     Series::from_season_list(seasons, season_num, episodes)
 }
 
+fn is_running_in_terminal() -> bool {
+    unsafe { libc::isatty(libc::STDOUT_FILENO) != 0 }
+}
+
 fn print_info<R>(remote: R, config: &Config, series: &Series, tracker: &SeriesTracker)
 where
     R: AsRef<RemoteService>,
 {
+    if !is_running_in_terminal() {
+        return;
+    }
+
     let repeater = "-".repeat(series.info.title.len() + 2);
 
     println!("+{}+\n@ {} @\n+{}+", repeater, series.info.title, repeater);
