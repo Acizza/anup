@@ -5,6 +5,7 @@ use super::detect;
 use crate::err::{self, Result};
 use serde_derive::{Deserialize, Serialize};
 use snafu::OptionExt;
+use std::borrow::Cow;
 
 pub trait RemoteService {
     fn search_info_by_name(&self, name: &str) -> Result<Vec<SeriesInfo>>;
@@ -15,6 +16,14 @@ pub trait RemoteService {
 
     fn is_offline(&self) -> bool {
         false
+    }
+
+    fn parse_score(&self, score: &str) -> Option<u8> {
+        score.parse().ok()
+    }
+
+    fn score_to_str(&self, score: u8) -> Cow<str> {
+        Cow::Owned(score.to_string())
     }
 }
 

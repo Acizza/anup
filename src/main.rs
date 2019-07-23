@@ -137,7 +137,7 @@ fn play(args: &ArgMatches, config: Config, name: String, episodes: EpisodeList) 
     tracker.begin_watching(&remote, &config)?;
 
     if !args.is_present("quiet") {
-        print_info(&config, &series, &tracker);
+        print_info(&remote, &config, &series, &tracker);
     }
 
     if args.is_present("oneshot") {
@@ -287,9 +287,10 @@ where
     Series::from_season_list(seasons, season_num, episodes)
 }
 
-fn print_info(config: &Config, series: &Series, tracker: &SeriesTracker) {
-    use std::borrow::Cow;
-
+fn print_info<R>(remote: R, config: &Config, series: &Series, tracker: &SeriesTracker)
+where
+    R: AsRef<RemoteService>,
+{
     let repeater = "-".repeat(series.info.title.len() + 2);
 
     println!("+{}+\n@ {} @\n+{}+", repeater, series.info.title, repeater);
@@ -305,8 +306,8 @@ fn print_info(config: &Config, series: &Series, tracker: &SeriesTracker) {
         tracker
             .state
             .score()
-            .map(|s| Cow::Owned(s.to_string()))
-            .unwrap_or_else(|| Cow::Borrowed("none"))
+            .map(|s| remote.as_ref().score_to_str(s))
+            .unwrap_or_else(|| "none".into())
     );
 
     println!();

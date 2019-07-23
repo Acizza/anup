@@ -1,7 +1,7 @@
 mutation (
     $mediaId: Int!,
     $watched_eps: Int!,
-    $score: Float!,
+    $score: Int!,
     $status: MediaListStatus!,
     $times_rewatched: Int!,
     $start_date: FuzzyDateInput,

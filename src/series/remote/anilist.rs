@@ -8,6 +8,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json as json;
 use serde_json::json;
 use snafu::ResultExt;
+use std::borrow::Cow;
 use std::convert::TryInto;
 use std::fmt;
 use std::result;
@@ -119,6 +120,57 @@ impl RemoteService for AniList {
         )?;
 
         Ok(())
+    }
+
+    fn parse_score(&self, score: &str) -> Option<u8> {
+        let raw_score = match self.user.options.score_format {
+            ScoreFormat::Point100 => score.parse().ok()?,
+            ScoreFormat::Point10Decimal => {
+                let score = score.parse::<f32>().ok()?;
+                (score * 10.0).round() as u8
+            }
+            ScoreFormat::Point10 => {
+                let score = score.parse::<u8>().ok()?;
+                score.saturating_mul(10)
+            }
+            ScoreFormat::Point5 => {
+                let score = score.parse::<u8>().ok()?;
+                score.saturating_mul(20)
+            }
+            ScoreFormat::Point3 => match score {
+                ":(" => 33,
+                ":|" => 50, // When set to 66, AniList interprets this as the ":)" rating
+                ":)" => 100,
+                _ => return None,
+            },
+        };
+
+        if raw_score <= 100 {
+            Some(raw_score)
+        } else {
+            None
+        }
+    }
+
+    fn score_to_str(&self, score: u8) -> Cow<str> {
+        match self.user.options.score_format {
+            ScoreFormat::Point100 => score.to_string().into(),
+            ScoreFormat::Point10 => (score / 10).to_string().into(),
+            ScoreFormat::Point10Decimal => format!("{:.1}", f32::from(score) / 10.0).into(),
+            ScoreFormat::Point5 => {
+                let num_stars = score / 20;
+                "★".repeat(num_stars as usize).into()
+            }
+            ScoreFormat::Point3 => {
+                if score <= 33 {
+                    ":(".into()
+                } else if score <= 66 {
+                    ":|".into()
+                } else {
+                    ":)".into()
+                }
+            }
+        }
     }
 }
 
