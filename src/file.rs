@@ -1,4 +1,5 @@
 use crate::err::{self, Result};
+use lazy_static::lazy_static;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use snafu::ResultExt;
@@ -18,7 +19,7 @@ where
         S: Into<Option<String>>,
         D: Into<Option<&'a str>>,
     {
-        let mut path = Self::save_dir().path();
+        let mut path = PathBuf::from(Self::save_dir().path());
 
         if let Some(subdir) = subdir.into() {
             path.push(subdir);
@@ -129,15 +130,62 @@ pub enum SaveDir {
 }
 
 impl SaveDir {
-    pub fn path(&self) -> PathBuf {
-        let mut dir = match self {
-            SaveDir::Config => dirs::config_dir().unwrap_or_else(|| PathBuf::from("~/.config/")),
-            SaveDir::LocalData => {
-                dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("~/.local/share/"))
-            }
-        };
+    pub fn path(&self) -> &Path {
+        lazy_static! {
+            static ref CONFIG_PATH: PathBuf = {
+                let mut dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("~/.config/"));
+                dir.push(env!("CARGO_PKG_NAME"));
+                dir
+            };
+            static ref LOCALDATA_PATH: PathBuf = {
+                let mut dir =
+                    dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("~/.local/share/"));
+                dir.push(env!("CARGO_PKG_NAME"));
+                dir
+            };
+        }
 
-        dir.push(env!("CARGO_PKG_NAME"));
-        dir
+        match self {
+            SaveDir::Config => CONFIG_PATH.as_ref(),
+            SaveDir::LocalData => LOCALDATA_PATH.as_ref(),
+        }
+    }
+
+    pub fn get_subdirs(&self) -> Result<Vec<String>> {
+        let path = self.path();
+        let entries = fs::read_dir(&path).context(err::FileIO { path: &path })?;
+
+        let mut paths = Vec::new();
+
+        for entry in entries {
+            let entry = entry.context(err::EntryIO { dir: &path })?;
+            let ftype = entry.file_type().context(err::EntryIO { dir: &path })?;
+
+            if !ftype.is_dir() {
+                continue;
+            }
+
+            let fname = entry.file_name().to_string_lossy().into_owned();
+            paths.push(fname);
+        }
+
+        Ok(paths)
+    }
+
+    pub fn remove_subdir<S>(&self, name: S) -> Result<()>
+    where
+        S: AsRef<str>,
+    {
+        let base_path = self.path();
+
+        let mut path = PathBuf::from(base_path);
+        path.push(name.as_ref());
+        path.canonicalize().context(err::IO)?;
+
+        if !path.starts_with(base_path) {
+            return Ok(());
+        }
+
+        fs::remove_dir_all(&path).context(err::FileIO { path })
     }
 }

@@ -38,6 +38,7 @@ fn main() {
         (@arg drop: -d --drop "Drop a series")
         (@arg hold: -h --hold "Put a series on hold")
         (@arg path: -p --path +takes_value "Manually specify a path to a series")
+        (@arg clean: -c --clean "Remove series data that is no longer needed")
     )
     .get_matches();
 
@@ -51,21 +52,15 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
     let name = get_series_name(args)?;
     let config = load_config()?;
 
-    let dir = if let Some(path) = args.value_of("path") {
-        let path = SeriesPath::new(path)?;
-        path.save(name.as_ref())?;
-        path.take()
-    } else {
-        match SeriesPath::load(name.as_ref()) {
-            Ok(path) => path.take(),
-            Err(ref err) if err.is_file_nonexistant() => {
-                detect::best_matching_folder(&name, &config.series_dir)?
-            }
-            Err(err) => return Err(err),
-        }
-    };
-
     let episodes = {
+        let dir = if let Some(path) = args.value_of("path") {
+            let path = SeriesPath::new(path)?;
+            path.save(name.as_ref())?;
+            path.take()
+        } else {
+            get_series_path(&name, &config)?
+        };
+
         let matcher = load_episode_matcher(&name, args.value_of("matcher"))?;
         EpisodeList::parse(&dir, &matcher)?
     };
@@ -76,6 +71,8 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
         sync(args, name)
     } else if args.is_present("rate") || args.is_present("drop") || args.is_present("hold") {
         modify_series(args, name)
+    } else if args.is_present("clean") {
+        remove_orphaned_data(config)
     } else {
         play(args, config, name, episodes)
     }
@@ -210,6 +207,40 @@ fn modify_series(args: &ArgMatches, name: String) -> Result<()> {
     }
 
     state.sync_changes_to_remote(&remote, &name)
+}
+
+fn remove_orphaned_data(config: Config) -> Result<()> {
+    let series_data = SaveDir::LocalData.get_subdirs()?;
+
+    for series in series_data {
+        let exists = match get_series_path(&series, &config) {
+            Ok(dir) => dir.exists(),
+            Err(err::Error::NoMatchingSeries { .. }) => false,
+            Err(err) => return Err(err),
+        };
+
+        if exists {
+            continue;
+        }
+
+        println!("{} will be purged", series);
+        SaveDir::LocalData.remove_subdir(&series)?;
+    }
+
+    Ok(())
+}
+
+fn get_series_path<S>(name: S, config: &Config) -> Result<PathBuf>
+where
+    S: AsRef<str>,
+{
+    match SeriesPath::load(name.as_ref()) {
+        Ok(path) => Ok(path.take()),
+        Err(ref err) if err.is_file_nonexistant() => {
+            detect::best_matching_folder(&name, &config.series_dir)
+        }
+        Err(err) => Err(err),
+    }
 }
 
 fn play(args: &ArgMatches, config: Config, name: String, episodes: EpisodeList) -> Result<()> {
