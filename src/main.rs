@@ -37,6 +37,7 @@ fn main() {
         (@arg rate: -r --rate +takes_value "Rate a series")
         (@arg drop: -d --drop "Drop a series")
         (@arg hold: -h --hold "Put a series on hold")
+        (@arg path: -p --path +takes_value "Manually specify a path to a series")
     )
     .get_matches();
 
@@ -50,8 +51,19 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
     let name = get_series_name(args)?;
     let config = load_config()?;
 
-    // TODO: allow overriding with argument
-    let dir = detect::best_matching_folder(&name, &config.series_dir)?;
+    let dir = if let Some(path) = args.value_of("path") {
+        let path = SeriesPath::new(path)?;
+        path.save(name.as_ref())?;
+        path.take()
+    } else {
+        match SeriesPath::load(name.as_ref()) {
+            Ok(path) => path.take(),
+            Err(ref err) if err.is_file_nonexistant() => {
+                detect::best_matching_folder(&name, &config.series_dir)?
+            }
+            Err(err) => return Err(err),
+        }
+    };
 
     let episodes = {
         let matcher = load_episode_matcher(&name, args.value_of("matcher"))?;
@@ -66,6 +78,45 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
         modify_series(args, name)
     } else {
         play(args, config, name, episodes)
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+struct SeriesPath(PathBuf);
+
+impl SeriesPath {
+    fn new<P>(path: P) -> Result<SeriesPath>
+    where
+        P: Into<PathBuf>,
+    {
+        use std::io::{Error, ErrorKind};
+
+        let path = path.into();
+
+        if !path.exists() {
+            Err(Error::from(ErrorKind::NotFound)).context(err::FileIO { path: &path })?;
+        }
+
+        Ok(SeriesPath(path))
+    }
+
+    #[inline(always)]
+    fn take(self) -> PathBuf {
+        self.0
+    }
+}
+
+impl SaveFile for SeriesPath {
+    fn filename() -> &'static str {
+        "path.mpack"
+    }
+
+    fn save_dir() -> SaveDir {
+        SaveDir::LocalData
+    }
+
+    fn file_type() -> FileType {
+        FileType::MessagePack
     }
 }
 
