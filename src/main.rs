@@ -52,21 +52,8 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
     let name = get_series_name(args)?;
     let config = load_config()?;
 
-    let episodes = {
-        let dir = if let Some(path) = args.value_of("path") {
-            let path = SeriesPath::new(path)?;
-            path.save(name.as_ref())?;
-            path.take()
-        } else {
-            get_series_path(&name, &config)?
-        };
-
-        let matcher = load_episode_matcher(&name, args.value_of("matcher"))?;
-        EpisodeList::parse(&dir, &matcher)?
-    };
-
     if args.is_present("prefetch") {
-        prefetch(args, name, episodes)
+        prefetch(args, name, config)
     } else if args.is_present("sync") {
         sync(args, name)
     } else if args.is_present("rate") || args.is_present("drop") || args.is_present("hold") {
@@ -74,8 +61,28 @@ fn run(args: &clap::ArgMatches) -> Result<()> {
     } else if args.is_present("clean") {
         remove_orphaned_data(config)
     } else {
-        play(args, config, name, episodes)
+        play(args, config, name)
     }
+}
+
+fn parse_episodes<S>(args: &ArgMatches, name: S, config: &Config) -> Result<EpisodeList>
+where
+    S: AsRef<str>,
+{
+    let name = name.as_ref();
+
+    let dir = if let Some(path) = args.value_of("path") {
+        let path = SeriesPath::new(path)?;
+        path.save(name)?;
+        path.take()
+    } else {
+        get_series_path(name, config)?
+    };
+
+    let matcher = load_episode_matcher(name, args.value_of("matcher"))?;
+    let episodes = EpisodeList::parse(dir, &matcher)?;
+
+    Ok(episodes)
 }
 
 #[derive(Deserialize, Serialize)]
@@ -117,7 +124,7 @@ impl SaveFile for SeriesPath {
     }
 }
 
-fn prefetch(args: &ArgMatches, name: String, episodes: EpisodeList) -> Result<()> {
+fn prefetch(args: &ArgMatches, name: String, config: Config) -> Result<()> {
     ensure!(
         !args.is_present("offline"),
         err::MustRunOnline {
@@ -125,6 +132,7 @@ fn prefetch(args: &ArgMatches, name: String, episodes: EpisodeList) -> Result<()
         }
     );
 
+    let episodes = parse_episodes(args, &name, &config)?;
     let remote: Box<RemoteService> = Box::new(init_anilist()?);
     let info = SeriesInfo::best_matching_from_remote(&remote, &episodes.title)?;
     let seasons = SeasonInfoList::from_info_and_remote(info, &remote, None)?;
@@ -243,7 +251,9 @@ where
     }
 }
 
-fn play(args: &ArgMatches, config: Config, name: String, episodes: EpisodeList) -> Result<()> {
+fn play(args: &ArgMatches, config: Config, name: String) -> Result<()> {
+    let episodes = parse_episodes(args, &name, &config)?;
+
     let remote: Box<RemoteService> = if args.is_present("offline") {
         Box::new(Offline::new())
     } else {
