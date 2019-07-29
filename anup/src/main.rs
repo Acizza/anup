@@ -31,7 +31,6 @@ fn main() {
         (@arg offline: -o --offline "Run in offline mode")
         (@arg prefetch: --prefetch "Fetch series info from AniList (for use with offline mode)")
         (@arg sync: --sync "Syncronize changes made while offline to AniList")
-        (@arg oneshot: --oneshot "Play the next episode and exit")
         (@arg quiet: -q --quiet "Don't print series information")
         (@arg rate: -r --rate +takes_value "Rate a series")
         (@arg drop: -d --drop "Drop a series")

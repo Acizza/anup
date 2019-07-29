@@ -134,19 +134,7 @@ fn play(args: &ArgMatches) -> Result<()> {
         crate::print_info(&remote, &config, &series, &tracker.state);
     }
 
-    if args.is_present("oneshot") {
-        play_episode(remote, &config, &series, &mut tracker)?;
-    } else {
-        play_episode_loop(remote, &config, &series, &mut tracker)?;
-    }
-
-    Ok(())
-}
-
-#[derive(PartialEq)]
-enum PlayResult {
-    Continue,
-    Finished,
+    play_episode(remote, &config, &series, &mut tracker)
 }
 
 fn play_episode<R>(
@@ -154,7 +142,7 @@ fn play_episode<R>(
     config: &Config,
     series: &Series,
     tracker: &mut SeriesTracker,
-) -> Result<PlayResult>
+) -> Result<()>
 where
     R: AsRef<RemoteService>,
 {
@@ -176,44 +164,16 @@ where
 
     if mins_watched < mins_must_watch {
         println!("did not watch episode long enough");
-        return Ok(PlayResult::Finished);
+        return Ok(());
     }
 
     tracker.episode_completed(&remote, config)?;
 
-    match tracker.state.status() {
-        Status::Completed => {
-            println!("completed!");
-            Ok(PlayResult::Finished)
-        }
-        _ => {
-            println!("{}/{} completed", ep_num, series.info.episodes);
-            Ok(PlayResult::Continue)
-        }
+    if let Status::Completed = tracker.state.status() {
+        println!("completed!");
+    } else {
+        println!("{}/{} completed", ep_num, series.info.episodes)
     }
-}
 
-fn play_episode_loop<R>(
-    remote: R,
-    config: &Config,
-    series: &Series,
-    tracker: &mut SeriesTracker,
-) -> Result<()>
-where
-    R: AsRef<RemoteService>,
-{
-    use std::thread;
-    use std::time::Duration;
-
-    loop {
-        if let PlayResult::Finished = play_episode(&remote, config, series, tracker)? {
-            break Ok(());
-        }
-
-        if config.episode.seconds_before_next > 0.0 {
-            let millis = (config.episode.seconds_before_next * 1000.0) as u64;
-            let duration = Duration::from_millis(millis);
-            thread::sleep(duration);
-        }
-    }
+    Ok(())
 }
