@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::err::Result;
 use crate::file::{FileType, SaveDir, SaveFile};
-use crate::series::remote::{RemoteService, SeriesEntry, SeriesInfo, Status};
+use anime::remote::{RemoteService, SeriesEntry, SeriesInfo, Status};
 use chrono::{Local, NaiveDate};
 use serde_derive::{Deserialize, Serialize};
 

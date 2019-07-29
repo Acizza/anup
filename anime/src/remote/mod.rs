@@ -1,10 +1,8 @@
 pub mod anilist;
 pub mod offline;
 
-use super::detect;
-use crate::err::{self, Result};
+use crate::err::Result;
 use serde_derive::{Deserialize, Serialize};
-use snafu::OptionExt;
 use std::borrow::Cow;
 
 pub trait RemoteService {
@@ -36,24 +34,6 @@ pub struct SeriesInfo {
     pub episodes: u32,
     pub episode_length: Minutes,
     pub sequel: Option<u32>,
-}
-
-impl SeriesInfo {
-    pub fn best_matching_from_remote<R, S>(remote: R, name: S) -> Result<SeriesInfo>
-    where
-        R: AsRef<RemoteService>,
-        S: AsRef<str>,
-    {
-        let remote = remote.as_ref();
-        let name = name.as_ref();
-
-        let mut results = remote.search_info_by_name(name)?;
-        let index = detect::best_matching_info(name, results.as_slice())
-            .context(err::NoMatchingSeries { name })?;
-
-        let info = results.swap_remove(index);
-        Ok(info)
-    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]

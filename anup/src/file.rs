@@ -189,3 +189,45 @@ impl SaveDir {
         fs::remove_dir_all(&path).context(err::FileIO { path })
     }
 }
+
+impl SaveFile for anime::SeasonInfoList {
+    fn filename() -> &'static str {
+        "season_info.mpack"
+    }
+
+    fn save_dir() -> SaveDir {
+        SaveDir::LocalData
+    }
+
+    fn file_type() -> FileType {
+        FileType::MessagePack
+    }
+}
+
+impl SaveFile for anime::local::EpisodeMatcher {
+    fn filename() -> &'static str {
+        "file_matcher.mpack"
+    }
+
+    fn save_dir() -> SaveDir {
+        SaveDir::LocalData
+    }
+
+    fn file_type() -> FileType {
+        FileType::MessagePack
+    }
+}
+
+impl SaveFile for anime::remote::anilist::AniListConfig {
+    fn filename() -> &'static str {
+        "anilist.toml"
+    }
+
+    fn save_dir() -> SaveDir {
+        SaveDir::Config
+    }
+
+    fn file_type() -> FileType {
+        FileType::Toml
+    }
+}

@@ -1,17 +1,18 @@
 use crate::err::{self, Result};
-use crate::series::local::Episode;
-use crate::series::remote::SeriesInfo;
+use anime::local::Episode;
+use anime::remote::SeriesInfo;
 use lazy_static::lazy_static;
 use regex::Regex;
 use snafu::{OptionExt, ResultExt};
+use std::borrow::Cow;
 use std::f32;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub fn best_matching_title<S, I>(name: S, titles: I) -> Option<usize>
+pub fn best_matching_title<'a, S, I>(name: S, titles: I) -> Option<usize>
 where
     S: Into<String>,
-    I: IntoIterator<Item = String>,
+    I: IntoIterator<Item = Cow<'a, str>>,
 {
     const MIN_CONFIDENCE: f32 = 0.6;
 
@@ -77,7 +78,7 @@ where
 
     let filenames = dirs
         .iter()
-        .map(|name| name.file_name().to_string_lossy().into_owned());
+        .map(|name| Cow::Owned(name.file_name().to_string_lossy().into_owned()));
 
     let dir_idx = best_matching_title(name, filenames).context(err::NoMatchingSeries { name })?;
     let dir = dirs.swap_remove(dir_idx);
@@ -89,10 +90,9 @@ pub fn best_matching_info<S>(name: S, items: &[SeriesInfo]) -> Option<usize>
 where
     S: Into<String>,
 {
-    // TODO: avoid cloning?
     let items = items
         .iter()
-        .map(|info| info.title.clone())
+        .map(|info| Cow::Borrowed(info.title.as_ref()))
         .collect::<Vec<_>>();
 
     best_matching_title(name, items)

@@ -1,19 +1,18 @@
 mod config;
+mod detect;
 mod err;
 mod file;
-mod process;
-mod series;
 mod track;
 
 use crate::config::Config;
 use crate::err::Result;
 use crate::file::{FileType, SaveDir, SaveFile};
-use crate::series::local::{EpisodeList, EpisodeMatcher};
-use crate::series::remote::anilist::{self, AniList, AniListConfig};
-use crate::series::remote::offline::Offline;
-use crate::series::remote::{RemoteService, SeriesInfo, Status};
-use crate::series::{detect, SeasonInfoList, Series};
 use crate::track::{EntryState, SeriesTracker};
+use anime::local::{EpisodeList, EpisodeMatcher};
+use anime::remote::anilist::{self, AniList, AniListConfig};
+use anime::remote::offline::Offline;
+use anime::remote::{RemoteService, SeriesInfo, Status};
+use anime::{SeasonInfoList, Series};
 use chrono::Utc;
 use clap::clap_app;
 use clap::ArgMatches;
@@ -134,7 +133,7 @@ fn prefetch(args: &ArgMatches, name: String, config: Config) -> Result<()> {
 
     let episodes = parse_episodes(args, &name, &config)?;
     let remote: Box<RemoteService> = Box::new(init_anilist()?);
-    let info = SeriesInfo::best_matching_from_remote(&remote, &episodes.title)?;
+    let info = best_matching_info_from_remote(&remote, &episodes.title)?;
     let seasons = SeasonInfoList::from_info_and_remote(info, &remote, None)?;
 
     seasons.save(name.as_ref())?;
@@ -245,7 +244,7 @@ where
     match SeriesPath::load(name.as_ref()) {
         Ok(path) => Ok(path.take()),
         Err(ref err) if err.is_file_nonexistant() => {
-            detect::best_matching_folder(&name, &config.series_dir)
+            Ok(detect::best_matching_folder(&name, &config.series_dir)?)
         }
         Err(err) => Err(err),
     }
@@ -315,6 +314,22 @@ impl SaveFile for SeriesName {
     }
 }
 
+pub fn best_matching_info_from_remote<R, S>(remote: R, name: S) -> Result<SeriesInfo>
+where
+    R: AsRef<RemoteService>,
+    S: AsRef<str>,
+{
+    let remote = remote.as_ref();
+    let name = name.as_ref();
+
+    let mut results = remote.search_info_by_name(name)?;
+    let index = detect::best_matching_info(name, results.as_slice())
+        .context(err::NoMatchingSeries { name })?;
+
+    let info = results.swap_remove(index);
+    Ok(info)
+}
+
 fn get_series_name(args: &clap::ArgMatches) -> Result<String> {
     if let Some(name) = args.value_of("series") {
         let sname = SeriesName::new(name);
@@ -367,7 +382,7 @@ where
 }
 
 fn init_anilist() -> Result<AniList> {
-    use crate::series::remote::anilist::AccessToken;
+    use anime::remote::anilist::AccessToken;
 
     let config = match AniListConfig::load(None) {
         Ok(config) => config,
@@ -392,7 +407,8 @@ fn init_anilist() -> Result<AniList> {
         Err(err) => return Err(err),
     };
 
-    AniList::login(config)
+    let anilist = AniList::login(config)?;
+    Ok(anilist)
 }
 
 fn get_series<R, S>(name: S, remote: R, episodes: EpisodeList, season_num: usize) -> Result<Series>
@@ -411,7 +427,7 @@ where
             seasons
         }
         Err(ref err) if err.is_file_nonexistant() => {
-            let info = SeriesInfo::best_matching_from_remote(&remote, &episodes.title)?;
+            let info = best_matching_info_from_remote(&remote, &episodes.title)?;
             let seasons = SeasonInfoList::from_info_and_remote(info, &remote, Some(season_num))?;
             seasons.save(name)?;
             seasons
@@ -419,7 +435,8 @@ where
         Err(err) => return Err(err),
     };
 
-    Series::from_season_list(seasons, season_num, episodes)
+    let series = Series::from_season_list(seasons, season_num, episodes)?;
+    Ok(series)
 }
 
 fn is_running_in_terminal() -> bool {

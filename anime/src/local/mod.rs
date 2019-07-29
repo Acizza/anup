@@ -1,5 +1,4 @@
 use crate::err::{self, Result};
-use crate::file::{FileType, SaveDir, SaveFile};
 use hashbrown::HashMap;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -8,7 +7,7 @@ use snafu::{ensure, OptionExt, ResultExt};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct EpisodeMatcher(#[serde(with = "optional_regex_parser")] Option<Regex>);
 
 impl EpisodeMatcher {
@@ -58,20 +57,6 @@ impl EpisodeMatcher {
             Some(matcher) => matcher,
             None => &DEFAULT_MATCHER,
         }
-    }
-}
-
-impl SaveFile for EpisodeMatcher {
-    fn filename() -> &'static str {
-        "file_matcher.mpack"
-    }
-
-    fn save_dir() -> SaveDir {
-        SaveDir::LocalData
-    }
-
-    fn file_type() -> FileType {
-        FileType::MessagePack
     }
 }
 

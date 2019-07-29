@@ -1,6 +1,5 @@
 use super::{RemoteService, SeriesEntry, SeriesInfo, Status};
 use crate::err::{self, Result};
-use crate::file::{FileType, SaveDir, SaveFile};
 use chrono::{Datelike, NaiveDate};
 use lazy_static::lazy_static;
 use reqwest::Client;
@@ -20,7 +19,7 @@ pub const API_URL: &str = "https://graphql.anilist.co";
 
 macro_rules! send {
     ($token:expr, $file:expr, {$($vars:tt)*}, $($resp_root:expr)=>*) => {{
-        if cfg!(debug_assertions) {
+        if cfg!(debug_assertions) && cfg!(feature = "print-requests-debug") {
             println!("DEBUG: AniList request: {}", $file);
         }
 
@@ -28,7 +27,7 @@ macro_rules! send {
             $($vars)*
         });
 
-        let query = include_str!(concat!("../../../graphql/anilist/", $file, ".gql"));
+        let query = include_str!(concat!("../../graphql/anilist/", $file, ".gql"));
 
         // We must bind the json variable mutably, but the compiler warns that it can be removed.
         #[allow(unused_mut)]
@@ -183,20 +182,6 @@ pub struct AniListConfig {
 impl AniListConfig {
     pub fn new(token: AccessToken) -> AniListConfig {
         AniListConfig { token }
-    }
-}
-
-impl SaveFile for AniListConfig {
-    fn filename() -> &'static str {
-        "anilist.toml"
-    }
-
-    fn save_dir() -> SaveDir {
-        SaveDir::Config
-    }
-
-    fn file_type() -> FileType {
-        FileType::Toml
     }
 }
 

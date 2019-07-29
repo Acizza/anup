@@ -1,7 +1,8 @@
 use super::{RemoteService, SeriesEntry, SeriesInfo};
 use crate::err::{self, Result};
 
-pub struct Offline {}
+#[derive(Default)]
+pub struct Offline;
 
 impl Offline {
     pub fn new() -> Offline {
@@ -11,11 +12,11 @@ impl Offline {
 
 impl RemoteService for Offline {
     fn search_info_by_name(&self, _: &str) -> Result<Vec<SeriesInfo>> {
-        Err(err::Error::RunWithPrefetch {})
+        Err(err::Error::NeedExistingSeriesData)
     }
 
     fn search_info_by_id(&self, _: u32) -> Result<SeriesInfo> {
-        Err(err::Error::RunWithPrefetch {})
+        Err(err::Error::NeedExistingSeriesData)
     }
 
     fn get_list_entry(&self, _: u32) -> Result<Option<SeriesEntry>> {

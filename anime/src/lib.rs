@@ -1,10 +1,11 @@
-pub mod detect;
+pub mod err;
 pub mod local;
 pub mod remote;
 
-use crate::err::{self, Result};
-use crate::file::{FileType, SaveDir, SaveFile};
-use crate::process;
+mod process;
+
+pub use err::{Error, Result};
+
 use local::EpisodeList;
 use remote::{RemoteService, SeriesInfo};
 use serde::{Deserialize, Serialize};
@@ -150,16 +151,24 @@ impl SeasonInfoList {
         Ok(any_added)
     }
 
-    pub fn len(&self) -> usize {
-        self.0.len()
+    #[inline]
+    pub fn has(&self, season: usize) -> bool {
+        season < self.0.len()
     }
 
+    #[inline]
     pub fn get(&self, season: usize) -> Option<&SeriesInfo> {
         self.0.get(season)
     }
 
-    pub fn has(&self, season: usize) -> bool {
-        season < self.0.len()
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 
     /// Consumes the SeasonInfoList and returns the info for the season specified.
@@ -167,27 +176,14 @@ impl SeasonInfoList {
     /// # Panics
     ///
     /// Panics if `season` is out of bounds.
+    #[inline]
     pub fn take_unchecked(mut self, season: usize) -> SeriesInfo {
         self.0.swap_remove(season)
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn inner(&self) -> &Vec<SeriesInfo> {
         &self.0
-    }
-}
-
-impl SaveFile for SeasonInfoList {
-    fn filename() -> &'static str {
-        "season_info.mpack"
-    }
-
-    fn save_dir() -> SaveDir {
-        SaveDir::LocalData
-    }
-
-    fn file_type() -> FileType {
-        FileType::MessagePack
     }
 }
 
