@@ -9,7 +9,6 @@ mod util;
 use crate::config::Config;
 use crate::err::Result;
 use crate::file::{FileType, SaveDir, SaveFile};
-use crate::track::EntryState;
 use anime::local::{EpisodeList, EpisodeMatcher};
 use anime::remote::{RemoteService, SeriesInfo};
 use anime::{SeasonInfoList, Series};
@@ -285,39 +284,4 @@ where
 
     let series = Series::from_season_list(seasons, season_num, episodes)?;
     Ok(series)
-}
-
-fn print_info<R>(remote: R, config: &Config, series: &Series, state: &EntryState)
-where
-    R: AsRef<RemoteService>,
-{
-    if !util::is_running_in_terminal() {
-        return;
-    }
-
-    let repeater = "-".repeat(series.info.title.len() + 2);
-
-    println!("+{}+\n@ {} @\n+{}+", repeater, series.info.title, repeater);
-    println!();
-
-    println!("watched: {}/{}", state.watched_eps(), series.info.episodes);
-    println!(
-        "score: {}",
-        state
-            .score()
-            .map(|s| remote.as_ref().score_to_str(s))
-            .unwrap_or_else(|| "none".into())
-    );
-
-    println!();
-
-    let watch_time = series.info.episode_length * (series.info.episodes - state.watched_eps());
-    let minutes_must_watch = series.info.episode_length as f32 * config.episode.pcnt_must_watch;
-
-    println!("time to finish: {}", util::hms_from_mins(watch_time as f32));
-    println!("progress time: {}", util::ms_from_mins(minutes_must_watch));
-
-    println!();
-    println!("+{}+", repeater);
-    println!();
 }
