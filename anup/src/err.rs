@@ -71,8 +71,8 @@ pub enum Error {
     #[snafu(display("series name must be specified as there is no last played series"))]
     NoSavedSeriesName,
 
-    #[snafu(display("{} can only be ran in online mode", command))]
-    MustRunOnline { command: String },
+    #[snafu(display("command can only be ran in online mode"))]
+    MustRunOnline,
 
     #[snafu(display("failed to parse score"))]
     ScoreParseFailed,

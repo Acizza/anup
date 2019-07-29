@@ -2,20 +2,20 @@ mod config;
 mod detect;
 mod err;
 mod file;
+mod interface;
 mod track;
+mod util;
 
 use crate::config::Config;
 use crate::err::Result;
 use crate::file::{FileType, SaveDir, SaveFile};
-use crate::track::{EntryState, SeriesTracker};
+use crate::track::EntryState;
 use anime::local::{EpisodeList, EpisodeMatcher};
-use anime::remote::anilist::{self, AniList, AniListConfig};
-use anime::remote::offline::Offline;
-use anime::remote::{RemoteService, SeriesInfo, Status};
+use anime::remote::{RemoteService, SeriesInfo};
 use anime::{SeasonInfoList, Series};
-use chrono::Utc;
 use clap::clap_app;
 use clap::ArgMatches;
+use interface::cli;
 use serde_derive::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
 use std::io;
@@ -41,47 +41,56 @@ fn main() {
     )
     .get_matches();
 
-    if let Err(err) = run(&args) {
+    if let Err(err) = cli::run(&args) {
         err::display_error(err);
         std::process::exit(1);
     }
 }
 
-fn run(args: &clap::ArgMatches) -> Result<()> {
-    let name = get_series_name(args)?;
-    let config = load_config()?;
+#[derive(Deserialize, Serialize)]
+struct LastWatched(String);
 
-    if args.is_present("prefetch") {
-        prefetch(args, name, config)
-    } else if args.is_present("sync") {
-        sync(args, name)
-    } else if args.is_present("rate") || args.is_present("drop") || args.is_present("hold") {
-        modify_series(args, name)
-    } else if args.is_present("clean") {
-        remove_orphaned_data(config)
-    } else {
-        play(args, config, name)
+impl LastWatched {
+    fn new<S>(name: S) -> LastWatched
+    where
+        S: Into<String>,
+    {
+        LastWatched(name.into())
+    }
+
+    #[inline(always)]
+    fn take(self) -> String {
+        self.0
     }
 }
 
-fn parse_episodes<S>(args: &ArgMatches, name: S, config: &Config) -> Result<EpisodeList>
-where
-    S: AsRef<str>,
-{
-    let name = name.as_ref();
+impl SaveFile for LastWatched {
+    fn filename() -> &'static str {
+        ".last_watched"
+    }
 
-    let dir = if let Some(path) = args.value_of("path") {
-        let path = SeriesPath::new(path)?;
-        path.save(name)?;
-        path.take()
-    } else {
-        get_series_path(name, config)?
-    };
+    fn save_dir() -> SaveDir {
+        SaveDir::LocalData
+    }
 
-    let matcher = load_episode_matcher(name, args.value_of("matcher"))?;
-    let episodes = EpisodeList::parse(dir, &matcher)?;
+    fn file_type() -> FileType {
+        FileType::MessagePack
+    }
+}
 
-    Ok(episodes)
+fn get_series_name(args: &clap::ArgMatches) -> Result<String> {
+    if let Some(name) = args.value_of("series") {
+        let name = LastWatched::new(name);
+        name.save(None)?;
+
+        return Ok(name.take());
+    }
+
+    match LastWatched::load(None) {
+        Ok(sname) => Ok(sname.take()),
+        Err(ref err) if err.is_file_nonexistant() => Err(err::Error::NoSavedSeriesName),
+        Err(err) => Err(err),
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -123,229 +132,7 @@ impl SaveFile for SeriesPath {
     }
 }
 
-fn prefetch(args: &ArgMatches, name: String, config: Config) -> Result<()> {
-    ensure!(
-        !args.is_present("offline"),
-        err::MustRunOnline {
-            command: "prefetch"
-        }
-    );
-
-    let episodes = parse_episodes(args, &name, &config)?;
-    let remote: Box<RemoteService> = Box::new(init_anilist()?);
-    let info = best_matching_info_from_remote(&remote, &episodes.title)?;
-    let seasons = SeasonInfoList::from_info_and_remote(info, &remote, None)?;
-
-    seasons.save(name.as_ref())?;
-
-    for (season_num, season) in seasons.inner().iter().enumerate() {
-        if let Some(entry) = remote.get_list_entry(season.id)? {
-            let state = EntryState::new(entry);
-            state.save_with_id(season.id, name.as_ref())?;
-        }
-
-        println!("season {} -> {}", 1 + season_num, season.title);
-    }
-
-    println!("\nprefetch complete\nyou can now fully watch this series offline");
-    Ok(())
-}
-
-fn sync(args: &ArgMatches, name: String) -> Result<()> {
-    ensure!(
-        !args.is_present("offline"),
-        err::MustRunOnline { command: "sync" }
-    );
-
-    let remote: Box<RemoteService> = Box::new(init_anilist()?);
-    let seasons = SeasonInfoList::load(name.as_ref())?;
-
-    for (season_num, season) in seasons.inner().iter().enumerate() {
-        let mut state = match EntryState::load_with_id(season.id, name.as_ref()) {
-            Ok(state) => state,
-            Err(ref err) if err.is_file_nonexistant() => continue,
-            Err(err) => return Err(err),
-        };
-
-        if !state.needs_sync() {
-            continue;
-        }
-
-        println!("syncing season {}: {}", 1 + season_num, season.title);
-        state.sync_changes_to_remote(&remote, &name)?;
-    }
-
-    Ok(())
-}
-
-fn modify_series(args: &ArgMatches, name: String) -> Result<()> {
-    let config = load_config()?;
-
-    let remote: Box<RemoteService> = if args.is_present("offline") {
-        Box::new(Offline::new())
-    } else {
-        Box::new(init_anilist()?)
-    };
-
-    let season_num = args
-        .value_of("season")
-        .and_then(|num_str| num_str.parse().ok())
-        .map(|num: usize| num.saturating_sub(1))
-        .unwrap_or(0);
-
-    let season = {
-        let seasons = SeasonInfoList::load(name.as_ref())?;
-        seasons.take_unchecked(season_num)
-    };
-
-    let mut state = EntryState::load_with_id(season.id, name.as_ref())?;
-    state.sync_changes_from_remote(&remote, &name)?;
-
-    if let Some(score) = args.value_of("rate") {
-        let score = remote.parse_score(score).context(err::ScoreParseFailed)?;
-        state.set_score(Some(score));
-    }
-
-    match (args.is_present("drop"), args.is_present("hold")) {
-        (true, true) => return Err(err::Error::CantDropAndHold),
-        (true, false) => state.mark_as_dropped(&config),
-        (false, true) => state.mark_as_on_hold(),
-        (false, false) => (),
-    }
-
-    state.sync_changes_to_remote(&remote, &name)
-}
-
-fn remove_orphaned_data(config: Config) -> Result<()> {
-    let series_data = SaveDir::LocalData.get_subdirs()?;
-
-    for series in series_data {
-        let exists = match get_series_path(&series, &config) {
-            Ok(dir) => dir.exists(),
-            Err(err::Error::NoMatchingSeries { .. }) => false,
-            Err(err) => return Err(err),
-        };
-
-        if exists {
-            continue;
-        }
-
-        println!("{} will be purged", series);
-        SaveDir::LocalData.remove_subdir(&series)?;
-    }
-
-    Ok(())
-}
-
-fn get_series_path<S>(name: S, config: &Config) -> Result<PathBuf>
-where
-    S: AsRef<str>,
-{
-    match SeriesPath::load(name.as_ref()) {
-        Ok(path) => Ok(path.take()),
-        Err(ref err) if err.is_file_nonexistant() => {
-            Ok(detect::best_matching_folder(&name, &config.series_dir)?)
-        }
-        Err(err) => Err(err),
-    }
-}
-
-fn play(args: &ArgMatches, config: Config, name: String) -> Result<()> {
-    let episodes = parse_episodes(args, &name, &config)?;
-
-    let remote: Box<RemoteService> = if args.is_present("offline") {
-        Box::new(Offline::new())
-    } else {
-        Box::new(init_anilist()?)
-    };
-
-    let season_num = args
-        .value_of("season")
-        .and_then(|num_str| num_str.parse().ok())
-        .map(|num: usize| num.saturating_sub(1))
-        .unwrap_or(0);
-
-    let series = get_series(&name, &remote, episodes, season_num)?;
-
-    let mut tracker = SeriesTracker::init(&remote, &series.info, &name)?;
-    tracker.begin_watching(&remote, &config)?;
-
-    if !args.is_present("quiet") {
-        print_info(&remote, &config, &series, &tracker);
-    }
-
-    if args.is_present("oneshot") {
-        play_episode(remote, &config, &series, &mut tracker)?;
-    } else {
-        play_episode_loop(remote, &config, &series, &mut tracker)?;
-    }
-
-    Ok(())
-}
-
-#[derive(Deserialize, Serialize)]
-struct SeriesName(String);
-
-impl SeriesName {
-    fn new<S>(name: S) -> SeriesName
-    where
-        S: Into<String>,
-    {
-        SeriesName(name.into())
-    }
-
-    #[inline(always)]
-    fn take(self) -> String {
-        self.0
-    }
-}
-
-impl SaveFile for SeriesName {
-    fn filename() -> &'static str {
-        ".last_watched"
-    }
-
-    fn save_dir() -> SaveDir {
-        SaveDir::LocalData
-    }
-
-    fn file_type() -> FileType {
-        FileType::MessagePack
-    }
-}
-
-pub fn best_matching_info_from_remote<R, S>(remote: R, name: S) -> Result<SeriesInfo>
-where
-    R: AsRef<RemoteService>,
-    S: AsRef<str>,
-{
-    let remote = remote.as_ref();
-    let name = name.as_ref();
-
-    let mut results = remote.search_info_by_name(name)?;
-    let index = detect::best_matching_info(name, results.as_slice())
-        .context(err::NoMatchingSeries { name })?;
-
-    let info = results.swap_remove(index);
-    Ok(info)
-}
-
-fn get_series_name(args: &clap::ArgMatches) -> Result<String> {
-    if let Some(name) = args.value_of("series") {
-        let sname = SeriesName::new(name);
-        sname.save(None)?;
-
-        return Ok(sname.take());
-    }
-
-    match SeriesName::load(None) {
-        Ok(sname) => Ok(sname.take()),
-        Err(ref err) if err.is_file_nonexistant() => Err(err::Error::NoSavedSeriesName),
-        Err(err) => Err(err),
-    }
-}
-
-fn load_config() -> Result<Config> {
+fn get_config() -> Result<Config> {
     match Config::load(None) {
         Ok(config) => Ok(config),
         Err(ref err) if err.is_file_nonexistant() => {
@@ -361,7 +148,7 @@ fn load_config() -> Result<Config> {
     }
 }
 
-fn load_episode_matcher<S>(name: S, matcher: Option<&str>) -> Result<EpisodeMatcher>
+fn get_episode_matcher<S>(name: S, matcher: Option<&str>) -> Result<EpisodeMatcher>
 where
     S: AsRef<str>,
 {
@@ -381,34 +168,96 @@ where
     }
 }
 
-fn init_anilist() -> Result<AniList> {
-    use anime::remote::anilist::AccessToken;
+fn get_episodes<S>(args: &ArgMatches, name: S, config: &Config) -> Result<EpisodeList>
+where
+    S: AsRef<str>,
+{
+    let name = name.as_ref();
 
-    let config = match AniListConfig::load(None) {
-        Ok(config) => config,
-        Err(ref err) if err.is_file_nonexistant() => {
-            println!(
-                "need AniList login token\ngo to {}\n\npaste your token:",
-                anilist::LOGIN_URL
-            );
-
-            let token = {
-                let mut buffer = String::new();
-                io::stdin().read_line(&mut buffer).context(err::IO)?;
-                let buffer = buffer.trim_end();
-
-                AccessToken::new(buffer)
-            };
-
-            let config = AniListConfig::new(token);
-            config.save(None)?;
-            config
-        }
-        Err(err) => return Err(err),
+    let dir = if let Some(path) = args.value_of("path") {
+        let path = SeriesPath::new(path)?;
+        path.save(name)?;
+        path.take()
+    } else {
+        get_series_path(name, config)?
     };
 
-    let anilist = AniList::login(config)?;
-    Ok(anilist)
+    let matcher = get_episode_matcher(name, args.value_of("matcher"))?;
+    let episodes = EpisodeList::parse(dir, &matcher)?;
+
+    Ok(episodes)
+}
+
+fn get_series_path<S>(name: S, config: &Config) -> Result<PathBuf>
+where
+    S: AsRef<str>,
+{
+    match SeriesPath::load(name.as_ref()) {
+        Ok(path) => Ok(path.take()),
+        Err(ref err) if err.is_file_nonexistant() => {
+            Ok(detect::best_matching_folder(&name, &config.series_dir)?)
+        }
+        Err(err) => Err(err),
+    }
+}
+
+fn get_remote(args: &ArgMatches, can_use_offline: bool) -> Result<Box<RemoteService>> {
+    use anime::remote::anilist::{self, AccessToken, AniList, AniListConfig};
+    use anime::remote::offline::Offline;
+
+    if args.is_present("offline") {
+        ensure!(can_use_offline, err::MustRunOnline);
+        Ok(Box::new(Offline::new()))
+    } else {
+        let config = match AniListConfig::load(None) {
+            Ok(config) => config,
+            Err(ref err) if err.is_file_nonexistant() => {
+                println!(
+                    "need AniList login token\ngo to {}\n\npaste your token:",
+                    anilist::LOGIN_URL
+                );
+
+                let token = {
+                    let mut buffer = String::new();
+                    io::stdin().read_line(&mut buffer).context(err::IO)?;
+                    let buffer = buffer.trim_end();
+
+                    AccessToken::new(buffer)
+                };
+
+                let config = AniListConfig::new(token);
+                config.save(None)?;
+                config
+            }
+            Err(err) => return Err(err),
+        };
+
+        let anilist = AniList::login(config)?;
+        Ok(Box::new(anilist))
+    }
+}
+
+fn get_best_info_from_remote<R, S>(remote: R, name: S) -> Result<SeriesInfo>
+where
+    R: AsRef<RemoteService>,
+    S: AsRef<str>,
+{
+    let remote = remote.as_ref();
+    let name = name.as_ref();
+
+    let mut results = remote.search_info_by_name(name)?;
+    let index = detect::best_matching_info(name, results.as_slice())
+        .context(err::NoMatchingSeries { name })?;
+
+    let info = results.swap_remove(index);
+    Ok(info)
+}
+
+fn get_season_num(args: &ArgMatches) -> usize {
+    args.value_of("season")
+        .and_then(|num_str| num_str.parse().ok())
+        .map(|num: usize| num.saturating_sub(1))
+        .unwrap_or(0)
 }
 
 fn get_series<R, S>(name: S, remote: R, episodes: EpisodeList, season_num: usize) -> Result<Series>
@@ -427,7 +276,7 @@ where
             seasons
         }
         Err(ref err) if err.is_file_nonexistant() => {
-            let info = best_matching_info_from_remote(&remote, &episodes.title)?;
+            let info = get_best_info_from_remote(&remote, &episodes.title)?;
             let seasons = SeasonInfoList::from_info_and_remote(info, &remote, Some(season_num))?;
             seasons.save(name)?;
             seasons
@@ -439,15 +288,11 @@ where
     Ok(series)
 }
 
-fn is_running_in_terminal() -> bool {
-    unsafe { libc::isatty(libc::STDOUT_FILENO) != 0 }
-}
-
-fn print_info<R>(remote: R, config: &Config, series: &Series, tracker: &SeriesTracker)
+fn print_info<R>(remote: R, config: &Config, series: &Series, state: &EntryState)
 where
     R: AsRef<RemoteService>,
 {
-    if !is_running_in_terminal() {
+    if !util::is_running_in_terminal() {
         return;
     }
 
@@ -456,15 +301,10 @@ where
     println!("+{}+\n@ {} @\n+{}+", repeater, series.info.title, repeater);
     println!();
 
-    println!(
-        "watched: {}/{}",
-        tracker.state.watched_eps(),
-        series.info.episodes
-    );
+    println!("watched: {}/{}", state.watched_eps(), series.info.episodes);
     println!(
         "score: {}",
-        tracker
-            .state
+        state
             .score()
             .map(|s| remote.as_ref().score_to_str(s))
             .unwrap_or_else(|| "none".into())
@@ -472,102 +312,13 @@ where
 
     println!();
 
-    let watch_time =
-        series.info.episode_length * (series.info.episodes - tracker.state.watched_eps());
+    let watch_time = series.info.episode_length * (series.info.episodes - state.watched_eps());
     let minutes_must_watch = series.info.episode_length as f32 * config.episode.pcnt_must_watch;
 
-    println!("time to finish: {}", hms_from_mins(watch_time as f32));
-    println!("progress time: {}", ms_from_mins(minutes_must_watch as f32));
+    println!("time to finish: {}", util::hms_from_mins(watch_time as f32));
+    println!("progress time: {}", util::ms_from_mins(minutes_must_watch));
 
     println!();
     println!("+{}+", repeater);
     println!();
-}
-
-fn ms_from_mins(mins: f32) -> String {
-    let m = mins.floor() as u32;
-    let s = (mins * 60.0 % 60.0).floor() as u32;
-
-    format!("{:02}:{:02}", m, s)
-}
-
-fn hms_from_mins(mins: f32) -> String {
-    let h = (mins / 60.0).floor() as u32;
-    let m = (mins % 60.0).floor() as u32;
-    let s = m * 60 % 60;
-
-    format!("{:02}:{:02}:{:02}", h, m, s)
-}
-
-#[derive(PartialEq)]
-enum PlayResult {
-    Continue,
-    Finished,
-}
-
-fn play_episode<R>(
-    remote: R,
-    config: &Config,
-    series: &Series,
-    tracker: &mut SeriesTracker,
-) -> Result<PlayResult>
-where
-    R: AsRef<RemoteService>,
-{
-    let ep_num = tracker.state.watched_eps() + 1;
-    let start_time = Utc::now();
-
-    series.play_episode(ep_num)?;
-
-    let end_time = Utc::now();
-
-    let mins_watched = {
-        let watch_time = end_time - start_time;
-        watch_time.num_seconds() as f32 / 60.0
-    };
-
-    let mins_must_watch = series.info.episode_length as f32 * config.episode.pcnt_must_watch;
-
-    if mins_watched < mins_must_watch {
-        println!("did not watch episode long enough");
-        return Ok(PlayResult::Finished);
-    }
-
-    tracker.episode_completed(&remote, config)?;
-
-    match tracker.state.status() {
-        Status::Completed => {
-            println!("completed!");
-            Ok(PlayResult::Finished)
-        }
-        _ => {
-            println!("{}/{} completed", ep_num, series.info.episodes);
-            Ok(PlayResult::Continue)
-        }
-    }
-}
-
-fn play_episode_loop<R>(
-    remote: R,
-    config: &Config,
-    series: &Series,
-    tracker: &mut SeriesTracker,
-) -> Result<()>
-where
-    R: AsRef<RemoteService>,
-{
-    use std::thread;
-    use std::time::Duration;
-
-    loop {
-        if let PlayResult::Finished = play_episode(&remote, config, series, tracker)? {
-            break Ok(());
-        }
-
-        if config.episode.seconds_before_next > 0.0 {
-            let millis = (config.episode.seconds_before_next * 1000.0) as u64;
-            let duration = Duration::from_millis(millis);
-            thread::sleep(duration);
-        }
-    }
 }
