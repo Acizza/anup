@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
+use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -184,7 +185,7 @@ impl Episode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct EpisodeList {
     pub title: String,
     pub paths: HashMap<u32, PathBuf>,
@@ -242,5 +243,17 @@ impl EpisodeList {
 
     pub fn get(&self, episode: u32) -> Option<&PathBuf> {
         self.paths.get(&episode)
+    }
+}
+
+impl<'a> Into<Cow<'a, EpisodeList>> for EpisodeList {
+    fn into(self) -> Cow<'a, EpisodeList> {
+        Cow::Owned(self)
+    }
+}
+
+impl<'a> Into<Cow<'a, EpisodeList>> for &'a EpisodeList {
+    fn into(self) -> Cow<'a, EpisodeList> {
+        Cow::Borrowed(self)
     }
 }
