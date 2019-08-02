@@ -37,6 +37,18 @@ pub struct SeriesInfo {
     pub sequel: Option<u32>,
 }
 
+impl<'a> Into<Cow<'a, SeriesInfo>> for SeriesInfo {
+    fn into(self) -> Cow<'a, SeriesInfo> {
+        Cow::Owned(self)
+    }
+}
+
+impl<'a> Into<Cow<'a, SeriesInfo>> for &'a SeriesInfo {
+    fn into(self) -> Cow<'a, SeriesInfo> {
+        Cow::Borrowed(self)
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SeriesEntry {
     pub id: u32,
