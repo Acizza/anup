@@ -4,6 +4,7 @@ pub mod offline;
 use crate::err::Result;
 use serde_derive::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::fmt;
 
 pub trait RemoteService {
     fn search_info_by_name(&self, name: &str) -> Result<Vec<SeriesInfo>>;
@@ -74,5 +75,20 @@ pub enum Status {
 impl Default for Status {
     fn default() -> Status {
         Status::PlanToWatch
+    }
+}
+
+impl fmt::Display for Status {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            Status::Watching => "Watching",
+            Status::Completed => "Completed",
+            Status::OnHold => "On Hold",
+            Status::Dropped => "Dropped",
+            Status::PlanToWatch => "Plan To Watch",
+            Status::Rewatching => "Rewatching",
+        };
+
+        write!(f, "{}", value)
     }
 }
