@@ -2,30 +2,32 @@ pub mod err;
 pub mod local;
 pub mod remote;
 
-mod process;
-
 pub use err::{Error, Result};
 
 use local::EpisodeList;
 use remote::{RemoteService, SeriesInfo};
 use serde::{Deserialize, Serialize};
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::ensure;
+use std::borrow::Cow;
 use std::ops::Index;
 use std::path::PathBuf;
 
 #[derive(Debug)]
-pub struct Series {
+pub struct Series<'a> {
     pub info: SeriesInfo,
-    pub episodes: EpisodeList,
+    pub episodes: Cow<'a, EpisodeList>,
     pub episode_offset: u32,
 }
 
-impl Series {
-    pub fn from_season_list(
-        seasons: SeasonInfoList,
+impl<'a> Series<'a> {
+    pub fn from_season_list<E>(
+        seasons: &SeasonInfoList,
         season_num: usize,
-        episodes: EpisodeList,
-    ) -> Result<Series> {
+        episodes: E,
+    ) -> Result<Series<'a>>
+    where
+        E: Into<Cow<'a, EpisodeList>>,
+    {
         ensure!(
             seasons.has(season_num),
             err::NoSeason {
@@ -39,11 +41,11 @@ impl Series {
             episode_offset += seasons[i].episodes;
         }
 
-        let info = seasons.take_unchecked(season_num);
+        let info = seasons[season_num].clone();
 
         Ok(Series {
             info,
-            episodes,
+            episodes: episodes.into(),
             episode_offset,
         })
     }
@@ -60,41 +62,19 @@ impl Series {
         let ep_num = self.abs_episode_number(episode);
         self.episodes.get(ep_num)
     }
-
-    pub fn play_episode(&self, episode: u32) -> Result<()> {
-        let path = self
-            .get_episode(episode)
-            .context(err::EpisodeNotFound { episode })?;
-
-        let status =
-            process::open_with_default(path).context(err::FailedToPlayEpisode { episode })?;
-
-        ensure!(status.success(), err::AbnormalPlayerExit { path });
-        Ok(())
-    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SeasonInfoList(Vec<SeriesInfo>);
 
 impl SeasonInfoList {
-    fn season_entries_from_info<R>(
-        remote: R,
-        info: &SeriesInfo,
-        max: Option<usize>,
-    ) -> Result<Vec<SeriesInfo>>
+    fn season_entries_from_info<R>(remote: R, info: &SeriesInfo) -> Result<Vec<SeriesInfo>>
     where
         R: AsRef<RemoteService>,
     {
         // Since this may call a remote API, we should have our own internal rate limit
         // so we can't accidently spam someone's server *too* much
-        const ABSOLUTE_MAX: usize = 10;
-
-        let max = max.map(|max| max.min(ABSOLUTE_MAX)).unwrap_or(ABSOLUTE_MAX);
-
-        if max < 1 {
-            return Ok(Vec::new());
-        }
+        const MAX_REQUESTS: usize = 10;
 
         let remote = remote.as_ref();
 
@@ -109,7 +89,7 @@ impl SeasonInfoList {
 
             index += 1;
 
-            if index >= max {
+            if index >= MAX_REQUESTS {
                 break;
             }
         }
@@ -117,15 +97,11 @@ impl SeasonInfoList {
         Ok(entries)
     }
 
-    pub fn from_info_and_remote<R>(
-        info: SeriesInfo,
-        remote: R,
-        max: Option<usize>,
-    ) -> Result<SeasonInfoList>
+    pub fn from_info_and_remote<R>(info: SeriesInfo, remote: R) -> Result<SeasonInfoList>
     where
         R: AsRef<RemoteService>,
     {
-        let entries = SeasonInfoList::season_entries_from_info(remote, &info, max)?;
+        let entries = SeasonInfoList::season_entries_from_info(remote, &info)?;
 
         let mut all = Vec::with_capacity(1 + entries.len());
         all.push(info);
@@ -134,7 +110,7 @@ impl SeasonInfoList {
         Ok(SeasonInfoList(all))
     }
 
-    pub fn add_from_remote_upto<R>(&mut self, remote: R, upto: usize) -> Result<bool>
+    pub fn add_from_remote<R>(&mut self, remote: R) -> Result<bool>
     where
         R: AsRef<RemoteService>,
     {
@@ -143,7 +119,7 @@ impl SeasonInfoList {
             None => return Ok(false),
         };
 
-        let entries = SeasonInfoList::season_entries_from_info(remote, &info, Some(upto))?;
+        let entries = SeasonInfoList::season_entries_from_info(remote, &info)?;
         let any_added = !entries.is_empty();
 
         self.0.extend(entries);

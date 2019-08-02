@@ -1,8 +1,8 @@
 use std::ffi::OsString;
 use std::io;
-use std::process::{Command, ExitStatus};
+use std::process::{Child, Command};
 
-pub fn open_with_default<S>(arg: S) -> io::Result<ExitStatus>
+pub fn open_with_default<S>(arg: S) -> io::Result<Child>
 where
     S: Into<OsString>,
 {
@@ -16,5 +16,5 @@ where
 
     let mut cmd = Command::new(LAUNCH_PROGRAM);
     cmd.arg(arg.into());
-    cmd.output().map(|output| output.status)
+    cmd.spawn()
 }

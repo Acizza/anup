@@ -73,15 +73,6 @@ pub enum Error {
     #[snafu(display("no episodes found at path: {:?}", path))]
     NoEpisodes { path: path::PathBuf },
 
-    #[snafu(display("episode {} not found", episode))]
-    EpisodeNotFound { episode: u32 },
-
-    #[snafu(display("failed to play episode {}: {}", episode, source))]
-    FailedToPlayEpisode { episode: u32, source: io::Error },
-
-    #[snafu(display("video player didn't exit normally while playing: {:?}", path))]
-    AbnormalPlayerExit { path: path::PathBuf },
-
     #[snafu(display("need existing series info to run in offline mode"))]
     NeedExistingSeriesData,
 

@@ -7,7 +7,7 @@ use anime::remote::RemoteService;
 use anime::{SeasonInfoList, Series};
 use chrono::Utc;
 use clap::ArgMatches;
-use snafu::OptionExt;
+use snafu::{ensure, OptionExt, ResultExt};
 
 pub fn run(args: &ArgMatches) -> Result<()> {
     if args.is_present("prefetch") {
@@ -30,7 +30,7 @@ fn prefetch(args: &ArgMatches) -> Result<()> {
     let remote = crate::get_remote(args, false)?;
     let info = crate::get_best_info_from_remote(&remote, &episodes.title)?;
 
-    let seasons = SeasonInfoList::from_info_and_remote(info, &remote, None)?;
+    let seasons = SeasonInfoList::from_info_and_remote(info, &remote)?;
     seasons.save(name.as_ref())?;
 
     for (season_num, season) in seasons.inner().iter().enumerate() {
@@ -126,9 +126,10 @@ fn play(args: &ArgMatches) -> Result<()> {
     let episodes = crate::get_episodes(args, &name, &config)?;
     let remote = crate::get_remote(args, true)?;
     let season_num = crate::get_season_num(args);
-    let series = crate::get_series(&name, &remote, episodes, season_num)?;
+    let seasons = crate::get_season_list(&name, &remote, &episodes)?;
+    let series = Series::from_season_list(&seasons, season_num, episodes)?;
 
-    let mut tracker = SeriesTracker::init(&remote, &series.info, &name)?;
+    let mut tracker = SeriesTracker::init(&series.info, &name)?;
     tracker.begin_watching(&remote, &config)?;
 
     if !args.is_present("quiet") {
@@ -152,7 +153,15 @@ where
     let ep_num = tracker.state.watched_eps() + 1;
     let start_time = Utc::now();
 
-    series.play_episode(ep_num)?;
+    let episode = series
+        .get_episode(ep_num)
+        .context(err::EpisodeNotFound { episode: ep_num })?;
+
+    let status = crate::process::open_with_default(episode)
+        .and_then(|mut child| child.wait())
+        .context(err::FailedToPlayEpisode { episode: ep_num })?;
+
+    ensure!(status.success(), err::AbnormalPlayerExit);
 
     let end_time = Utc::now();
 
@@ -206,7 +215,7 @@ where
     let watch_time = series.info.episode_length * (series.info.episodes - state.watched_eps());
     let minutes_must_watch = series.info.episode_length as f32 * config.episode.pcnt_must_watch;
 
-    println!("time to finish: {}", util::hms_from_mins(watch_time as f32));
+    println!("time to finish: {}", util::hm_from_mins(watch_time as f32));
     println!("progress time: {}", util::ms_from_mins(minutes_must_watch));
 
     println!();

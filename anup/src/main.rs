@@ -3,6 +3,7 @@ mod detect;
 mod err;
 mod file;
 mod interface;
+mod process;
 mod track;
 mod util;
 
@@ -11,10 +12,10 @@ use crate::err::Result;
 use crate::file::{FileType, SaveDir, SaveFile};
 use anime::local::{EpisodeList, EpisodeMatcher};
 use anime::remote::{RemoteService, SeriesInfo};
-use anime::{SeasonInfoList, Series};
+use anime::SeasonInfoList;
 use clap::clap_app;
 use clap::ArgMatches;
-use interface::cli;
+use interface::{cli, tui};
 use serde_derive::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
 use std::io;
@@ -36,12 +37,21 @@ fn main() {
         (@arg hold: -h --hold "Put a series on hold")
         (@arg path: -p --path +takes_value "Manually specify a path to a series")
         (@arg clean: -c --clean "Remove series data that is no longer needed")
+        (@arg interactive: -i --interactive "Launch the terminal user interface")
     )
     .get_matches();
 
-    if let Err(err) = cli::run(&args) {
+    if let Err(err) = run(&args) {
         err::display_error(err);
         std::process::exit(1);
+    }
+}
+
+fn run(args: &ArgMatches) -> Result<()> {
+    if args.is_present("interactive") {
+        tui::run(args)
+    } else {
+        cli::run(args)
     }
 }
 
@@ -210,6 +220,8 @@ fn get_remote(args: &ArgMatches, can_use_offline: bool) -> Result<Box<RemoteServ
         let config = match AniListConfig::load(None) {
             Ok(config) => config,
             Err(ref err) if err.is_file_nonexistant() => {
+                ensure!(!args.is_present("interactive"), err::GetAniListTokenFromCLI);
+
                 println!(
                     "need AniList login token\ngo to {}\n\npaste your token:",
                     anilist::LOGIN_URL
@@ -258,30 +270,27 @@ fn get_season_num(args: &ArgMatches) -> usize {
         .unwrap_or(0)
 }
 
-fn get_series<R, S>(name: S, remote: R, episodes: EpisodeList, season_num: usize) -> Result<Series>
+fn get_season_list<R, S>(name: S, remote: R, episodes: &EpisodeList) -> Result<SeasonInfoList>
 where
     R: AsRef<RemoteService>,
     S: AsRef<str>,
 {
     let name = name.as_ref();
 
-    let seasons = match SeasonInfoList::load(name) {
+    match SeasonInfoList::load(name) {
         Ok(mut seasons) => {
-            if seasons.add_from_remote_upto(&remote, season_num)? {
+            if seasons.add_from_remote(&remote)? {
                 seasons.save(name)?;
             }
 
-            seasons
+            Ok(seasons)
         }
         Err(ref err) if err.is_file_nonexistant() => {
             let info = get_best_info_from_remote(&remote, &episodes.title)?;
-            let seasons = SeasonInfoList::from_info_and_remote(info, &remote, Some(season_num))?;
+            let seasons = SeasonInfoList::from_info_and_remote(info, &remote)?;
             seasons.save(name)?;
-            seasons
+            Ok(seasons)
         }
-        Err(err) => return Err(err),
-    };
-
-    let series = Series::from_season_list(seasons, season_num, episodes)?;
-    Ok(series)
+        Err(err) => Err(err),
+    }
 }

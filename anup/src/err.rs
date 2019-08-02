@@ -2,6 +2,7 @@ use snafu::{Backtrace, ErrorCompat, Snafu};
 use std::io;
 use std::path;
 use std::result;
+use std::sync::mpsc;
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -62,6 +63,12 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display("mpsc channel receive error: {}", source))]
+    MPSCRecv {
+        source: mpsc::RecvError,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("no series found with name similar to {}", name))]
     NoMatchingSeries { name: String },
 
@@ -79,6 +86,18 @@ pub enum Error {
 
     #[snafu(display("cannot drop and put series on hold at the same time"))]
     CantDropAndHold,
+
+    #[snafu(display("failed to play episode {}: {}", episode, source))]
+    FailedToPlayEpisode { episode: u32, source: io::Error },
+
+    #[snafu(display("video player didn't exit normally"))]
+    AbnormalPlayerExit,
+
+    #[snafu(display("episode {} not found", episode))]
+    EpisodeNotFound { episode: u32 },
+
+    #[snafu(display("please run the program in CLI mode to set your AniList token"))]
+    GetAniListTokenFromCLI,
 }
 
 impl Error {

@@ -4,6 +4,7 @@ use crate::file::{FileType, SaveDir, SaveFile};
 use anime::remote::{RemoteService, SeriesEntry, SeriesInfo, Status};
 use chrono::{Local, NaiveDate};
 use serde_derive::{Deserialize, Serialize};
+use std::borrow::Cow;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct EntryState {
@@ -63,15 +64,6 @@ impl EntryState {
         self.save_with_id(self.entry.id, name.as_ref())?;
 
         Ok(())
-    }
-
-    pub fn sync_changes<R, S>(&mut self, remote: R, name: S) -> Result<()>
-    where
-        R: AsRef<RemoteService>,
-        S: AsRef<str>,
-    {
-        self.sync_changes_from_remote(&remote, &name)?;
-        self.sync_changes_to_remote(&remote, &name)
     }
 
     pub fn mark_as_dropped(&mut self, config: &Config) {
@@ -185,26 +177,25 @@ impl From<u32> for EntryState {
 
 #[derive(Debug)]
 pub struct SeriesTracker<'a> {
-    pub info: &'a SeriesInfo,
+    pub info: Cow<'a, SeriesInfo>,
     pub state: EntryState,
     pub name: String,
 }
 
 impl<'a> SeriesTracker<'a> {
-    pub fn init<R, S>(remote: R, info: &'a SeriesInfo, name: S) -> Result<SeriesTracker<'a>>
+    pub fn init<I, S>(info: I, name: S) -> Result<SeriesTracker<'a>>
     where
-        R: AsRef<RemoteService>,
+        I: Into<Cow<'a, SeriesInfo>>,
         S: Into<String>,
     {
+        let info = info.into();
         let name = name.into();
 
-        let mut state = match EntryState::load_with_id(info.id, name.as_ref()) {
+        let state = match EntryState::load_with_id(info.id, name.as_ref()) {
             Ok(state) => state,
             Err(ref err) if err.is_file_nonexistant() => EntryState::from(info.id),
             Err(err) => return Err(err),
         };
-
-        state.sync_changes(remote, &name)?;
 
         Ok(SeriesTracker { info, state, name })
     }
@@ -214,6 +205,8 @@ impl<'a> SeriesTracker<'a> {
         R: AsRef<RemoteService>,
     {
         let state = &mut self.state;
+        state.sync_changes_from_remote(&remote, &self.name)?;
+
         let last_status = state.status();
 
         match last_status {
@@ -248,7 +241,7 @@ impl<'a> SeriesTracker<'a> {
             state.set_start_date(Some(Local::today().naive_local()));
         }
 
-        state.sync_changes_to_remote(remote, &self.name)?;
+        state.sync_changes_to_remote(&remote, &self.name)?;
 
         Ok(())
     }

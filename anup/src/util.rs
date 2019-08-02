@@ -13,14 +13,13 @@ where
     format!("{:02}:{:02}", m, s)
 }
 
-pub fn hms_from_mins<F>(mins: F) -> String
+pub fn hm_from_mins<F>(mins: F) -> String
 where
     F: Into<f32>,
 {
     let mins = mins.into();
     let h = (mins / 60.0).floor() as u32;
     let m = (mins % 60.0).floor() as u32;
-    let s = m * 60 % 60;
 
-    format!("{:02}:{:02}:{:02}", h, m, s)
+    format!("{:02}:{:02}H", h, m)
 }
