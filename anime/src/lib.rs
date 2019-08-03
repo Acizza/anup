@@ -68,15 +68,13 @@ impl<'a> Series<'a> {
 pub struct SeasonInfoList(Vec<SeriesInfo>);
 
 impl SeasonInfoList {
-    fn season_entries_from_info<R>(remote: R, info: &SeriesInfo) -> Result<Vec<SeriesInfo>>
+    fn season_entries_from_info<R>(remote: &R, info: &SeriesInfo) -> Result<Vec<SeriesInfo>>
     where
-        R: AsRef<RemoteService>,
+        R: RemoteService + ?Sized,
     {
         // Since this may call a remote API, we should have our own internal rate limit
         // so we can't accidently spam someone's server *too* much
         const MAX_REQUESTS: usize = 10;
-
-        let remote = remote.as_ref();
 
         let mut index = 0;
         let mut sequel = info.sequel;
@@ -97,9 +95,9 @@ impl SeasonInfoList {
         Ok(entries)
     }
 
-    pub fn from_info_and_remote<R>(info: SeriesInfo, remote: R) -> Result<SeasonInfoList>
+    pub fn from_info_and_remote<R>(info: SeriesInfo, remote: &R) -> Result<SeasonInfoList>
     where
-        R: AsRef<RemoteService>,
+        R: RemoteService + ?Sized,
     {
         let entries = SeasonInfoList::season_entries_from_info(remote, &info)?;
 
@@ -110,9 +108,9 @@ impl SeasonInfoList {
         Ok(SeasonInfoList(all))
     }
 
-    pub fn add_from_remote<R>(&mut self, remote: R) -> Result<bool>
+    pub fn add_from_remote<R>(&mut self, remote: &R) -> Result<bool>
     where
-        R: AsRef<RemoteService>,
+        R: RemoteService + ?Sized,
     {
         let info = match self.get(self.len() - 1) {
             Some(info) => info,

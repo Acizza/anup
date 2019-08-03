@@ -20,17 +20,11 @@ impl EntryState {
         }
     }
 
-    pub fn sync_changes_to_remote<R, S>(&mut self, remote: R, name: S) -> Result<()>
+    pub fn force_sync_changes_to_remote<R, S>(&mut self, remote: &R, name: S) -> Result<()>
     where
-        R: AsRef<RemoteService>,
+        R: RemoteService + ?Sized,
         S: AsRef<str>,
     {
-        if !self.needs_sync {
-            return Ok(());
-        }
-
-        let remote = remote.as_ref();
-
         if remote.is_offline() {
             self.save_with_id(self.entry.id, name.as_ref())?;
             return Ok(());
@@ -44,17 +38,23 @@ impl EntryState {
         Ok(())
     }
 
-    pub fn sync_changes_from_remote<R, S>(&mut self, remote: R, name: S) -> Result<()>
+    pub fn sync_changes_to_remote<R, S>(&mut self, remote: &R, name: S) -> Result<()>
     where
-        R: AsRef<RemoteService>,
+        R: RemoteService + ?Sized,
         S: AsRef<str>,
     {
-        let remote = remote.as_ref();
-
-        if self.needs_sync || remote.is_offline() {
+        if !self.needs_sync {
             return Ok(());
         }
 
+        self.force_sync_changes_to_remote(remote, name)
+    }
+
+    pub fn force_sync_changes_from_remote<R, S>(&mut self, remote: &R, name: S) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+        S: AsRef<str>,
+    {
         let entry = match remote.get_list_entry(self.entry.id)? {
             Some(entry) => entry,
             None => return Ok(()),
@@ -64,6 +64,18 @@ impl EntryState {
         self.save_with_id(self.entry.id, name.as_ref())?;
 
         Ok(())
+    }
+
+    pub fn sync_changes_from_remote<R, S>(&mut self, remote: &R, name: S) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+        S: AsRef<str>,
+    {
+        if self.needs_sync || remote.is_offline() {
+            return Ok(());
+        }
+
+        self.force_sync_changes_from_remote(remote, name)
     }
 
     pub fn mark_as_dropped(&mut self, config: &Config) {
@@ -200,12 +212,12 @@ impl<'a> SeriesTracker<'a> {
         Ok(SeriesTracker { info, state, name })
     }
 
-    pub fn begin_watching<R>(&mut self, remote: R, config: &Config) -> Result<()>
+    pub fn begin_watching<R>(&mut self, remote: &R, config: &Config) -> Result<()>
     where
-        R: AsRef<RemoteService>,
+        R: RemoteService + ?Sized,
     {
         let state = &mut self.state;
-        state.sync_changes_from_remote(&remote, &self.name)?;
+        state.sync_changes_from_remote(remote, &self.name)?;
 
         let last_status = state.status();
 
@@ -241,14 +253,14 @@ impl<'a> SeriesTracker<'a> {
             state.set_start_date(Some(Local::today().naive_local()));
         }
 
-        state.sync_changes_to_remote(&remote, &self.name)?;
+        state.sync_changes_to_remote(remote, &self.name)?;
 
         Ok(())
     }
 
-    pub fn episode_completed<R>(&mut self, remote: R, config: &Config) -> Result<()>
+    pub fn episode_completed<R>(&mut self, remote: &R, config: &Config) -> Result<()>
     where
-        R: AsRef<RemoteService>,
+        R: RemoteService + ?Sized,
     {
         let state = &mut self.state;
         state.set_watched_eps(state.watched_eps() + 1);
@@ -262,9 +274,9 @@ impl<'a> SeriesTracker<'a> {
         Ok(())
     }
 
-    pub fn series_complete<R>(&mut self, remote: R, config: &Config) -> Result<()>
+    pub fn series_complete<R>(&mut self, remote: &R, config: &Config) -> Result<()>
     where
-        R: AsRef<RemoteService>,
+        R: RemoteService + ?Sized,
     {
         let state = &mut self.state;
 

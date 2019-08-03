@@ -18,11 +18,13 @@ use ui::{Event, Events, UI};
 
 pub fn run(args: &ArgMatches) -> Result<()> {
     let name = crate::get_series_name(args)?;
-    let remote = crate::get_remote(args, true)?;
     let config = crate::get_config()?;
 
+    let remote = crate::get_remote(args, true)?;
+    let remote = remote.as_ref();
+
     let episodes = crate::get_episodes(args, &name, &config)?;
-    let seasons = crate::get_season_list(&name, &remote, &episodes)?;
+    let seasons = crate::get_season_list(&name, remote, &episodes)?;
 
     let mut state = {
         let series_names = SaveDir::LocalData.get_subdirs()?;
@@ -30,7 +32,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
         let season_num = crate::get_season_num(args);
 
         let series = Series::from_season_list(&seasons, season_num, &episodes)?;
-        let season_state = SeasonState::new(&remote, &name, series, season_num)?;
+        let season_state = SeasonState::new(remote, &name, series, season_num)?;
 
         SeriesState {
             season: season_state,
@@ -48,12 +50,15 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 
         match events.next()? {
             Event::Input(key) => match key {
+                // Exit
                 Key::Char('q') => {
                     // Prevent ruining the user's terminal
                     ui.clear().ok();
                     break Ok(());
                 }
-                Key::Char('\n') => state.season.play_next_episode_async(&remote, &config)?,
+                // Play next episode
+                Key::Char('\n') => state.season.play_next_episode_async(remote, &config)?,
+                // Select season
                 Key::Up | Key::Down if state.season.watch_state == WatchState::Idle => {
                     let season = &mut state.season;
 
@@ -65,7 +70,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 
                     if seasons.has(next_season) {
                         let series = Series::from_season_list(&seasons, next_season, &episodes)?;
-                        *season = SeasonState::new(&remote, &name, series, next_season)?;
+                        *season = SeasonState::new(remote, &name, series, next_season)?;
                     }
                 }
                 _ => (),
@@ -91,7 +96,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                         season.series.info.episode_length as f32 * config.episode.pcnt_must_watch;
 
                     if mins_watched >= mins_must_watch {
-                        season.tracker.episode_completed(&remote, &config)?;
+                        season.tracker.episode_completed(remote, &config)?;
                     }
 
                     season.watch_state = WatchState::Idle;
@@ -137,13 +142,13 @@ pub struct SeasonState<'a> {
 
 impl<'a> SeasonState<'a> {
     fn new<R, S>(
-        remote: R,
+        remote: &R,
         name: S,
         series: Series<'a>,
         season_num: usize,
     ) -> Result<SeasonState<'a>>
     where
-        R: AsRef<RemoteService>,
+        R: RemoteService + ?Sized,
         S: Into<String>,
     {
         let watch_time = {
@@ -154,7 +159,7 @@ impl<'a> SeasonState<'a> {
         let tracker = SeriesTracker::init(series.info.clone(), name)?;
 
         let score = match tracker.state.score() {
-            Some(score) => remote.as_ref().score_to_str(score).into_owned().into(),
+            Some(score) => remote.score_to_str(score).into_owned().into(),
             None => "??".into(),
         };
 
@@ -168,11 +173,11 @@ impl<'a> SeasonState<'a> {
         })
     }
 
-    fn play_next_episode_async<R>(&mut self, remote: R, config: &Config) -> Result<()>
+    fn play_next_episode_async<R>(&mut self, remote: &R, config: &Config) -> Result<()>
     where
-        R: AsRef<RemoteService>,
+        R: RemoteService + ?Sized,
     {
-        self.tracker.begin_watching(&remote, config)?;
+        self.tracker.begin_watching(remote, config)?;
         let next_ep = self.tracker.state.watched_eps() + 1;
 
         let episode = self

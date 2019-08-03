@@ -247,12 +247,11 @@ fn get_remote(args: &ArgMatches, can_use_offline: bool) -> Result<Box<RemoteServ
     }
 }
 
-fn get_best_info_from_remote<R, S>(remote: R, name: S) -> Result<SeriesInfo>
+fn get_best_info_from_remote<R, S>(remote: &R, name: S) -> Result<SeriesInfo>
 where
-    R: AsRef<RemoteService>,
+    R: RemoteService + ?Sized,
     S: AsRef<str>,
 {
-    let remote = remote.as_ref();
     let name = name.as_ref();
 
     let mut results = remote.search_info_by_name(name)?;
@@ -270,24 +269,24 @@ fn get_season_num(args: &ArgMatches) -> usize {
         .unwrap_or(0)
 }
 
-fn get_season_list<R, S>(name: S, remote: R, episodes: &EpisodeList) -> Result<SeasonInfoList>
+fn get_season_list<R, S>(name: S, remote: &R, episodes: &EpisodeList) -> Result<SeasonInfoList>
 where
-    R: AsRef<RemoteService>,
+    R: RemoteService + ?Sized,
     S: AsRef<str>,
 {
     let name = name.as_ref();
 
     match SeasonInfoList::load(name) {
         Ok(mut seasons) => {
-            if seasons.add_from_remote(&remote)? {
+            if seasons.add_from_remote(remote)? {
                 seasons.save(name)?;
             }
 
             Ok(seasons)
         }
         Err(ref err) if err.is_file_nonexistant() => {
-            let info = get_best_info_from_remote(&remote, &episodes.title)?;
-            let seasons = SeasonInfoList::from_info_and_remote(info, &remote)?;
+            let info = get_best_info_from_remote(remote, &episodes.title)?;
+            let seasons = SeasonInfoList::from_info_and_remote(info, remote)?;
             seasons.save(name)?;
             Ok(seasons)
         }

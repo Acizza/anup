@@ -27,10 +27,13 @@ fn prefetch(args: &ArgMatches) -> Result<()> {
     let name = crate::get_series_name(args)?;
     let config = crate::get_config()?;
     let episodes = crate::get_episodes(args, &name, &config)?;
-    let remote = crate::get_remote(args, false)?;
-    let info = crate::get_best_info_from_remote(&remote, &episodes.title)?;
 
-    let seasons = SeasonInfoList::from_info_and_remote(info, &remote)?;
+    let remote = crate::get_remote(args, false)?;
+    let remote = remote.as_ref();
+
+    let info = crate::get_best_info_from_remote(remote, &episodes.title)?;
+
+    let seasons = SeasonInfoList::from_info_and_remote(info, remote)?;
     seasons.save(name.as_ref())?;
 
     for (season_num, season) in seasons.inner().iter().enumerate() {
@@ -63,7 +66,7 @@ fn sync(args: &ArgMatches) -> Result<()> {
         }
 
         println!("syncing season {}: {}", 1 + season_num, season.title);
-        state.sync_changes_to_remote(&remote, &name)?;
+        state.sync_changes_to_remote(remote.as_ref(), &name)?;
     }
 
     Ok(())
@@ -72,16 +75,18 @@ fn sync(args: &ArgMatches) -> Result<()> {
 fn modify_series(args: &ArgMatches) -> Result<()> {
     let name = crate::get_series_name(args)?;
     let config = crate::get_config()?;
+
     let remote = crate::get_remote(args, true)?;
-    let season_num = crate::get_season_num(args);
+    let remote = remote.as_ref();
 
     let season = {
+        let season_num = crate::get_season_num(args);
         let seasons = SeasonInfoList::load(name.as_ref())?;
         seasons.take_unchecked(season_num)
     };
 
     let mut state = EntryState::load_with_id(season.id, name.as_ref())?;
-    state.sync_changes_from_remote(&remote, &name)?;
+    state.sync_changes_from_remote(remote, &name)?;
 
     if let Some(score) = args.value_of("rate") {
         let score = remote.parse_score(score).context(err::ScoreParseFailed)?;
@@ -95,7 +100,7 @@ fn modify_series(args: &ArgMatches) -> Result<()> {
         (false, false) => (),
     }
 
-    state.sync_changes_to_remote(&remote, &name)
+    state.sync_changes_to_remote(remote, &name)
 }
 
 fn remove_orphaned_data() -> Result<()> {
@@ -124,29 +129,32 @@ fn play(args: &ArgMatches) -> Result<()> {
     let name = crate::get_series_name(args)?;
     let config = crate::get_config()?;
     let episodes = crate::get_episodes(args, &name, &config)?;
+
     let remote = crate::get_remote(args, true)?;
+    let remote = remote.as_ref();
+
     let season_num = crate::get_season_num(args);
-    let seasons = crate::get_season_list(&name, &remote, &episodes)?;
+    let seasons = crate::get_season_list(&name, remote, &episodes)?;
     let series = Series::from_season_list(&seasons, season_num, episodes)?;
 
     let mut tracker = SeriesTracker::init(&series.info, &name)?;
-    tracker.begin_watching(&remote, &config)?;
+    tracker.begin_watching(remote, &config)?;
 
     if !args.is_present("quiet") {
-        print_info(&remote, &config, &series, &tracker.state);
+        print_info(remote, &config, &series, &tracker.state);
     }
 
     play_episode(remote, &config, &series, &mut tracker)
 }
 
 fn play_episode<R>(
-    remote: R,
+    remote: &R,
     config: &Config,
     series: &Series,
     tracker: &mut SeriesTracker,
 ) -> Result<()>
 where
-    R: AsRef<RemoteService>,
+    R: RemoteService + ?Sized,
 {
     use anime::remote::Status;
 
@@ -177,7 +185,7 @@ where
         return Ok(());
     }
 
-    tracker.episode_completed(&remote, config)?;
+    tracker.episode_completed(remote, config)?;
 
     if let Status::Completed = tracker.state.status() {
         println!("completed!");
@@ -188,9 +196,9 @@ where
     Ok(())
 }
 
-fn print_info<R>(remote: R, config: &Config, series: &Series, state: &EntryState)
+fn print_info<R>(remote: &R, config: &Config, series: &Series, state: &EntryState)
 where
-    R: AsRef<RemoteService>,
+    R: RemoteService + ?Sized,
 {
     if !util::is_running_in_terminal() {
         return;
@@ -206,7 +214,7 @@ where
         "score: {}",
         state
             .score()
-            .map(|s| remote.as_ref().score_to_str(s))
+            .map(|s| remote.score_to_str(s))
             .unwrap_or_else(|| "none".into())
     );
 
