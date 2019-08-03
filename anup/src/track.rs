@@ -57,7 +57,7 @@ impl EntryState {
     {
         let entry = match remote.get_list_entry(self.entry.id)? {
             Some(entry) => entry,
-            None => return Ok(()),
+            None => SeriesEntry::new(self.entry.id),
         };
 
         self.entry = entry;
