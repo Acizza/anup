@@ -56,6 +56,16 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                     ui.clear().ok();
                     break Ok(());
                 }
+                // Sync list entry from remote
+                Key::Char('r') => {
+                    let entry = &mut state.season.tracker.state;
+                    entry.force_sync_changes_from_remote(remote, &name)?;
+                }
+                // Sync list entry to remote
+                Key::Char('s') => {
+                    let entry = &mut state.season.tracker.state;
+                    entry.force_sync_changes_to_remote(remote, &name)?;
+                }
                 // Play next episode
                 Key::Char('\n') => state.season.play_next_episode_async(remote, &config)?,
                 // Select season
