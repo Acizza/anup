@@ -1,7 +1,3 @@
-pub fn is_running_in_terminal() -> bool {
-    unsafe { libc::isatty(libc::STDOUT_FILENO) != 0 }
-}
-
 pub fn ms_from_mins<F>(mins: F) -> String
 where
     F: Into<f32>,
