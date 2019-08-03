@@ -121,10 +121,17 @@ impl From<anime::Error> for Error {
 pub fn display_error(err: Error) {
     eprintln!("{}", err);
 
+    let mut print_backtrace = true;
+
     if let Error::Anime { source, .. } = &err {
         if let anime::Error::NeedExistingSeriesData = source {
             eprintln!("run the program with the --prefetch flag first when an internet connection is available");
+            print_backtrace = false;
         }
+    }
+
+    if !print_backtrace {
+        return;
     }
 
     if let Some(backtrace) = err.backtrace() {
