@@ -454,7 +454,7 @@ impl<'a> StatusLog<'a> {
     }
 
     fn trim(&mut self) {
-        while !self.items.is_empty() && self.items.len() >= self.max_items as usize {
+        while self.items.len() >= self.max_items as usize && !self.items.is_empty() {
             self.items.pop_front();
         }
     }
