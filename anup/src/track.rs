@@ -55,6 +55,10 @@ impl EntryState {
         R: RemoteService + ?Sized,
         S: AsRef<str>,
     {
+        if remote.is_offline() {
+            return Ok(());
+        }
+
         let entry = match remote.get_list_entry(self.entry.id)? {
             Some(entry) => entry,
             None => SeriesEntry::new(self.entry.id),
@@ -72,7 +76,7 @@ impl EntryState {
         R: RemoteService + ?Sized,
         S: AsRef<str>,
     {
-        if self.needs_sync || remote.is_offline() {
+        if self.needs_sync {
             return Ok(());
         }
 
