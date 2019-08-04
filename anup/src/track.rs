@@ -61,6 +61,7 @@ impl EntryState {
         };
 
         self.entry = entry;
+        self.needs_sync = false;
         self.save_with_id(self.entry.id, name.as_ref())?;
 
         Ok(())
