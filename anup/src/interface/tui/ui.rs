@@ -4,7 +4,6 @@ use crate::util;
 use chrono::{Duration, Utc};
 use smallvec::SmallVec;
 use snafu::ResultExt;
-use std::borrow::Cow;
 use std::io;
 use std::sync::mpsc;
 use std::thread;
@@ -161,11 +160,10 @@ where
             .split(info_layout[1]);
 
         {
-            let time_left_mins = (info.episodes - entry.watched_eps()) * info.episode_length;
             let left_items = create_stat_list!(
-                "Watch Time" => state.season.watch_time,
-                "Time Left" => util::hm_from_mins(time_left_mins as f32),
-                "Episode Length" => format!("{}M", info.episode_length)
+                "Watch Time" => season.value_cache.watch_time,
+                "Time Left" => season.value_cache.watch_time_left,
+                "Episode Length" => season.value_cache.episode_length
             );
 
             Paragraph::new(left_items.iter())
@@ -175,8 +173,8 @@ where
 
         {
             let center_items = create_stat_list!(
-                "Progress" => format!("{}|{}", entry.watched_eps(), info.episodes),
-                "Score" => state.season.score,
+                "Progress" => season.value_cache.progress,
+                "Score" => season.value_cache.score,
                 "Status" => entry.status()
             );
 
@@ -186,19 +184,9 @@ where
         }
 
         {
-            let start_date = match entry.start_date() {
-                Some(date) => format!("{}", date.format("%D")).into(),
-                None => Cow::Borrowed("??"),
-            };
-
-            let end_date = match entry.end_date() {
-                Some(date) => format!("{}", date.format("%D")).into(),
-                None => Cow::Borrowed("??"),
-            };
-
             let right_items = create_stat_list!(
-                "Start Date" => start_date,
-                "Finish Date" => end_date,
+                "Start Date" => season.value_cache.start_date,
+                "Finish Date" => season.value_cache.end_date,
                 "Rewatched" => entry.times_rewatched()
             );
 
