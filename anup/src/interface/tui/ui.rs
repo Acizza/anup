@@ -1,9 +1,11 @@
-use super::{SeriesState, WatchState};
+use super::{UIState, WatchState};
 use crate::err::{self, Result};
 use crate::util;
 use chrono::{Duration, Utc};
 use smallvec::SmallVec;
 use snafu::ResultExt;
+use std::collections::VecDeque;
+use std::fmt;
 use std::io;
 use std::sync::mpsc;
 use std::thread;
@@ -33,20 +35,41 @@ macro_rules! create_stat_list {
     };
 }
 
-pub struct UI<B>(Terminal<B>)
+pub struct UI<'a, B>
 where
-    B: Backend;
+    B: Backend,
+{
+    terminal: Terminal<B>,
+    status_log: StatusLog<'a>,
+}
 
-impl<B> UI<B>
+impl<'a, B> UI<'a, B>
 where
     B: Backend,
 {
     pub fn clear(&mut self) -> Result<()> {
-        self.0.clear().context(err::IO)
+        self.terminal.clear().context(err::IO)
     }
 
-    pub fn draw(&mut self, state: &SeriesState) -> Result<()> {
-        self.0
+    pub fn push_log_status<S>(&mut self, text: S)
+    where
+        S: Into<String>,
+    {
+        self.status_log.push(text);
+    }
+
+    pub fn log_capture<S, F>(&mut self, text: S, f: F)
+    where
+        S: Into<String>,
+        F: FnOnce() -> Result<()>,
+    {
+        self.status_log.capture(text, f);
+    }
+
+    pub fn draw(&mut self, state: &UIState) -> Result<()> {
+        let status_log = &mut self.status_log;
+
+        self.terminal
             .draw(|mut frame| {
                 // Top panels for series information
                 let horiz_splitter = Layout::default()
@@ -70,12 +93,12 @@ where
                     .split(horiz_splitter[2]);
 
                 UI::draw_info_panel(state, &info_panel_splitter, &mut frame);
-                UI::draw_status_bar(state, &info_panel_splitter, &mut frame);
+                UI::draw_status_bar(status_log, info_panel_splitter[1], &mut frame);
             })
             .context(err::IO)
     }
 
-    fn draw_top_panels(state: &SeriesState, layout: &[Rect], frame: &mut Frame<B>) {
+    fn draw_top_panels(state: &UIState, layout: &[Rect], frame: &mut Frame<B>) {
         SelectableList::default()
             .block(Block::default().title("Series").borders(Borders::ALL))
             .items(state.series_names.as_ref())
@@ -98,7 +121,7 @@ where
             .render(frame, layout[1]);
     }
 
-    fn draw_info_panel(state: &SeriesState, layout: &[Rect], frame: &mut Frame<B>) {
+    fn draw_info_panel(state: &UIState, layout: &[Rect], frame: &mut Frame<B>) {
         Block::default()
             .title("Info")
             .borders(Borders::ALL)
@@ -220,18 +243,19 @@ where
         }
     }
 
-    fn draw_status_bar(_: &SeriesState, layout: &[Rect], frame: &mut Frame<B>) {
-        SelectableList::default()
+    fn draw_status_bar(log: &mut StatusLog, layout: Rect, frame: &mut Frame<B>) {
+        log.prepare_to_draw(layout);
+
+        Paragraph::new(log.draw_items().iter())
             .block(Block::default().title("Status").borders(Borders::ALL))
-            .items(&["TODO"])
-            .render(frame, layout[1]);
+            .render(frame, layout);
     }
 }
 
 pub type TermionBackend = backend::TermionBackend<RawTerminal<io::Stdout>>;
 
-impl UI<TermionBackend> {
-    pub fn init() -> Result<UI<TermionBackend>> {
+impl<'a> UI<'a, TermionBackend> {
+    pub fn init() -> Result<UI<'a, TermionBackend>> {
         let stdout = io::stdout().into_raw_mode().context(err::IO)?;
         let backend = TermionBackend::new(stdout);
         let mut terminal = Terminal::new(backend).context(err::IO)?;
@@ -239,7 +263,10 @@ impl UI<TermionBackend> {
         terminal.clear().context(err::IO)?;
         terminal.hide_cursor().context(err::IO)?;
 
-        Ok(UI(terminal))
+        Ok(UI {
+            terminal,
+            status_log: StatusLog::new(),
+        })
     }
 }
 
@@ -285,5 +312,157 @@ impl Events {
 
     pub fn next(&self) -> Result<Event> {
         self.0.recv().context(err::MPSCRecv)
+    }
+}
+
+pub enum LogItemStatus {
+    Ok,
+    Pending,
+    Failed,
+}
+
+impl LogItemStatus {
+    pub fn is_resolved(&self) -> bool {
+        match self {
+            LogItemStatus::Ok | LogItemStatus::Failed => true,
+            LogItemStatus::Pending => false,
+        }
+    }
+}
+
+impl fmt::Display for LogItemStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LogItemStatus::Ok => write!(f, "ok"),
+            LogItemStatus::Pending => write!(f, "pending"),
+            LogItemStatus::Failed => write!(f, "failed"),
+        }
+    }
+}
+
+pub struct LogItem {
+    pub text: String,
+    pub status: LogItemStatus,
+}
+
+impl LogItem {
+    pub fn new<S>(text: S) -> LogItem
+    where
+        S: Into<String>,
+    {
+        LogItem {
+            text: text.into(),
+            status: LogItemStatus::Pending,
+        }
+    }
+}
+
+impl<T> From<T> for LogItem
+where
+    T: Into<String>,
+{
+    fn from(value: T) -> Self {
+        LogItem::new(value)
+    }
+}
+
+pub struct StatusLog<'a> {
+    items: VecDeque<LogItem>,
+    formatted: Vec<Text<'a>>,
+    max_items: u16,
+}
+
+impl<'a> StatusLog<'a> {
+    pub fn new() -> StatusLog<'a> {
+        StatusLog {
+            items: VecDeque::new(),
+            formatted: Vec::new(),
+            max_items: 0,
+        }
+    }
+
+    fn rebuild(&mut self) {
+        self.formatted.clear();
+
+        for item in &self.items {
+            let value_text = if item.status.is_resolved() {
+                format!("{}... ", item.text)
+            } else {
+                format!("{}...\n", item.text)
+            };
+
+            self.formatted.push(Text::raw(value_text));
+
+            if !item.status.is_resolved() {
+                continue;
+            }
+
+            let status_color = match item.status {
+                LogItemStatus::Ok => Color::Green,
+                LogItemStatus::Pending => Color::Yellow,
+                LogItemStatus::Failed => Color::Red,
+            };
+
+            let status = Text::styled(
+                format!("{}\n", item.status),
+                Style::default().fg(status_color),
+            );
+
+            self.formatted.push(status);
+        }
+    }
+
+    pub fn push<I>(&mut self, item: I)
+    where
+        I: Into<LogItem>,
+    {
+        self.trim();
+        self.items.push_back(item.into());
+        self.rebuild();
+    }
+
+    pub fn set_status_on_last(&mut self, status: LogItemStatus) {
+        let last = match self.items.get_mut(self.items.len() - 1) {
+            Some(last) => last,
+            None => return,
+        };
+
+        last.status = status;
+        self.rebuild();
+    }
+
+    pub fn capture<S, F>(&mut self, text: S, f: F)
+    where
+        S: Into<String>,
+        F: FnOnce() -> Result<()>,
+    {
+        self.push(text);
+
+        let status = match f() {
+            Ok(_) => LogItemStatus::Ok,
+            // TODO: display error
+            Err(_) => LogItemStatus::Failed,
+        };
+
+        self.set_status_on_last(status);
+    }
+
+    pub fn prepare_to_draw(&mut self, size: Rect) {
+        // We assume a border is around the list, so subtract 2 from the height
+        self.max_items = size.height.saturating_sub(2);
+        self.trim();
+    }
+
+    fn trim(&mut self) {
+        while !self.items.is_empty() && self.items.len() >= self.max_items as usize {
+            self.items.pop_front();
+        }
+    }
+
+    /// Returns the log items in a ready-to-draw form.
+    ///
+    /// Note that this is intended by used with the Paragraph widget type.
+    pub fn draw_items(&self) -> &Vec<Text<'a>> {
+        &self.formatted
     }
 }

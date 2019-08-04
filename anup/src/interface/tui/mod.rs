@@ -9,7 +9,7 @@ use anime::remote::{RemoteService, SeriesInfo};
 use anime::Series;
 use chrono::{DateTime, Duration, Utc};
 use clap::ArgMatches;
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::{OptionExt, ResultExt};
 use std::borrow::Cow;
 use std::ops::Add;
 use std::process;
@@ -34,7 +34,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
         let series = Series::from_season_list(&seasons, season_num, &episodes)?;
         let season_state = SeasonState::new(remote, &name, series, season_num)?;
 
-        SeriesState {
+        UIState {
             season: season_state,
             series_names,
             selected_series,
@@ -62,15 +62,23 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                     let entry = &mut season.tracker.state;
 
                     if ch == 'r' {
-                        entry.force_sync_changes_from_remote(remote, &name)?;
+                        ui.log_capture("Syncing entry from remote", || {
+                            entry.force_sync_changes_from_remote(remote, &name)
+                        });
                     } else if ch == 's' {
-                        entry.force_sync_changes_to_remote(remote, &name)?;
+                        ui.log_capture("Syncing entry to remote", || {
+                            entry.force_sync_changes_to_remote(remote, &name)
+                        });
                     }
 
                     season.update_value_cache(remote);
                 }
                 // Play next episode
-                Key::Char('\n') => state.season.play_next_episode_async(remote, &config)?,
+                Key::Char('\n') => {
+                    ui.log_capture("Playing next episode", || {
+                        state.season.play_next_episode_async(remote, &config)
+                    });
+                }
                 // Select season
                 Key::Up | Key::Down if state.season.watch_state == WatchState::Idle => {
                     let season = &mut state.season;
@@ -96,7 +104,10 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                         None => continue,
                     };
 
-                    ensure!(status.success(), err::AbnormalPlayerExit);
+                    if !status.success() {
+                        ui.push_log_status("Player did not exit properly");
+                        continue;
+                    }
 
                     let mins_watched = {
                         let watch_time = Utc::now() - *start_time;
@@ -109,7 +120,11 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                         season.series.info.episode_length as f32 * config.episode.pcnt_must_watch;
 
                     if mins_watched >= mins_must_watch {
-                        season.tracker.episode_completed(remote, &config)?;
+                        ui.log_capture("Marking episode as completed", || {
+                            season.tracker.episode_completed(remote, &config)
+                        });
+                    } else {
+                        ui.push_log_status("Not marking episode as completed");
                     }
 
                     season.watch_state = WatchState::Idle;
@@ -120,7 +135,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
     }
 }
 
-pub struct SeriesState<'a> {
+pub struct UIState<'a> {
     pub season: SeasonState<'a>,
     pub series_names: Vec<String>,
     pub selected_series: usize,
