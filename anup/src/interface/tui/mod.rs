@@ -110,25 +110,17 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                 }
                 // Select season
                 Key::Up | Key::Down if state.can_select_season() => {
-                    let series = &mut state.series;
+                    let new_season = {
+                        let cur_season = state.series.season.season_num;
 
-                    let next_season = if key == Key::Up {
-                        series.season.season_num.saturating_sub(1)
-                    } else {
-                        series.season.season_num + 1
+                        if key == Key::Up {
+                            cur_season.saturating_sub(1)
+                        } else {
+                            cur_season + 1
+                        }
                     };
 
-                    if series.seasons.has(next_season) {
-                        // This is a bit funky. Here we avoid cloning the episodes by moving them
-                        // out of the season so they can be moved into the new Series struct.
-                        // Due to some aspect(s) of the borrowing rules, we cannot use a pointer alias
-                        // to make this look a bit cleaner.
-                        let eps = state.series.season.series.episodes;
-                        let series =
-                            Series::from_season_list(&state.series.seasons, next_season, eps)?;
-                        state.series.season =
-                            SeasonState::new(remote, &state.series.name, series, next_season)?;
-                    }
+                    state.series = state.series.set_season(new_season, remote)?;
                 }
                 _ => (),
             },
@@ -264,6 +256,25 @@ impl<'a> SeriesState<'a> {
             is_last_watched,
         })
     }
+
+    /// Returns the same `SeriesState` with new `SeasonState` data if `season_num`
+    /// points to an existing season. Otherwise, it is the same `SeriesState` unmodified.
+    /// 
+    /// This method consumes the `SeriesState` to avoid cloning data.
+    fn set_season<R>(mut self, season_num: usize, remote: &'a R) -> Result<SeriesState>
+    where
+        R: RemoteService + ?Sized,
+    {
+        if !self.seasons.has(season_num) {
+            return Ok(self);
+        }
+
+        self.season = self
+            .season
+            .new_in_place(remote, &self.name, &self.seasons, season_num)?;
+
+        Ok(self)
+    }
 }
 
 pub struct SeasonState<'a> {
@@ -295,6 +306,26 @@ impl<'a> SeasonState<'a> {
             season_num,
             watch_state: WatchState::Idle,
         })
+    }
+
+    /// Returns a new `SeasonState` using some existing data from the consumed one.
+    /// 
+    /// This method consumes the `SeasonState` so it can reuse existing episode data.
+    fn new_in_place<R, S>(
+        self,
+        remote: &'a R,
+        name: S,
+        seasons: &SeasonInfoList,
+        season_num: usize,
+    ) -> Result<SeasonState<'a>>
+    where
+        R: RemoteService + ?Sized,
+        S: Into<String>,
+    {
+        let episodes = self.series.episodes;
+        let series = Series::from_season_list(seasons, season_num, episodes)?;
+
+        SeasonState::new(remote, name, series, season_num)
     }
 
     fn play_next_episode_async<R>(&mut self, remote: &R, config: &Config) -> Result<()>
