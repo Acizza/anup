@@ -105,13 +105,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                         state.selected_series + 1
                     };
 
-                    let new_name = match state.series_names.get(next_index) {
-                        Some(new_name) => new_name,
-                        None => continue,
-                    };
-
-                    state.series = SeriesState::new(&cstate, new_name, false)?;
-                    state.selected_series = next_index;
+                    state.select_series(next_index, &cstate)?;
                 }
                 // Select season
                 Key::Up | Key::Down if state.can_select_season() => {
@@ -194,6 +188,18 @@ pub struct UIState<'a> {
 }
 
 impl<'a> UIState<'a> {
+    fn select_series(&mut self, index: usize, cstate: &'a CommonState) -> Result<()> {
+        let new_name = match self.series_names.get(index) {
+            Some(new_name) => new_name,
+            None => return Ok(()),
+        };
+
+        self.series = SeriesState::new(cstate, new_name, false)?;
+        self.selected_series = index;
+
+        Ok(())
+    }
+
     fn is_idle(&self) -> bool {
         self.series.season.watch_state == WatchState::Idle
     }
