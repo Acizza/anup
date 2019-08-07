@@ -18,10 +18,12 @@ use termion::event::Key;
 use ui::{Event, Events, UI};
 
 pub fn run(args: &ArgMatches) -> Result<()> {
-    let config = crate::get_config()?;
+    let cstate = {
+        let config = crate::get_config()?;
+        let remote = crate::get_remote(args, true)?;
 
-    let remote = crate::get_remote(args, true)?;
-    let remote = remote.as_ref();
+        CommonState::new(args, config, remote)
+    };
 
     let mut state = {
         let name = crate::get_series_name(args)?;
@@ -29,7 +31,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
         let selected_series = series_names.iter().position(|s| *s == name).unwrap_or(0);
 
         UIState {
-            series: SeriesState::new(args, &name, remote, &config, true)?,
+            series: SeriesState::new(&cstate, &name, true)?,
             series_names,
             selected_series,
             selection: Selection::Series,
@@ -44,6 +46,9 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 
         let series = &mut state.series;
         let season = &mut series.season;
+
+        let remote = cstate.remote.as_ref();
+        let config = &cstate.config;
 
         match events.next()? {
             Event::Input(key) => match key {
@@ -85,7 +90,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                     }
 
                     ui.log_capture("Playing next episode", || {
-                        season.play_next_episode_async(remote, &config)
+                        season.play_next_episode_async(&cstate)
                     });
                 }
                 // Switch between series and season selection
@@ -105,7 +110,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                         None => continue,
                     };
 
-                    state.series = SeriesState::new(args, new_name, remote, &config, false)?;
+                    state.series = SeriesState::new(&cstate, new_name, false)?;
                     state.selected_series = next_index;
                 }
                 // Select season
@@ -147,7 +152,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 
                     if mins_watched >= mins_must_watch {
                         ui.log_capture("Marking episode as completed", || {
-                            season.tracker.episode_completed(remote, &config)
+                            season.tracker.episode_completed(remote, config)
                         });
                     } else {
                         ui.push_log_status("Not marking episode as completed");
@@ -157,6 +162,26 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                     season.update_value_cache(remote);
                 }
             },
+        }
+    }
+}
+
+struct CommonState<'a> {
+    args: &'a ArgMatches<'a>,
+    config: Config,
+    remote: Box<RemoteService>,
+}
+
+impl<'a> CommonState<'a> {
+    fn new(
+        args: &'a ArgMatches<'a>,
+        config: Config,
+        remote: Box<RemoteService>,
+    ) -> CommonState<'a> {
+        CommonState {
+            args,
+            config,
+            remote,
         }
     }
 }
@@ -228,23 +253,17 @@ pub struct SeriesState<'a> {
 }
 
 impl<'a> SeriesState<'a> {
-    pub fn new<S, R>(
-        args: &clap::ArgMatches,
-        name: S,
-        remote: &'a R,
-        config: &Config,
-        is_last_watched: bool,
-    ) -> Result<SeriesState<'a>>
+    fn new<S>(cstate: &'a CommonState, name: S, is_last_watched: bool) -> Result<SeriesState<'a>>
     where
         S: Into<String>,
-        R: RemoteService + ?Sized,
     {
         let name = name.into();
+        let remote = cstate.remote.as_ref();
 
-        let episodes = crate::get_episodes(args, &name, &config)?;
+        let episodes = crate::get_episodes(&cstate.args, &name, &cstate.config)?;
         let seasons = crate::get_season_list(&name, remote, &episodes)?;
         let num_seasons = seasons.len();
-        let season_num = crate::get_season_num(args);
+        let season_num = crate::get_season_num(&cstate.args);
         let series = Series::from_season_list(&seasons, season_num, episodes)?;
         let season = SeasonState::new(remote, &name, series, season_num)?;
 
@@ -259,7 +278,7 @@ impl<'a> SeriesState<'a> {
 
     /// Returns the same `SeriesState` with new `SeasonState` data if `season_num`
     /// points to an existing season. Otherwise, it is the same `SeriesState` unmodified.
-    /// 
+    ///
     /// This method consumes the `SeriesState` to avoid cloning data.
     fn set_season<R>(mut self, season_num: usize, remote: &'a R) -> Result<SeriesState>
     where
@@ -309,7 +328,7 @@ impl<'a> SeasonState<'a> {
     }
 
     /// Returns a new `SeasonState` using some existing data from the consumed one.
-    /// 
+    ///
     /// This method consumes the `SeasonState` so it can reuse existing episode data.
     fn new_in_place<R, S>(
         self,
@@ -328,10 +347,10 @@ impl<'a> SeasonState<'a> {
         SeasonState::new(remote, name, series, season_num)
     }
 
-    fn play_next_episode_async<R>(&mut self, remote: &R, config: &Config) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
+    fn play_next_episode_async(&mut self, cstate: &CommonState) -> Result<()> {
+        let remote = cstate.remote.as_ref();
+        let config = &cstate.config;
+
         self.tracker.begin_watching(remote, config)?;
         let next_ep = self.tracker.state.watched_eps() + 1;
 
