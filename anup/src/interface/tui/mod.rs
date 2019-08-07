@@ -22,10 +22,14 @@ pub fn run(args: &ArgMatches) -> Result<()> {
         let config = crate::get_config()?;
         let remote = crate::get_remote(args, true)?;
 
-        CommonState::new(args, config, remote)
+        CommonState {
+            args,
+            config,
+            remote,
+        }
     };
 
-    let mut state = {
+    let mut ui_state = {
         let name = crate::get_series_name(args)?;
         let series_names = SaveDir::LocalData.get_subdirs()?;
         let selected_series = series_names.iter().position(|s| *s == name).unwrap_or(0);
@@ -42,13 +46,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
     let events = Events::new(Duration::seconds(1));
 
     loop {
-        ui.draw(&state)?;
-
-        let series = &mut state.series;
-        let season = &mut series.season;
-
-        let remote = cstate.remote.as_ref();
-        let config = &cstate.config;
+        ui.draw(&ui_state)?;
 
         match events.next()? {
             Event::Input(key) => match key {
@@ -58,146 +56,110 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                     ui.clear().ok();
                     break Ok(());
                 }
-                // Sync list entry from / to remote
-                Key::Char(ch @ 'r') | Key::Char(ch @ 's') => {
-                    let name = &series.name;
-                    let entry = &mut season.tracker.state;
-
-                    if ch == 'r' {
-                        ui.log_capture("Syncing entry from remote", || {
-                            entry.force_sync_changes_from_remote(remote, name)
-                        });
-                    } else if ch == 's' {
-                        ui.log_capture("Syncing entry to remote", || {
-                            entry.force_sync_changes_to_remote(remote, name)
-                        });
-                    }
-
-                    season.update_value_cache(remote);
-                }
-                // Play next episode
-                Key::Char('\n') => {
-                    // Update the last watched series
-                    if !series.is_last_watched {
-                        let name = &series.name;
-
-                        ui.log_capture("Marking as the last watched series", || {
-                            let last_watched = LastWatched::new(name);
-                            last_watched.save(None)
-                        });
-
-                        series.is_last_watched = true;
-                    }
-
-                    ui.log_capture("Playing next episode", || {
-                        season.play_next_episode_async(&cstate)
-                    });
-                }
-                // Switch between series and season selection
-                Key::Left | Key::Right if state.is_idle() => {
-                    state.selection.set_opposite();
-                }
-                // Select series
-                Key::Up | Key::Down if state.can_select_series() => {
-                    let next_index = if key == Key::Up {
-                        state.selected_series.saturating_sub(1)
-                    } else {
-                        state.selected_series + 1
-                    };
-
-                    state.select_series(next_index, &cstate)?;
-                }
-                // Select season
-                Key::Up | Key::Down if state.can_select_season() => {
-                    let new_season = {
-                        let cur_season = state.series.season.season_num;
-
-                        if key == Key::Up {
-                            cur_season.saturating_sub(1)
-                        } else {
-                            cur_season + 1
-                        }
-                    };
-
-                    state.series = state.series.set_season(new_season, remote)?;
-                }
-                _ => (),
-            },
-            Event::Tick => match &mut season.watch_state {
-                WatchState::Idle => (),
-                WatchState::Watching(start_time, _, child) => {
-                    let status = match child.try_wait().context(err::IO)? {
-                        Some(status) => status,
-                        None => continue,
-                    };
-
-                    if !status.success() {
-                        ui.push_log_status("Player did not exit properly");
-                        continue;
-                    }
-
-                    let mins_watched = {
-                        let watch_time = Utc::now() - *start_time;
-                        watch_time.num_seconds() as f32 / 60.0
-                    };
-
-                    let mins_must_watch =
-                        season.series.info.episode_length as f32 * config.episode.pcnt_must_watch;
-
-                    if mins_watched >= mins_must_watch {
-                        ui.log_capture("Marking episode as completed", || {
-                            season.tracker.episode_completed(remote, config)
-                        });
-                    } else {
-                        ui.push_log_status("Not marking episode as completed");
-                    }
-
-                    season.watch_state = WatchState::Idle;
-                    season.update_value_cache(remote);
+                key => {
+                    ui_state = ui_state.process_key(&cstate, &mut ui, key)?;
                 }
             },
+            Event::Tick => ui_state.process_tick(&cstate, &mut ui)?,
         }
     }
 }
 
+/// Items that are not tied to the UI and are commonly used together.
 struct CommonState<'a> {
     args: &'a ArgMatches<'a>,
     config: Config,
     remote: Box<RemoteService>,
 }
 
-impl<'a> CommonState<'a> {
-    fn new(
-        args: &'a ArgMatches<'a>,
-        config: Config,
-        remote: Box<RemoteService>,
-    ) -> CommonState<'a> {
-        CommonState {
-            args,
-            config,
-            remote,
-        }
-    }
-}
-
+/// Current state of the UI.
 pub struct UIState<'a> {
-    pub series: SeriesState<'a>,
-    pub series_names: Vec<String>,
-    pub selected_series: usize,
-    pub selection: Selection,
+    series: SeriesState<'a>,
+    series_names: Vec<String>,
+    selected_series: usize,
+    selection: Selection,
 }
 
 impl<'a> UIState<'a> {
-    fn select_series(&mut self, index: usize, cstate: &'a CommonState) -> Result<()> {
-        let new_name = match self.series_names.get(index) {
-            Some(new_name) => new_name,
-            None => return Ok(()),
-        };
+    fn process_key<B>(
+        mut self,
+        state: &'a CommonState,
+        ui: &mut UI<B>,
+        key: Key,
+    ) -> Result<UIState<'a>>
+    where
+        B: tui::backend::Backend,
+    {
+        match key {
+            // Sync list entry from / to remote
+            Key::Char(ch @ 'r') | Key::Char(ch @ 's') => {
+                let remote = state.remote.as_ref();
 
-        self.series = SeriesState::new(cstate, new_name, false)?;
-        self.selected_series = index;
+                let name = &self.series.name;
+                let season = &mut self.series.season;
+                let entry = &mut season.tracker.state;
 
-        Ok(())
+                if ch == 'r' {
+                    ui.log_capture("Syncing entry from remote", || {
+                        entry.force_sync_changes_from_remote(remote, name)
+                    });
+                } else if ch == 's' {
+                    ui.log_capture("Syncing entry to remote", || {
+                        entry.force_sync_changes_to_remote(remote, name)
+                    });
+                }
+
+                season.update_value_cache(remote);
+            }
+            // Play next episode
+            Key::Char('\n') => {
+                self.series.set_last_watched(ui);
+
+                ui.log_capture("Playing next episode", || {
+                    self.series.season.play_next_episode_async(&state)
+                });
+            }
+            // Switch between series and season selection
+            Key::Left | Key::Right if self.is_idle() => {
+                self.selection.set_opposite();
+            }
+            // Select series
+            Key::Up | Key::Down if self.can_select_series() => {
+                let index = UIState::next_arrow_key_value(key, self.selected_series);
+
+                let new_name = match self.series_names.get(index) {
+                    Some(new_name) => new_name,
+                    None => return Ok(self),
+                };
+
+                self.series = SeriesState::new(state, new_name, false)?;
+                self.selected_series = index;
+            }
+            // Select season
+            Key::Up | Key::Down if self.can_select_season() => {
+                let remote = state.remote.as_ref();
+                let new_season = UIState::next_arrow_key_value(key, self.series.season.season_num);
+                self.series = self.series.set_season(new_season, remote)?;
+            }
+            _ => (),
+        }
+
+        Ok(self)
+    }
+
+    fn process_tick<B>(&mut self, state: &'a CommonState, ui: &mut UI<B>) -> Result<()>
+    where
+        B: tui::backend::Backend,
+    {
+        self.series.season.process_tick(state, ui)
+    }
+
+    fn next_arrow_key_value(key: Key, value: usize) -> usize {
+        match key {
+            Key::Up => value.saturating_sub(1),
+            Key::Down => value + 1,
+            _ => value,
+        }
     }
 
     fn is_idle(&self) -> bool {
@@ -259,17 +221,17 @@ pub struct SeriesState<'a> {
 }
 
 impl<'a> SeriesState<'a> {
-    fn new<S>(cstate: &'a CommonState, name: S, is_last_watched: bool) -> Result<SeriesState<'a>>
+    fn new<S>(state: &'a CommonState, name: S, is_last_watched: bool) -> Result<SeriesState<'a>>
     where
         S: Into<String>,
     {
         let name = name.into();
-        let remote = cstate.remote.as_ref();
+        let remote = state.remote.as_ref();
 
-        let episodes = crate::get_episodes(&cstate.args, &name, &cstate.config)?;
+        let episodes = crate::get_episodes(&state.args, &name, &state.config)?;
         let seasons = crate::get_season_list(&name, remote, &episodes)?;
         let num_seasons = seasons.len();
-        let season_num = crate::get_season_num(&cstate.args);
+        let season_num = crate::get_season_num(&state.args);
         let series = Series::from_season_list(&seasons, season_num, episodes)?;
         let season = SeasonState::new(remote, &name, series, season_num)?;
 
@@ -299,6 +261,23 @@ impl<'a> SeriesState<'a> {
             .new_in_place(remote, &self.name, &self.seasons, season_num)?;
 
         Ok(self)
+    }
+
+    /// Sets the current series as the last watched one if it isn't already.
+    fn set_last_watched<B>(&mut self, ui: &mut UI<B>)
+    where
+        B: tui::backend::Backend,
+    {
+        if self.is_last_watched {
+            return;
+        }
+
+        ui.log_capture("Marking as the last watched series", || {
+            let last_watched = LastWatched::new(&self.name);
+            last_watched.save(None)
+        });
+
+        self.is_last_watched = true;
     }
 }
 
@@ -353,9 +332,9 @@ impl<'a> SeasonState<'a> {
         SeasonState::new(remote, name, series, season_num)
     }
 
-    fn play_next_episode_async(&mut self, cstate: &CommonState) -> Result<()> {
-        let remote = cstate.remote.as_ref();
-        let config = &cstate.config;
+    fn play_next_episode_async(&mut self, state: &CommonState) -> Result<()> {
+        let remote = state.remote.as_ref();
+        let config = &state.config;
 
         self.tracker.begin_watching(remote, config)?;
         let next_ep = self.tracker.state.watched_eps() + 1;
@@ -379,6 +358,50 @@ impl<'a> SeasonState<'a> {
         };
 
         self.watch_state = WatchState::Watching(start_time, progress_time, child);
+
+        Ok(())
+    }
+
+    fn process_tick<B>(&mut self, state: &'a CommonState, ui: &mut UI<B>) -> Result<()>
+    where
+        B: tui::backend::Backend,
+    {
+        match &mut self.watch_state {
+            WatchState::Idle => (),
+            WatchState::Watching(start_time, _, child) => {
+                let status = match child.try_wait().context(err::IO)? {
+                    Some(status) => status,
+                    None => return Ok(()),
+                };
+
+                if !status.success() {
+                    ui.push_log_status("Player did not exit properly");
+                    return Ok(());
+                }
+
+                let mins_watched = {
+                    let watch_time = Utc::now() - *start_time;
+                    watch_time.num_seconds() as f32 / 60.0
+                };
+
+                let remote = state.remote.as_ref();
+                let config = &state.config;
+
+                let mins_must_watch =
+                    self.series.info.episode_length as f32 * config.episode.pcnt_must_watch;
+
+                if mins_watched >= mins_must_watch {
+                    ui.log_capture("Marking episode as completed", || {
+                        self.tracker.episode_completed(remote, config)
+                    });
+                } else {
+                    ui.push_log_status("Not marking episode as completed");
+                }
+
+                self.watch_state = WatchState::Idle;
+                self.update_value_cache(remote);
+            }
+        }
 
         Ok(())
     }
