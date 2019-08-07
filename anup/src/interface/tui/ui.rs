@@ -1,4 +1,4 @@
-use super::{UIState, WatchState};
+use super::{Selection, UIState, WatchState};
 use crate::err::{self, Result};
 use crate::util;
 use chrono::{Duration, Utc};
@@ -99,26 +99,35 @@ where
     }
 
     fn draw_top_panels(state: &UIState, layout: &[Rect], frame: &mut Frame<B>) {
-        SelectableList::default()
+        let mut series_list = SelectableList::default()
             .block(Block::default().title("Series").borders(Borders::ALL))
             .items(state.series_names.as_ref())
             .select(Some(state.selected_series))
             .style(Style::default().fg(Color::White))
-            .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC))
-            .render(frame, layout[0]);
+            .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC));
 
-        let season_nums = (1..=state.num_seasons)
+        if state.selection == Selection::Series {
+            series_list = series_list.highlight_symbol(">");
+        }
+
+        series_list.render(frame, layout[0]);
+
+        let season_nums = (1..=state.series.num_seasons)
             .map(|i| i.to_string())
             .collect::<SmallVec<[_; 4]>>();
 
-        SelectableList::default()
+        let mut season_list = SelectableList::default()
             .block(Block::default().title("Season").borders(Borders::ALL))
             .items(season_nums.as_ref())
-            .select(Some(state.season.season_num))
+            .select(Some(state.series.season.season_num))
             .style(Style::default().fg(Color::White))
-            .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC))
-            .highlight_symbol(">")
-            .render(frame, layout[1]);
+            .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC));
+
+        if state.selection == Selection::Season {
+            season_list = season_list.highlight_symbol(">");
+        }
+
+        season_list.render(frame, layout[1]);
     }
 
     fn draw_info_panel(state: &UIState, layout: &[Rect], frame: &mut Frame<B>) {
@@ -140,7 +149,7 @@ where
             .margin(2)
             .split(layout[0]);
 
-        let season = &state.season;
+        let season = &state.series.season;
         let info = &season.series.info;
         let entry = &season.tracker.state;
 

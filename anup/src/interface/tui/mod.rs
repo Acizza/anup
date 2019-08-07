@@ -2,11 +2,12 @@ mod ui;
 
 use crate::config::Config;
 use crate::err::{self, Result};
-use crate::file::SaveDir;
+use crate::file::{SaveDir, SaveFile};
 use crate::track::{EntryState, SeriesTracker};
 use crate::util;
+use crate::LastWatched;
 use anime::remote::{RemoteService, SeriesInfo};
-use anime::Series;
+use anime::{SeasonInfoList, Series};
 use chrono::{DateTime, Duration, Utc};
 use clap::ArgMatches;
 use snafu::{OptionExt, ResultExt};
@@ -17,28 +18,21 @@ use termion::event::Key;
 use ui::{Event, Events, UI};
 
 pub fn run(args: &ArgMatches) -> Result<()> {
-    let name = crate::get_series_name(args)?;
     let config = crate::get_config()?;
 
     let remote = crate::get_remote(args, true)?;
     let remote = remote.as_ref();
 
-    let episodes = crate::get_episodes(args, &name, &config)?;
-    let seasons = crate::get_season_list(&name, remote, &episodes)?;
-
     let mut state = {
+        let name = crate::get_series_name(args)?;
         let series_names = SaveDir::LocalData.get_subdirs()?;
         let selected_series = series_names.iter().position(|s| *s == name).unwrap_or(0);
-        let season_num = crate::get_season_num(args);
-
-        let series = Series::from_season_list(&seasons, season_num, &episodes)?;
-        let season_state = SeasonState::new(remote, &name, series, season_num)?;
 
         UIState {
-            season: season_state,
+            series: SeriesState::new(args, &name, remote, &config, true)?,
             series_names,
             selected_series,
-            num_seasons: seasons.len(),
+            selection: Selection::Series,
         }
     };
 
@@ -47,6 +41,9 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 
     loop {
         ui.draw(&state)?;
+
+        let series = &mut state.series;
+        let season = &mut series.season;
 
         match events.next()? {
             Event::Input(key) => match key {
@@ -58,16 +55,16 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                 }
                 // Sync list entry from / to remote
                 Key::Char(ch @ 'r') | Key::Char(ch @ 's') => {
-                    let season = &mut state.season;
+                    let name = &series.name;
                     let entry = &mut season.tracker.state;
 
                     if ch == 'r' {
                         ui.log_capture("Syncing entry from remote", || {
-                            entry.force_sync_changes_from_remote(remote, &name)
+                            entry.force_sync_changes_from_remote(remote, name)
                         });
                     } else if ch == 's' {
                         ui.log_capture("Syncing entry to remote", || {
-                            entry.force_sync_changes_to_remote(remote, &name)
+                            entry.force_sync_changes_to_remote(remote, name)
                         });
                     }
 
@@ -75,28 +72,67 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                 }
                 // Play next episode
                 Key::Char('\n') => {
+                    // Update the last watched series
+                    if !series.is_last_watched {
+                        let name = &series.name;
+
+                        ui.log_capture("Marking as the last watched series", || {
+                            let last_watched = LastWatched::new(name);
+                            last_watched.save(None)
+                        });
+
+                        series.is_last_watched = true;
+                    }
+
                     ui.log_capture("Playing next episode", || {
-                        state.season.play_next_episode_async(remote, &config)
+                        season.play_next_episode_async(remote, &config)
                     });
                 }
-                // Select season
-                Key::Up | Key::Down if state.season.watch_state == WatchState::Idle => {
-                    let season = &mut state.season;
-
-                    let next_season = if key == Key::Up {
-                        season.season_num.saturating_sub(1)
+                // Switch between series and season selection
+                Key::Left | Key::Right if state.is_idle() => {
+                    state.selection.set_opposite();
+                }
+                // Select series
+                Key::Up | Key::Down if state.can_select_series() => {
+                    let next_index = if key == Key::Up {
+                        state.selected_series.saturating_sub(1)
                     } else {
-                        season.season_num + 1
+                        state.selected_series + 1
                     };
 
-                    if seasons.has(next_season) {
-                        let series = Series::from_season_list(&seasons, next_season, &episodes)?;
-                        *season = SeasonState::new(remote, &name, series, next_season)?;
+                    let new_name = match state.series_names.get(next_index) {
+                        Some(new_name) => new_name,
+                        None => continue,
+                    };
+
+                    state.series = SeriesState::new(args, new_name, remote, &config, false)?;
+                    state.selected_series = next_index;
+                }
+                // Select season
+                Key::Up | Key::Down if state.can_select_season() => {
+                    let series = &mut state.series;
+
+                    let next_season = if key == Key::Up {
+                        series.season.season_num.saturating_sub(1)
+                    } else {
+                        series.season.season_num + 1
+                    };
+
+                    if series.seasons.has(next_season) {
+                        // This is a bit funky. Here we avoid cloning the episodes by moving them
+                        // out of the season so they can be moved into the new Series struct.
+                        // Due to some aspect(s) of the borrowing rules, we cannot use a pointer alias
+                        // to make this look a bit cleaner.
+                        let eps = state.series.season.series.episodes;
+                        let series =
+                            Series::from_season_list(&state.series.seasons, next_season, eps)?;
+                        state.series.season =
+                            SeasonState::new(remote, &state.series.name, series, next_season)?;
                     }
                 }
                 _ => (),
             },
-            Event::Tick => match &mut state.season.watch_state {
+            Event::Tick => match &mut season.watch_state {
                 WatchState::Idle => (),
                 WatchState::Watching(start_time, _, child) => {
                     let status = match child.try_wait().context(err::IO)? {
@@ -113,8 +149,6 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                         let watch_time = Utc::now() - *start_time;
                         watch_time.num_seconds() as f32 / 60.0
                     };
-
-                    let season = &mut state.season;
 
                     let mins_must_watch =
                         season.series.info.episode_length as f32 * config.episode.pcnt_must_watch;
@@ -136,10 +170,43 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 }
 
 pub struct UIState<'a> {
-    pub season: SeasonState<'a>,
+    pub series: SeriesState<'a>,
     pub series_names: Vec<String>,
     pub selected_series: usize,
-    pub num_seasons: usize,
+    pub selection: Selection,
+}
+
+impl<'a> UIState<'a> {
+    fn is_idle(&self) -> bool {
+        self.series.season.watch_state == WatchState::Idle
+    }
+
+    fn can_select_season(&self) -> bool {
+        self.selection == Selection::Season && self.is_idle()
+    }
+
+    fn can_select_series(&self) -> bool {
+        self.selection == Selection::Series && self.is_idle()
+    }
+}
+
+#[derive(PartialEq, Copy, Clone)]
+pub enum Selection {
+    Series,
+    Season,
+}
+
+impl Selection {
+    fn opposite(self) -> Selection {
+        match self {
+            Selection::Series => Selection::Season,
+            Selection::Season => Selection::Series,
+        }
+    }
+
+    fn set_opposite(&mut self) {
+        *self = self.opposite();
+    }
 }
 
 pub type ProgressTime = DateTime<Utc>;
@@ -157,6 +224,45 @@ impl PartialEq for WatchState {
             (WatchState::Watching(_, _, _), WatchState::Watching(_, _, _)) => true,
             _ => false,
         }
+    }
+}
+
+pub struct SeriesState<'a> {
+    pub name: String,
+    pub season: SeasonState<'a>,
+    pub seasons: SeasonInfoList,
+    pub num_seasons: usize,
+    pub is_last_watched: bool,
+}
+
+impl<'a> SeriesState<'a> {
+    pub fn new<S, R>(
+        args: &clap::ArgMatches,
+        name: S,
+        remote: &'a R,
+        config: &Config,
+        is_last_watched: bool,
+    ) -> Result<SeriesState<'a>>
+    where
+        S: Into<String>,
+        R: RemoteService + ?Sized,
+    {
+        let name = name.into();
+
+        let episodes = crate::get_episodes(args, &name, &config)?;
+        let seasons = crate::get_season_list(&name, remote, &episodes)?;
+        let num_seasons = seasons.len();
+        let season_num = crate::get_season_num(args);
+        let series = Series::from_season_list(&seasons, season_num, episodes)?;
+        let season = SeasonState::new(remote, &name, series, season_num)?;
+
+        Ok(SeriesState {
+            name,
+            season,
+            seasons,
+            num_seasons,
+            is_last_watched,
+        })
     }
 }
 
