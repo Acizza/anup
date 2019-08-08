@@ -31,11 +31,12 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 
     let mut ui_state = {
         let name = crate::get_series_name(args)?;
+        let series = SeriesState::new(&cstate, &name, true)?;
         let series_names = SaveDir::LocalData.get_subdirs()?;
         let selected_series = series_names.iter().position(|s| *s == name).unwrap_or(0);
 
         UIState {
-            series: SeriesState::new(&cstate, &name, true)?,
+            series,
             series_names,
             selected_series,
             selection: Selection::Series,
