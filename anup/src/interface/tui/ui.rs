@@ -327,13 +327,13 @@ impl Events {
 pub enum LogItemStatus {
     Ok,
     Pending,
-    Failed,
+    Failed(err::Error),
 }
 
 impl LogItemStatus {
     pub fn is_resolved(&self) -> bool {
         match self {
-            LogItemStatus::Ok | LogItemStatus::Failed => true,
+            LogItemStatus::Ok | LogItemStatus::Failed(_) => true,
             LogItemStatus::Pending => false,
         }
     }
@@ -344,7 +344,7 @@ impl fmt::Display for LogItemStatus {
         match self {
             LogItemStatus::Ok => write!(f, "ok"),
             LogItemStatus::Pending => write!(f, "pending"),
-            LogItemStatus::Failed => write!(f, "failed"),
+            LogItemStatus::Failed(_) => write!(f, "failed"),
         }
     }
 }
@@ -409,7 +409,7 @@ impl<'a> StatusLog<'a> {
             let status_color = match item.status {
                 LogItemStatus::Ok => Color::Green,
                 LogItemStatus::Pending => Color::Yellow,
-                LogItemStatus::Failed => Color::Red,
+                LogItemStatus::Failed(_) => Color::Red,
             };
 
             let status = Text::styled(
@@ -418,6 +418,13 @@ impl<'a> StatusLog<'a> {
             );
 
             self.formatted.push(status);
+
+            if let LogItemStatus::Failed(err) = &item.status {
+                let err_text =
+                    Text::styled(format!(".. {}\n", err), Style::default().fg(Color::Red));
+
+                self.formatted.push(err_text);
+            }
         }
     }
 
@@ -449,8 +456,7 @@ impl<'a> StatusLog<'a> {
 
         let status = match f() {
             Ok(_) => LogItemStatus::Ok,
-            // TODO: display error
-            Err(_) => LogItemStatus::Failed,
+            Err(err) => LogItemStatus::Failed(err),
         };
 
         self.set_status_on_last(status);
