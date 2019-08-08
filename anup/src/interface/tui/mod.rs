@@ -57,9 +57,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                     ui.clear().ok();
                     break Ok(());
                 }
-                key => {
-                    ui_state = ui_state.process_key(&cstate, &mut ui, key)?;
-                }
+                key => ui_state.process_key(&cstate, &mut ui, key)?,
             },
             Event::Tick => ui_state.process_tick(&cstate, &mut ui)?,
         }
@@ -82,12 +80,7 @@ pub struct UIState<'a> {
 }
 
 impl<'a> UIState<'a> {
-    fn process_key<B>(
-        mut self,
-        state: &'a CommonState,
-        ui: &mut UI<B>,
-        key: Key,
-    ) -> Result<UIState<'a>>
+    fn process_key<B>(&mut self, state: &'a CommonState, ui: &mut UI<B>, key: Key) -> Result<()>
     where
         B: tui::backend::Backend,
     {
@@ -130,7 +123,7 @@ impl<'a> UIState<'a> {
 
                 let new_name = match self.series_names.get(index) {
                     Some(new_name) => new_name,
-                    None => return Ok(self),
+                    None => return Ok(()),
                 };
 
                 self.series = SeriesState::new(state, new_name, false)?;
@@ -140,12 +133,12 @@ impl<'a> UIState<'a> {
             Key::Up | Key::Down if self.can_select_season() => {
                 let remote = state.remote.as_ref();
                 let new_season = UIState::next_arrow_key_value(key, self.series.season.season_num);
-                self.series = self.series.set_season(new_season, remote)?;
+                self.series.set_season(new_season, remote)?;
             }
             _ => (),
         }
 
-        Ok(self)
+        Ok(())
     }
 
     fn process_tick<B>(&mut self, state: &'a CommonState, ui: &mut UI<B>) -> Result<()>
@@ -245,23 +238,20 @@ impl<'a> SeriesState<'a> {
         })
     }
 
-    /// Returns the same `SeriesState` with new `SeasonState` data if `season_num`
-    /// points to an existing season. Otherwise, it is the same `SeriesState` unmodified.
-    ///
-    /// This method consumes the `SeriesState` to avoid cloning data.
-    fn set_season<R>(mut self, season_num: usize, remote: &'a R) -> Result<SeriesState>
+    /// Loads the season specified by `season_num` and points `season` to it.
+    fn set_season<R>(&mut self, season_num: usize, remote: &'a R) -> Result<()>
     where
         R: RemoteService + ?Sized,
     {
         if !self.seasons.has(season_num) {
-            return Ok(self);
+            return Ok(());
         }
 
-        self.season = self
-            .season
-            .new_in_place(remote, &self.name, &self.seasons, season_num)?;
+        let episodes = self.season.series.episodes.clone();
+        let series = Series::from_season_list(&self.seasons, season_num, episodes)?;
+        self.season = SeasonState::new(remote, &self.name, series, season_num)?;
 
-        Ok(self)
+        Ok(())
     }
 
     /// Sets the current series as the last watched one if it isn't already.
@@ -311,26 +301,6 @@ impl<'a> SeasonState<'a> {
             season_num,
             watch_state: WatchState::Idle,
         })
-    }
-
-    /// Returns a new `SeasonState` using some existing data from the consumed one.
-    ///
-    /// This method consumes the `SeasonState` so it can reuse existing episode data.
-    fn new_in_place<R, S>(
-        self,
-        remote: &'a R,
-        name: S,
-        seasons: &SeasonInfoList,
-        season_num: usize,
-    ) -> Result<SeasonState<'a>>
-    where
-        R: RemoteService + ?Sized,
-        S: Into<String>,
-    {
-        let episodes = self.series.episodes;
-        let series = Series::from_season_list(seasons, season_num, episodes)?;
-
-        SeasonState::new(remote, name, series, season_num)
     }
 
     fn play_next_episode_async(&mut self, state: &CommonState) -> Result<()> {
