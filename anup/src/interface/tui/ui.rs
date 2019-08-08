@@ -53,7 +53,7 @@ where
 
     pub fn push_log_status<S>(&mut self, text: S)
     where
-        S: Into<String>,
+        S: Into<LogItem>,
     {
         self.status_log.push(text);
     }
