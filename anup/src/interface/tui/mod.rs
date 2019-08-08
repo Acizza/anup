@@ -15,7 +15,7 @@ use std::borrow::Cow;
 use std::ops::Add;
 use std::process;
 use termion::event::Key;
-use ui::{Event, Events, UI};
+use ui::{Event, Events, LogItem, UI};
 
 pub fn run(args: &ArgMatches) -> Result<()> {
     let cstate = {
@@ -57,9 +57,17 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                     ui.clear().ok();
                     break Ok(());
                 }
-                key => ui_state.process_key(&cstate, &mut ui, key)?,
+                key => match ui_state.process_key(&cstate, &mut ui, key) {
+                    Ok(_) => (),
+                    Err(err) => {
+                        ui.push_log_status(LogItem::failed("Processing key", err));
+                    }
+                },
             },
-            Event::Tick => ui_state.process_tick(&cstate, &mut ui)?,
+            Event::Tick => match ui_state.process_tick(&cstate, &mut ui) {
+                Ok(_) => (),
+                Err(err) => ui.push_log_status(LogItem::failed("Processing tick", err)),
+            },
         }
     }
 }

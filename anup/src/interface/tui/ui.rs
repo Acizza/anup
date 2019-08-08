@@ -355,14 +355,28 @@ pub struct LogItem {
 }
 
 impl LogItem {
-    pub fn new<S>(text: S) -> LogItem
+    pub fn with_status<S>(text: S, status: LogItemStatus) -> LogItem
     where
         S: Into<String>,
     {
         LogItem {
             text: text.into(),
-            status: LogItemStatus::Pending,
+            status,
         }
+    }
+
+    pub fn pending<S>(text: S) -> LogItem
+    where
+        S: Into<String>,
+    {
+        LogItem::with_status(text, LogItemStatus::Pending)
+    }
+
+    pub fn failed<S>(text: S, err: err::Error) -> LogItem
+    where
+        S: Into<String>,
+    {
+        LogItem::with_status(text, LogItemStatus::Failed(err))
     }
 }
 
@@ -371,7 +385,7 @@ where
     T: Into<String>,
 {
     fn from(value: T) -> Self {
-        LogItem::new(value)
+        LogItem::pending(value)
     }
 }
 
