@@ -5,7 +5,7 @@ use crate::err::{self, Result};
 use crate::file::{SaveDir, SaveFile};
 use crate::track::{EntryState, SeriesTracker};
 use crate::util;
-use crate::LastWatched;
+use crate::CurrentWatchInfo;
 use anime::remote::{RemoteService, SeriesInfo};
 use anime::{SeasonInfoList, Series};
 use chrono::{DateTime, Duration, Utc};
@@ -30,10 +30,13 @@ pub fn run(args: &ArgMatches) -> Result<()> {
     };
 
     let mut ui_state = {
-        let name = crate::get_series_name(args)?;
-        let series = SeriesState::new(&cstate, &name, true)?;
+        let watch_info = crate::get_watch_info(args)?;
+        let series = SeriesState::new(&cstate, watch_info, true)?;
         let series_names = SaveDir::LocalData.get_subdirs()?;
-        let selected_series = series_names.iter().position(|s| *s == name).unwrap_or(0);
+        let selected_series = series_names
+            .iter()
+            .position(|s| *s == series.watch_info.name)
+            .unwrap_or(0);
 
         UIState {
             series,
@@ -97,7 +100,7 @@ impl<'a> UIState<'a> {
             Key::Char(ch @ 'r') | Key::Char(ch @ 's') => {
                 let remote = state.remote.as_ref();
 
-                let name = &self.series.name;
+                let name = &self.series.watch_info.name;
                 let season = &mut self.series.season;
                 let entry = &mut season.tracker.state;
 
@@ -134,13 +137,15 @@ impl<'a> UIState<'a> {
                     None => return Ok(()),
                 };
 
-                self.series = SeriesState::new(state, new_name, false)?;
+                let watch_info = CurrentWatchInfo::new(new_name, 0);
+
+                self.series = SeriesState::new(state, watch_info, false)?;
                 self.selected_series = index;
             }
             // Select season
             Key::Up | Key::Down if self.can_select_season() => {
                 let remote = state.remote.as_ref();
-                let new_season = UIState::next_arrow_key_value(key, self.series.season.season_num);
+                let new_season = UIState::next_arrow_key_value(key, self.series.watch_info.season);
                 self.series.set_season(new_season, remote)?;
             }
             _ => (),
@@ -214,31 +219,31 @@ impl PartialEq for WatchState {
     }
 }
 
-pub struct SeriesState<'a> {
-    pub name: String,
-    pub season: SeasonState<'a>,
-    pub seasons: SeasonInfoList,
-    pub num_seasons: usize,
-    pub is_last_watched: bool,
+struct SeriesState<'a> {
+    watch_info: CurrentWatchInfo,
+    season: SeasonState<'a>,
+    seasons: SeasonInfoList,
+    num_seasons: usize,
+    is_last_watched: bool,
 }
 
 impl<'a> SeriesState<'a> {
-    fn new<S>(state: &'a CommonState, name: S, is_last_watched: bool) -> Result<SeriesState<'a>>
-    where
-        S: Into<String>,
-    {
-        let name = name.into();
+    fn new(
+        state: &'a CommonState,
+        watch_info: CurrentWatchInfo,
+        is_last_watched: bool,
+    ) -> Result<SeriesState<'a>> {
         let remote = state.remote.as_ref();
+        let name = &watch_info.name;
 
-        let episodes = crate::get_episodes(&state.args, &name, &state.config)?;
-        let seasons = crate::get_season_list(&name, remote, &episodes)?;
+        let episodes = crate::get_episodes(&state.args, name, &state.config)?;
+        let seasons = crate::get_season_list(name, remote, &episodes)?;
         let num_seasons = seasons.len();
-        let season_num = crate::get_season_num(&state.args);
-        let series = Series::from_season_list(&seasons, season_num, episodes)?;
-        let season = SeasonState::new(remote, &name, series, season_num)?;
+        let series = Series::from_season_list(&seasons, watch_info.season, episodes)?;
+        let season = SeasonState::new(remote, name, series)?;
 
         Ok(SeriesState {
-            name,
+            watch_info,
             season,
             seasons,
             num_seasons,
@@ -257,7 +262,9 @@ impl<'a> SeriesState<'a> {
 
         let episodes = self.season.series.episodes.clone();
         let series = Series::from_season_list(&self.seasons, season_num, episodes)?;
-        self.season = SeasonState::new(remote, &self.name, series, season_num)?;
+
+        self.season = SeasonState::new(remote, &self.watch_info.name, series)?;
+        self.watch_info.season = season_num;
 
         Ok(())
     }
@@ -272,8 +279,7 @@ impl<'a> SeriesState<'a> {
         }
 
         ui.log_capture("Marking as the last watched series", || {
-            let last_watched = LastWatched::new(&self.name);
-            last_watched.save(None)
+            self.watch_info.save(None)
         });
 
         self.is_last_watched = true;
@@ -284,17 +290,11 @@ pub struct SeasonState<'a> {
     pub series: Series<'a>,
     pub tracker: SeriesTracker<'a>,
     pub value_cache: SeasonValueCache<'a>,
-    pub season_num: usize,
     pub watch_state: WatchState,
 }
 
 impl<'a> SeasonState<'a> {
-    fn new<R, S>(
-        remote: &'a R,
-        name: S,
-        series: Series<'a>,
-        season_num: usize,
-    ) -> Result<SeasonState<'a>>
+    fn new<R, S>(remote: &'a R, name: S, series: Series<'a>) -> Result<SeasonState<'a>>
     where
         R: RemoteService + ?Sized,
         S: Into<String>,
@@ -306,7 +306,6 @@ impl<'a> SeasonState<'a> {
             series,
             tracker,
             value_cache,
-            season_num,
             watch_state: WatchState::Idle,
         })
     }

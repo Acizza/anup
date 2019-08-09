@@ -55,25 +55,26 @@ fn run(args: &ArgMatches) -> Result<()> {
 }
 
 #[derive(Deserialize, Serialize)]
-struct LastWatched(String);
+struct CurrentWatchInfo {
+    name: String,
+    season: usize,
+}
 
-impl LastWatched {
-    fn new<S>(name: S) -> LastWatched
+impl CurrentWatchInfo {
+    fn new<S>(name: S, season: usize) -> CurrentWatchInfo
     where
         S: Into<String>,
     {
-        LastWatched(name.into())
-    }
-
-    #[inline(always)]
-    fn take(self) -> String {
-        self.0
+        CurrentWatchInfo {
+            name: name.into(),
+            season,
+        }
     }
 }
 
-impl SaveFile for LastWatched {
+impl SaveFile for CurrentWatchInfo {
     fn filename() -> &'static str {
-        ".last_watched"
+        ".currently_watching"
     }
 
     fn save_dir() -> SaveDir {
@@ -85,18 +86,25 @@ impl SaveFile for LastWatched {
     }
 }
 
-fn get_series_name(args: &clap::ArgMatches) -> Result<String> {
-    if let Some(name) = args.value_of("series") {
-        let name = LastWatched::new(name);
-        name.save(None)?;
+fn get_watch_info(args: &clap::ArgMatches) -> Result<CurrentWatchInfo> {
+    match args.value_of("series") {
+        Some(name) => {
+            let season = args
+                .value_of("season")
+                .and_then(|num_str| num_str.parse().ok())
+                .map(|num: usize| num.saturating_sub(1))
+                .unwrap_or(0);
 
-        return Ok(name.take());
-    }
+            let watch_info = CurrentWatchInfo::new(name, season);
+            watch_info.save(None)?;
 
-    match LastWatched::load(None) {
-        Ok(sname) => Ok(sname.take()),
-        Err(ref err) if err.is_file_nonexistant() => Err(err::Error::NoSavedSeriesName),
-        Err(err) => Err(err),
+            Ok(watch_info)
+        }
+        None => match CurrentWatchInfo::load(None) {
+            Ok(watch_info) => Ok(watch_info),
+            Err(ref err) if err.is_file_nonexistant() => Err(err::Error::NoSavedSeriesName),
+            Err(err) => Err(err),
+        },
     }
 }
 
@@ -259,13 +267,6 @@ where
 
     let info = results.swap_remove(index);
     Ok(info)
-}
-
-fn get_season_num(args: &ArgMatches) -> usize {
-    args.value_of("season")
-        .and_then(|num_str| num_str.parse().ok())
-        .map(|num: usize| num.saturating_sub(1))
-        .unwrap_or(0)
 }
 
 fn get_season_list<R, S>(name: S, remote: &R, episodes: &EpisodeList) -> Result<SeasonInfoList>

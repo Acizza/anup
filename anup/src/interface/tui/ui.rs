@@ -119,7 +119,7 @@ where
         let mut season_list = SelectableList::default()
             .block(Block::default().title("Season").borders(Borders::ALL))
             .items(season_nums.as_ref())
-            .select(Some(state.series.season.season_num))
+            .select(Some(state.series.watch_info.season))
             .style(Style::default().fg(Color::White))
             .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC));
 

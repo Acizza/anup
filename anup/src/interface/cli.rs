@@ -23,9 +23,11 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 }
 
 fn prefetch(args: &ArgMatches) -> Result<()> {
-    let name = crate::get_series_name(args)?;
+    let watch_info = crate::get_watch_info(args)?;
+    let name = &watch_info.name;
+
     let config = crate::get_config()?;
-    let episodes = crate::get_episodes(args, &name, &config)?;
+    let episodes = crate::get_episodes(args, name, &config)?;
 
     let remote = crate::get_remote(args, false)?;
     let remote = remote.as_ref();
@@ -49,7 +51,9 @@ fn prefetch(args: &ArgMatches) -> Result<()> {
 }
 
 fn sync(args: &ArgMatches) -> Result<()> {
-    let name = crate::get_series_name(args)?;
+    let watch_info = crate::get_watch_info(args)?;
+    let name = &watch_info.name;
+
     let remote = crate::get_remote(args, false)?;
     let seasons = SeasonInfoList::load(name.as_ref())?;
 
@@ -65,27 +69,27 @@ fn sync(args: &ArgMatches) -> Result<()> {
         }
 
         println!("syncing season {}: {}", 1 + season_num, season.title);
-        state.sync_changes_to_remote(remote.as_ref(), &name)?;
+        state.sync_changes_to_remote(remote.as_ref(), name)?;
     }
 
     Ok(())
 }
 
 fn modify_series(args: &ArgMatches) -> Result<()> {
-    let name = crate::get_series_name(args)?;
-    let config = crate::get_config()?;
+    let watch_info = crate::get_watch_info(args)?;
+    let name = &watch_info.name;
 
+    let config = crate::get_config()?;
     let remote = crate::get_remote(args, true)?;
     let remote = remote.as_ref();
 
     let season = {
-        let season_num = crate::get_season_num(args);
         let seasons = SeasonInfoList::load(name.as_ref())?;
-        seasons.take_unchecked(season_num)
+        seasons.take_unchecked(watch_info.season)
     };
 
     let mut state = EntryState::load_with_id(season.id, name.as_ref())?;
-    state.sync_changes_from_remote(remote, &name)?;
+    state.sync_changes_from_remote(remote, name)?;
 
     if let Some(score) = args.value_of("rate") {
         let score = remote.parse_score(score).context(err::ScoreParseFailed)?;
@@ -99,7 +103,7 @@ fn modify_series(args: &ArgMatches) -> Result<()> {
         (false, false) => (),
     }
 
-    state.sync_changes_to_remote(remote, &name)
+    state.sync_changes_to_remote(remote, name)
 }
 
 fn remove_orphaned_data() -> Result<()> {
@@ -125,18 +129,19 @@ fn remove_orphaned_data() -> Result<()> {
 }
 
 fn play(args: &ArgMatches) -> Result<()> {
-    let name = crate::get_series_name(args)?;
+    let watch_info = crate::get_watch_info(args)?;
+    let name = &watch_info.name;
+
     let config = crate::get_config()?;
-    let episodes = crate::get_episodes(args, &name, &config)?;
+    let episodes = crate::get_episodes(args, name, &config)?;
 
     let remote = crate::get_remote(args, true)?;
     let remote = remote.as_ref();
 
-    let season_num = crate::get_season_num(args);
-    let seasons = crate::get_season_list(&name, remote, &episodes)?;
-    let series = Series::from_season_list(&seasons, season_num, episodes)?;
+    let seasons = crate::get_season_list(name, remote, &episodes)?;
+    let series = Series::from_season_list(&seasons, watch_info.season, episodes)?;
 
-    let mut tracker = SeriesTracker::init(&series.info, &name)?;
+    let mut tracker = SeriesTracker::init(&series.info, name)?;
     tracker.begin_watching(remote, &config)?;
 
     play_episode(remote, &config, &series, &mut tracker)
