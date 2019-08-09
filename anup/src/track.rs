@@ -268,15 +268,20 @@ impl<'a> SeriesTracker<'a> {
         R: RemoteService + ?Sized,
     {
         let state = &mut self.state;
-        state.set_watched_eps(state.watched_eps() + 1);
+        let new_progress = state.watched_eps() + 1;
 
-        if state.watched_eps() >= self.info.episodes {
+        if new_progress >= self.info.episodes {
+            // The watched episode range is inclusive, so it's fine to bump the watched count
+            // if we're at exactly at the last episode
+            if new_progress == self.info.episodes {
+                state.set_watched_eps(new_progress);
+            }
+
             return self.series_complete(remote, config);
         }
 
-        state.sync_changes_to_remote(remote, &self.name)?;
-
-        Ok(())
+        state.set_watched_eps(new_progress);
+        state.sync_changes_to_remote(remote, &self.name)
     }
 
     pub fn series_complete<R>(&mut self, remote: &R, config: &Config) -> Result<()>
