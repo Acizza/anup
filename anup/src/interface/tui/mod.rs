@@ -496,7 +496,9 @@ impl<'a> SeasonValueCache<'a> {
     }
 
     fn watch_time_left(info: &SeriesInfo, entry: &EntryState) -> String {
-        let time_left_mins = (info.episodes - entry.watched_eps()) * info.episode_length;
+        let eps_left = info.episodes - entry.watched_eps().min(info.episodes);
+        let time_left_mins = eps_left * info.episode_length;
+
         util::hm_from_mins(time_left_mins as f32)
     }
 }
