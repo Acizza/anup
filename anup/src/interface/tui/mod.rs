@@ -140,6 +140,28 @@ impl<'a> UIState<'a> {
 
                 season.update_value_cache(remote);
             }
+            // Force forward watch progress
+            Key::Char('f') => {
+                let remote = state.remote.as_ref();
+                let tracker = &mut self.series.season.tracker;
+
+                ui.log_capture("Forcing forward watch progress", || {
+                    tracker.episode_completed(remote, &state.config)
+                });
+
+                self.series.season.update_value_cache(remote);
+            }
+            // Force backwards watch progress
+            Key::Char('b') => {
+                let remote = state.remote.as_ref();
+                let tracker = &mut self.series.season.tracker;
+
+                ui.log_capture("Forcing backwards watch progress", || {
+                    tracker.episode_regressed(remote)
+                });
+
+                self.series.season.update_value_cache(remote);
+            }
             // Play next episode
             Key::Char('\n') => {
                 self.series.set_last_watched(ui);
