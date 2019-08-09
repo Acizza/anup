@@ -284,6 +284,24 @@ impl<'a> SeriesTracker<'a> {
         state.sync_changes_to_remote(remote, &self.name)
     }
 
+    pub fn episode_regressed<R>(&mut self, remote: &R) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+    {
+        let state = &mut self.state;
+
+        state.set_watched_eps(state.watched_eps().saturating_sub(1));
+
+        let new_status = match state.status() {
+            Status::Completed if state.times_rewatched() > 0 => Status::Rewatching,
+            Status::Rewatching => Status::Rewatching,
+            _ => Status::Watching,
+        };
+
+        state.set_status(new_status);
+        state.sync_changes_to_remote(remote, &self.name)
+    }
+
     pub fn series_complete<R>(&mut self, remote: &R, config: &Config) -> Result<()>
     where
         R: RemoteService + ?Sized,
