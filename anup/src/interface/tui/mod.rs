@@ -99,8 +99,8 @@ impl<'a> UIState<'a> {
             // Sync list entry from / to remote
             Key::Char(ch @ 'r') | Key::Char(ch @ 's') => {
                 let remote = state.remote.as_ref();
-
                 let name = &self.series.watch_info.name;
+
                 let season = &mut self.series.season;
                 let entry = &mut season.tracker.state;
 
@@ -110,6 +110,30 @@ impl<'a> UIState<'a> {
                     });
                 } else if ch == 's' {
                     ui.log_capture("Syncing entry to remote", || {
+                        entry.force_sync_changes_to_remote(remote, name)
+                    });
+                }
+
+                season.update_value_cache(remote);
+            }
+            // Drop series / put on hold
+            Key::Char(ch @ 'd') | Key::Char(ch @ 'h') => {
+                let remote = state.remote.as_ref();
+                let name = &self.series.watch_info.name;
+
+                let season = &mut self.series.season;
+                let entry = &mut season.tracker.state;
+
+                if ch == 'd' {
+                    entry.mark_as_dropped(&state.config);
+
+                    ui.log_capture("Dropping series", || {
+                        entry.force_sync_changes_to_remote(remote, name)
+                    });
+                } else if ch == 'h' {
+                    entry.mark_as_on_hold();
+
+                    ui.log_capture("Putting series on hold", || {
                         entry.force_sync_changes_to_remote(remote, name)
                     });
                 }
