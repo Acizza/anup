@@ -1,4 +1,4 @@
-use super::{RemoteService, SeriesEntry, SeriesInfo, Status};
+use super::{RemoteService, SeriesEntry, SeriesInfo, SeriesTitle, Status};
 use crate::err::{self, Result};
 use chrono::{Datelike, NaiveDate};
 use lazy_static::lazy_static;
@@ -333,7 +333,7 @@ impl Into<SeriesInfo> for Media {
 
         SeriesInfo {
             id: self.id,
-            title: self.title.romaji,
+            title: self.title.into(),
             episodes: self.episodes.unwrap_or(1),
             episode_length: self.duration.unwrap_or(24),
             sequel,
@@ -344,6 +344,17 @@ impl Into<SeriesInfo> for Media {
 #[derive(Debug, Deserialize)]
 struct MediaTitle {
     romaji: String,
+    #[serde(rename = "userPreferred")]
+    preferred: String,
+}
+
+impl Into<SeriesTitle> for MediaTitle {
+    fn into(self) -> SeriesTitle {
+        SeriesTitle {
+            romaji: self.romaji,
+            preferred: self.preferred,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

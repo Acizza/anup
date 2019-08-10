@@ -92,7 +92,7 @@ where
 {
     let items = items
         .iter()
-        .map(|info| Cow::Borrowed(info.title.as_ref()))
+        .map(|info| Cow::Borrowed(info.title.romaji.as_ref()))
         .collect::<Vec<_>>();
 
     best_matching_title(name, items)

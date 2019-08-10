@@ -43,7 +43,7 @@ fn prefetch(args: &ArgMatches) -> Result<()> {
             state.save_with_id(season.id, name.as_ref())?;
         }
 
-        println!("season {} -> {}", 1 + season_num, season.title);
+        println!("season {} -> {}", 1 + season_num, season.title.preferred);
     }
 
     println!("\nprefetch complete\nyou can now fully watch this series offline");
@@ -68,7 +68,12 @@ fn sync(args: &ArgMatches) -> Result<()> {
             continue;
         }
 
-        println!("syncing season {}: {}", 1 + season_num, season.title);
+        println!(
+            "syncing season {}: {}",
+            1 + season_num,
+            season.title.preferred
+        );
+
         state.sync_changes_to_remote(remote.as_ref(), name)?;
     }
 

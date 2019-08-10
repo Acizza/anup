@@ -159,7 +159,7 @@ where
                 let mut items = SmallVec::<[_; 2]>::new();
 
                 items.push(Text::styled(
-                    &info.title,
+                    &info.title.preferred,
                     Style::default().modifier(Modifier::BOLD),
                 ));
 

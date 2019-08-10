@@ -3,7 +3,8 @@ query ($name: String!) {
         media (search: $name, type: ANIME) {
             id,
             title {
-                romaji
+                romaji,
+                userPreferred
             },
             episodes,
             duration,

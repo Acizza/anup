@@ -31,7 +31,7 @@ pub type Minutes = u32;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SeriesInfo {
     pub id: u32,
-    pub title: String,
+    pub title: SeriesTitle,
     pub episodes: u32,
     pub episode_length: Minutes,
     pub sequel: Option<u32>,
@@ -47,6 +47,12 @@ impl<'a> Into<Cow<'a, SeriesInfo>> for &'a SeriesInfo {
     fn into(self) -> Cow<'a, SeriesInfo> {
         Cow::Borrowed(self)
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SeriesTitle {
+    pub romaji: String,
+    pub preferred: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
