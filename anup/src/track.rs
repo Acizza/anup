@@ -194,9 +194,9 @@ impl From<u32> for EntryState {
 
 #[derive(Debug)]
 pub struct SeriesTracker<'a> {
-    pub info: Cow<'a, SeriesInfo>,
-    pub state: EntryState,
     pub name: String,
+    pub info: Cow<'a, SeriesInfo>,
+    pub entry: EntryState,
 }
 
 impl<'a> SeriesTracker<'a> {
@@ -208,57 +208,57 @@ impl<'a> SeriesTracker<'a> {
         let info = info.into();
         let name = name.into();
 
-        let state = match EntryState::load_with_id(info.id, name.as_ref()) {
-            Ok(state) => state,
+        let entry = match EntryState::load_with_id(info.id, name.as_ref()) {
+            Ok(entry) => entry,
             Err(ref err) if err.is_file_nonexistant() => EntryState::from(info.id),
             Err(err) => return Err(err),
         };
 
-        Ok(SeriesTracker { info, state, name })
+        Ok(SeriesTracker { info, entry, name })
     }
 
     pub fn begin_watching<R>(&mut self, remote: &R, config: &Config) -> Result<()>
     where
         R: RemoteService + ?Sized,
     {
-        let state = &mut self.state;
-        state.sync_changes_from_remote(remote, &self.name)?;
+        let entry = &mut self.entry;
+        entry.sync_changes_from_remote(remote, &self.name)?;
 
-        let last_status = state.status();
+        let last_status = entry.status();
 
         match last_status {
             Status::Watching | Status::Rewatching => {
                 // There is an edge case where all episodes have been watched, but the status
                 // is still set to watching / rewatching. Here we just start a rewatch
-                if state.watched_eps() >= self.info.episodes {
-                    state.set_status(Status::Rewatching);
-                    state.set_watched_eps(0);
+                if entry.watched_eps() >= self.info.episodes {
+                    entry.set_status(Status::Rewatching);
+                    entry.set_watched_eps(0);
 
                     if last_status == Status::Rewatching {
-                        state.set_times_rewatched(state.times_rewatched() + 1);
+                        entry.set_times_rewatched(entry.times_rewatched() + 1);
                     }
                 }
             }
             Status::Completed => {
-                state.set_status(Status::Rewatching);
-                state.set_watched_eps(0);
+                entry.set_status(Status::Rewatching);
+                entry.set_watched_eps(0);
             }
-            Status::PlanToWatch => state.set_status(Status::Watching),
+            Status::PlanToWatch => entry.set_status(Status::Watching),
             Status::OnHold | Status::Dropped => {
-                state.set_status(Status::Watching);
-                state.set_watched_eps(0);
+                entry.set_status(Status::Watching);
+                entry.set_watched_eps(0);
             }
         }
 
-        if state.start_date().is_none()
+        if entry.start_date().is_none()
             || (last_status == Status::Completed
-                && state.status() == Status::Rewatching
+                && entry.status() == Status::Rewatching
                 && config.reset_dates_on_rewatch)
         {
-            state.set_start_date(Some(Local::today().naive_local()));
+            entry.set_start_date(Some(Local::today().naive_local()));
         }
 
-        state.sync_changes_to_remote(remote, &self.name)?;
+        entry.sync_changes_to_remote(remote, &self.name)?;
 
         Ok(())
     }
@@ -267,60 +267,60 @@ impl<'a> SeriesTracker<'a> {
     where
         R: RemoteService + ?Sized,
     {
-        let state = &mut self.state;
-        let new_progress = state.watched_eps() + 1;
+        let entry = &mut self.entry;
+        let new_progress = entry.watched_eps() + 1;
 
         if new_progress >= self.info.episodes {
             // The watched episode range is inclusive, so it's fine to bump the watched count
             // if we're at exactly at the last episode
             if new_progress == self.info.episodes {
-                state.set_watched_eps(new_progress);
+                entry.set_watched_eps(new_progress);
             }
 
             return self.series_complete(remote, config);
         }
 
-        state.set_watched_eps(new_progress);
-        state.sync_changes_to_remote(remote, &self.name)
+        entry.set_watched_eps(new_progress);
+        entry.sync_changes_to_remote(remote, &self.name)
     }
 
     pub fn episode_regressed<R>(&mut self, remote: &R) -> Result<()>
     where
         R: RemoteService + ?Sized,
     {
-        let state = &mut self.state;
+        let entry = &mut self.entry;
 
-        state.set_watched_eps(state.watched_eps().saturating_sub(1));
+        entry.set_watched_eps(entry.watched_eps().saturating_sub(1));
 
-        let new_status = match state.status() {
-            Status::Completed if state.times_rewatched() > 0 => Status::Rewatching,
+        let new_status = match entry.status() {
+            Status::Completed if entry.times_rewatched() > 0 => Status::Rewatching,
             Status::Rewatching => Status::Rewatching,
             _ => Status::Watching,
         };
 
-        state.set_status(new_status);
-        state.sync_changes_to_remote(remote, &self.name)
+        entry.set_status(new_status);
+        entry.sync_changes_to_remote(remote, &self.name)
     }
 
     pub fn series_complete<R>(&mut self, remote: &R, config: &Config) -> Result<()>
     where
         R: RemoteService + ?Sized,
     {
-        let state = &mut self.state;
+        let entry = &mut self.entry;
 
         // A rewatch is typically only counted once the series is completed again
-        if state.status() == Status::Rewatching {
-            state.set_times_rewatched(state.times_rewatched() + 1);
+        if entry.status() == Status::Rewatching {
+            entry.set_times_rewatched(entry.times_rewatched() + 1);
         }
 
-        if state.end_date().is_none()
-            || (state.status() == Status::Rewatching && config.reset_dates_on_rewatch)
+        if entry.end_date().is_none()
+            || (entry.status() == Status::Rewatching && config.reset_dates_on_rewatch)
         {
-            state.set_end_date(Some(Local::today().naive_local()));
+            entry.set_end_date(Some(Local::today().naive_local()));
         }
 
-        state.set_status(Status::Completed);
-        state.sync_changes_to_remote(remote, &self.name)?;
+        entry.set_status(Status::Completed);
+        entry.sync_changes_to_remote(remote, &self.name)?;
 
         Ok(())
     }

@@ -158,7 +158,7 @@ where
 {
     use anime::remote::Status;
 
-    let ep_num = tracker.state.watched_eps() + 1;
+    let ep_num = tracker.entry.watched_eps() + 1;
     let start_time = Utc::now();
 
     let episode = series
@@ -187,7 +187,7 @@ where
 
     tracker.episode_completed(remote, config)?;
 
-    if let Status::Completed = tracker.state.status() {
+    if let Status::Completed = tracker.entry.status() {
         println!("completed!");
     } else {
         println!("{}/{} completed", ep_num, series.info.episodes)

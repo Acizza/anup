@@ -151,7 +151,7 @@ where
 
         let season = &state.series.season;
         let info = &season.series.info;
-        let entry = &season.tracker.state;
+        let entry = &season.tracker.entry;
 
         // Series title
         {
