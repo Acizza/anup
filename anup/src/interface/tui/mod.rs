@@ -150,7 +150,7 @@ impl<'a> UIState<'a> {
                 self.series.season.update_value_cache(remote);
             }
             // Play next episode
-            Key::Char('\n') => {
+            Key::Char('\n') if self.is_idle() => {
                 self.series.set_as_last_watched(ui);
 
                 ui.log_capture("Playing next episode", || {
