@@ -31,7 +31,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 
     let mut ui_state = {
         let watch_info = crate::get_watch_info(args)?;
-        let mut series = SeriesState::new(&cstate, watch_info, true)?;
+        let series = SeriesState::new(&cstate, watch_info, true)?;
 
         let series_names = {
             let mut names = SaveDir::LocalData.get_subdirs()?;
@@ -43,9 +43,6 @@ pub fn run(args: &ArgMatches) -> Result<()> {
             .iter()
             .position(|s| *s == series.watch_info.name)
             .unwrap_or(0);
-
-        // Keep up-to-date with the remote list entry (if it exists).
-        series.sync_season_from_remote(cstate.remote.as_ref())?;
 
         UIState {
             series,
@@ -294,14 +291,6 @@ impl<'a> SeriesState<'a> {
             .force_sync_entry_from_remote(remote, &self.watch_info.name)
     }
 
-    fn sync_season_from_remote<R>(&mut self, remote: &'a R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
-        self.season
-            .sync_entry_from_remote(remote, &self.watch_info.name)
-    }
-
     fn force_sync_season_to_remote<R>(&mut self, remote: &'a R) -> Result<()>
     where
         R: RemoteService + ?Sized,
@@ -385,16 +374,6 @@ impl<'a> SeasonState<'a> {
         self.tracker
             .entry
             .force_sync_changes_from_remote(remote, name)?;
-        self.update_value_cache(remote);
-        Ok(())
-    }
-
-    fn sync_entry_from_remote<R, S>(&mut self, remote: &'a R, name: S) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-        S: AsRef<str>,
-    {
-        self.tracker.entry.sync_changes_from_remote(remote, name)?;
         self.update_value_cache(remote);
         Ok(())
     }
