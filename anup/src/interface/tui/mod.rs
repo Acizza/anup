@@ -98,6 +98,10 @@ impl<'a> UIState<'a> {
     where
         B: tui::backend::Backend,
     {
+        if !self.is_idle() {
+            return Ok(());
+        }
+
         match key {
             // Sync list entry from / to remote
             Key::Char(ch @ 'r') | Key::Char(ch @ 's') => {
@@ -150,7 +154,7 @@ impl<'a> UIState<'a> {
                 self.series.season.update_value_cache(remote);
             }
             // Play next episode
-            Key::Char('\n') if self.is_idle() => {
+            Key::Char('\n') => {
                 self.series.set_as_last_watched(ui);
 
                 ui.log_capture("Playing next episode", || {
@@ -158,11 +162,11 @@ impl<'a> UIState<'a> {
                 });
             }
             // Switch between series and season selection
-            Key::Left | Key::Right if self.is_idle() => {
+            Key::Left | Key::Right => {
                 self.selection.set_opposite();
             }
             // Select series
-            Key::Up | Key::Down if self.can_select_series() => {
+            Key::Up | Key::Down if self.selection == Selection::Series => {
                 let index = UIState::next_arrow_key_value(key, self.selected_series);
 
                 let new_name = match self.series_names.get(index) {
@@ -176,7 +180,7 @@ impl<'a> UIState<'a> {
                 self.selected_series = index;
             }
             // Select season
-            Key::Up | Key::Down if self.can_select_season() => {
+            Key::Up | Key::Down if self.selection == Selection::Season => {
                 let remote = state.remote.as_ref();
                 let new_season = UIState::next_arrow_key_value(key, self.series.watch_info.season);
                 self.series.set_season(new_season, remote)?;
@@ -204,14 +208,6 @@ impl<'a> UIState<'a> {
 
     fn is_idle(&self) -> bool {
         self.series.season.watch_state == WatchState::Idle
-    }
-
-    fn can_select_season(&self) -> bool {
-        self.selection == Selection::Season && self.is_idle()
-    }
-
-    fn can_select_series(&self) -> bool {
-        self.selection == Selection::Series && self.is_idle()
     }
 }
 
