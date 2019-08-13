@@ -163,7 +163,7 @@ fn get_config() -> Result<Config> {
     }
 }
 
-fn get_episode_matcher<S>(name: S, matcher: Option<&str>) -> Result<EpisodeMatcher>
+fn get_episode_matcher<S>(name: S, matcher: Option<&str>, save_new: bool) -> Result<EpisodeMatcher>
 where
     S: AsRef<str>,
 {
@@ -172,32 +172,39 @@ where
     match EpisodeMatcher::load(name) {
         Ok(matcher) => Ok(matcher),
         Err(ref err) if err.is_file_nonexistant() => match matcher {
-            Some(matcher) => {
+            Some(matcher) if save_new => {
                 let matcher = EpisodeMatcher::with_matcher(matcher)?;
                 matcher.save(name)?;
                 Ok(matcher)
             }
+            Some(_) => Ok(EpisodeMatcher::new()),
             None => Ok(EpisodeMatcher::new()),
         },
         Err(err) => Err(err),
     }
 }
 
-fn get_episodes<S>(args: &ArgMatches, name: S, config: &Config) -> Result<EpisodeList>
+fn get_episodes<S>(
+    args: &ArgMatches,
+    name: S,
+    config: &Config,
+    save_new: bool,
+) -> Result<EpisodeList>
 where
     S: AsRef<str>,
 {
     let name = name.as_ref();
 
-    let dir = if let Some(path) = args.value_of("path") {
-        let path = SeriesPath::new(path)?;
-        path.save(name)?;
-        path.take()
-    } else {
-        get_series_path(name, config)?
+    let dir = match args.value_of("path") {
+        Some(path) if save_new => {
+            let path = SeriesPath::new(path)?;
+            path.save(name)?;
+            path.take()
+        }
+        _ => get_series_path(name, config)?,
     };
 
-    let matcher = get_episode_matcher(name, args.value_of("matcher"))?;
+    let matcher = get_episode_matcher(name, args.value_of("matcher"), save_new)?;
     let episodes = EpisodeList::parse(dir, &matcher)?;
 
     Ok(episodes)

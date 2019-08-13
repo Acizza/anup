@@ -265,7 +265,7 @@ impl<'a> SeriesState<'a> {
         let remote = state.remote.as_ref();
         let name = &watch_info.name;
 
-        let episodes = crate::get_episodes(&state.args, name, &state.config)?;
+        let episodes = crate::get_episodes(&state.args, name, &state.config, is_last_watched)?;
         let seasons = crate::get_season_list(name, remote, &episodes)?;
         let num_seasons = seasons.len();
         let series = Series::from_season_list(&seasons, watch_info.season, episodes)?;

@@ -27,7 +27,7 @@ fn prefetch(args: &ArgMatches) -> Result<()> {
     let name = &watch_info.name;
 
     let config = crate::get_config()?;
-    let episodes = crate::get_episodes(args, name, &config)?;
+    let episodes = crate::get_episodes(args, name, &config, true)?;
 
     let remote = crate::get_remote(args, false)?;
     let remote = remote.as_ref();
@@ -138,7 +138,7 @@ fn play(args: &ArgMatches) -> Result<()> {
     let name = &watch_info.name;
 
     let config = crate::get_config()?;
-    let episodes = crate::get_episodes(args, name, &config)?;
+    let episodes = crate::get_episodes(args, name, &config, true)?;
 
     let remote = crate::get_remote(args, true)?;
     let remote = remote.as_ref();
