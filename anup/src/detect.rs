@@ -1,5 +1,4 @@
 use crate::err::{self, Result};
-use anime::local::Episode;
 use anime::remote::SeriesInfo;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -9,10 +8,11 @@ use std::f32;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub fn best_matching_title<'a, S, I>(name: S, titles: I) -> Option<usize>
+pub fn best_matching_title<S, I, SI>(name: S, titles: I) -> Option<usize>
 where
     S: Into<String>,
-    I: IntoIterator<Item = Cow<'a, str>>,
+    I: IntoIterator<Item = SI>,
+    SI: Into<String>,
 {
     const MIN_CONFIDENCE: f32 = 0.6;
 
@@ -26,13 +26,8 @@ where
     let mut title_idx = None;
 
     for (i, title) in titles.into_iter().enumerate() {
-        let title = match parse_title(title) {
-            Some(mut title) => {
-                title.make_ascii_lowercase();
-                title
-            }
-            None => continue,
-        };
+        let mut title = title.into();
+        title.make_ascii_lowercase();
 
         let score = strsim::jaro(&title, &name) as f32;
 
@@ -78,12 +73,29 @@ where
 
     let filenames = dirs
         .iter()
-        .map(|name| Cow::Owned(name.file_name().to_string_lossy().into_owned()));
+        .filter_map(|name| parse_folder_title(name.file_name().to_string_lossy()));
 
     let dir_idx = best_matching_title(name, filenames).context(err::NoMatchingSeries { name })?;
     let dir = dirs.swap_remove(dir_idx);
 
     Ok(dir.path())
+}
+
+fn parse_folder_title<S>(item: S) -> Option<String>
+where
+    S: AsRef<str>,
+{
+    lazy_static! {
+        // This pattern parses titles out of strings like this:
+        // [GroupName] Series Title (01-13) [1080p]
+        static ref EXTRACT_SERIES_TITLE: Regex =
+            Regex::new(r"(?:\[.+?\]\s*)?(?P<title>.+?)(?:\(|\[|$)").unwrap();
+    }
+
+    let caps = EXTRACT_SERIES_TITLE.captures(item.as_ref())?;
+    let title = caps["title"].to_string();
+
+    Some(title)
 }
 
 pub fn best_matching_info<S>(name: S, items: &[SeriesInfo]) -> Option<usize>
@@ -96,21 +108,4 @@ where
         .collect::<Vec<_>>();
 
     best_matching_title(name, items)
-}
-
-pub fn parse_title<S>(item: S) -> Option<String>
-where
-    S: AsRef<str>,
-{
-    lazy_static! {
-        // This pattern parses titles out of strings like this:
-        // [GroupName] Series Title (01-13) [1080p]
-        static ref EXTRACT_SERIES_TITLE: Regex =
-            Regex::new(r"(?:\[.+?\]\s*)?(?P<title>.+?)(?:\(|\[|$)").unwrap();
-    }
-
-    let caps = EXTRACT_SERIES_TITLE.captures(item.as_ref())?;
-    let title = Episode::clean_title(&caps["title"]);
-
-    Some(title)
 }

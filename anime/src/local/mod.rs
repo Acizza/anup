@@ -147,15 +147,12 @@ impl Episode {
             .captures(name)
             .context(err::NoEpMatches { name })?;
 
-        let name = {
-            let raw_title = caps
-                .name("title")
-                .context(err::NoEpisodeTitle { name })?
-                .as_str()
-                .to_string();
-
-            Episode::clean_title(raw_title)
-        };
+        let name = caps
+            .name("title")
+            .context(err::NoEpisodeTitle { name })?
+            .as_str()
+            .trim()
+            .to_string();
 
         let num = caps
             .name("episode")
@@ -163,25 +160,6 @@ impl Episode {
             .context(err::ExpectedEpNumber { name: &name })?;
 
         Ok(Episode { name, num })
-    }
-
-    /// Replaces characters like ".", "_", and "-" in the specified title with a space for
-    /// easier parsing.
-    pub fn clean_title<S>(title: S) -> String
-    where
-        S: Into<String>,
-    {
-        let mut clean_title = title.into();
-        let bytes = unsafe { clean_title.as_bytes_mut() };
-
-        for byte in bytes {
-            match byte {
-                b'.' | b'_' | b'-' => *byte = b' ',
-                _ => (),
-            }
-        }
-
-        clean_title.trim_end().to_string()
     }
 }
 
