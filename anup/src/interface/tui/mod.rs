@@ -32,7 +32,13 @@ pub fn run(args: &ArgMatches) -> Result<()> {
     let mut ui_state = {
         let watch_info = crate::get_watch_info(args)?;
         let mut series = SeriesState::new(&cstate, watch_info, true)?;
-        let series_names = SaveDir::LocalData.get_subdirs()?;
+
+        let series_names = {
+            let mut names = SaveDir::LocalData.get_subdirs()?;
+            names.sort_unstable();
+            names
+        };
+
         let selected_series = series_names
             .iter()
             .position(|s| *s == series.watch_info.name)
