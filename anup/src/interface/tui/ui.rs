@@ -327,7 +327,7 @@ impl Events {
 pub enum LogItemStatus {
     Ok,
     Pending,
-    Failed(err::Error),
+    Failed(Option<err::Error>),
 }
 
 impl LogItemStatus {
@@ -372,11 +372,12 @@ impl LogItem {
         LogItem::with_status(text, LogItemStatus::Pending)
     }
 
-    pub fn failed<S>(text: S, err: err::Error) -> LogItem
+    pub fn failed<S, O>(text: S, err: O) -> LogItem
     where
         S: Into<String>,
+        O: Into<Option<err::Error>>,
     {
-        LogItem::with_status(text, LogItemStatus::Failed(err))
+        LogItem::with_status(text, LogItemStatus::Failed(err.into()))
     }
 }
 
@@ -433,7 +434,7 @@ impl<'a> StatusLog<'a> {
 
             self.formatted.push(status);
 
-            if let LogItemStatus::Failed(err) = &item.status {
+            if let LogItemStatus::Failed(Some(err)) = &item.status {
                 let err_text =
                     Text::styled(format!(".. {}\n", err), Style::default().fg(Color::Red));
 
@@ -470,7 +471,7 @@ impl<'a> StatusLog<'a> {
 
         let status = match f() {
             Ok(_) => LogItemStatus::Ok,
-            Err(err) => LogItemStatus::Failed(err),
+            Err(err) => LogItemStatus::Failed(Some(err)),
         };
 
         self.set_status_on_last(status);
