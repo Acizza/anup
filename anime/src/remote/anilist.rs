@@ -144,11 +144,7 @@ impl RemoteService for AniList {
             },
         };
 
-        if raw_score <= 100 {
-            Some(raw_score)
-        } else {
-            None
-        }
+        Some(raw_score.min(100))
     }
 
     fn score_to_str(&self, score: u8) -> Cow<str> {
