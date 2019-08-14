@@ -93,7 +93,7 @@ where
                     .split(horiz_splitter[2]);
 
                 UI::draw_info_panel(state, &info_panel_splitter, &mut frame);
-                UI::draw_status_bar(status_log, info_panel_splitter[1], &mut frame);
+                UI::draw_status_bar(state, status_log, info_panel_splitter[1], &mut frame);
             })
             .context(err::IO)
     }
@@ -252,12 +252,27 @@ where
         }
     }
 
-    fn draw_status_bar(log: &mut StatusLog, layout: Rect, frame: &mut Frame<B>) {
-        log.prepare_to_draw(layout);
+    fn draw_status_bar(state: &UIState, log: &mut StatusLog, layout: Rect, frame: &mut Frame<B>) {
+        use super::StatusBarState;
 
-        Paragraph::new(log.draw_items().iter())
-            .block(Block::default().title("Status").borders(Borders::ALL))
-            .render(frame, layout);
+        match &state.status_bar_state {
+            StatusBarState::Log => {
+                log.prepare_to_draw(layout);
+
+                Paragraph::new(log.draw_items().iter())
+                    .block(Block::default().title("Status").borders(Borders::ALL))
+                    .wrap(true)
+                    .render(frame, layout);
+            }
+            StatusBarState::InputScore(buffer) => {
+                let text = Text::raw(buffer);
+
+                Paragraph::new([text].iter())
+                    .block(Block::default().title("Input Score").borders(Borders::ALL))
+                    .wrap(true)
+                    .render(frame, layout);
+            }
+        }
     }
 }
 

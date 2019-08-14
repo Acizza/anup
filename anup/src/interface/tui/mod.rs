@@ -12,6 +12,7 @@ use chrono::{DateTime, Duration, Utc};
 use clap::ArgMatches;
 use snafu::{OptionExt, ResultExt};
 use std::borrow::Cow;
+use std::mem;
 use std::ops::Add;
 use std::process;
 use termion::event::Key;
@@ -49,6 +50,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
             series_names,
             selected_series,
             selection: Selection::Series,
+            status_bar_state: StatusBarState::default(),
         }
     };
 
@@ -94,6 +96,7 @@ pub struct UIState<'a> {
     series_names: Vec<String>,
     selected_series: usize,
     selection: Selection,
+    status_bar_state: StatusBarState,
 }
 
 impl<'a> UIState<'a> {
@@ -103,6 +106,10 @@ impl<'a> UIState<'a> {
     {
         if !self.is_idle() {
             return Ok(());
+        }
+
+        if self.in_input_dialog() {
+            return self.process_input_dialog_key(state, ui, key);
         }
 
         match key {
@@ -164,6 +171,10 @@ impl<'a> UIState<'a> {
                     self.series.season.play_next_episode_async(&state)
                 });
             }
+            // Score entry prompt
+            Key::Char('e') => {
+                self.status_bar_state = StatusBarState::InputScore(String::new());
+            }
             // Switch between series and season selection
             Key::Left | Key::Right => {
                 self.selection.set_opposite();
@@ -194,6 +205,35 @@ impl<'a> UIState<'a> {
         Ok(())
     }
 
+    fn process_input_dialog_key<B>(
+        &mut self,
+        state: &'a CommonState,
+        ui: &mut UI<B>,
+        key: Key,
+    ) -> Result<()>
+    where
+        B: tui::backend::Backend,
+    {
+        if let Some(CompletedInput::Score(value)) = self.status_bar_state.process_key(key) {
+            let score = match state.remote.parse_score(&value) {
+                Some(score) if score == 0 => None,
+                Some(score) => Some(score),
+                None => {
+                    ui.push_log_status(LogItem::failed("Parsing score", None));
+                    return Ok(());
+                }
+            };
+
+            let remote = state.remote.as_ref();
+
+            self.series.season.tracker.entry.set_score(score);
+            self.series.season.update_value_cache(remote);
+            self.series.sync_season_to_remote(remote)?;
+        }
+
+        Ok(())
+    }
+
     fn process_tick<B>(&mut self, state: &'a CommonState, ui: &mut UI<B>) -> Result<()>
     where
         B: tui::backend::Backend,
@@ -211,6 +251,10 @@ impl<'a> UIState<'a> {
 
     fn is_idle(&self) -> bool {
         self.series.season.watch_state == WatchState::Idle
+    }
+
+    fn in_input_dialog(&self) -> bool {
+        self.status_bar_state.in_input_dialog()
     }
 }
 
@@ -231,6 +275,58 @@ impl Selection {
     fn set_opposite(&mut self) {
         *self = self.opposite();
     }
+}
+
+enum StatusBarState {
+    Log,
+    InputScore(String),
+}
+
+impl StatusBarState {
+    fn process_key(&mut self, key: Key) -> Option<CompletedInput> {
+        match self {
+            StatusBarState::Log => (),
+            StatusBarState::InputScore(buffer) => match key {
+                Key::Char('\n') => {
+                    let buffer = match mem::replace(self, StatusBarState::default()) {
+                        StatusBarState::InputScore(buffer) => buffer,
+                        StatusBarState::Log => unreachable!(),
+                    };
+
+                    return Some(CompletedInput::Score(buffer));
+                }
+                Key::Char('\t') => buffer.push(' '),
+                Key::Char(ch) => buffer.push(ch),
+                Key::Backspace => {
+                    buffer.pop();
+                }
+                Key::Esc => *self = StatusBarState::default(),
+                _ => (),
+            },
+        }
+
+        None
+    }
+
+    fn in_input_dialog(&self) -> bool {
+        *self != StatusBarState::Log
+    }
+}
+
+impl PartialEq for StatusBarState {
+    fn eq(&self, other: &Self) -> bool {
+        mem::discriminant(self) == mem::discriminant(other)
+    }
+}
+
+impl Default for StatusBarState {
+    fn default() -> StatusBarState {
+        StatusBarState::Log
+    }
+}
+
+enum CompletedInput {
+    Score(String),
 }
 
 pub type ProgressTime = DateTime<Utc>;
