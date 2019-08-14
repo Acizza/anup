@@ -18,7 +18,10 @@ pub trait RemoteService {
     }
 
     fn parse_score(&self, score: &str) -> Option<u8> {
-        score.parse().ok()
+        score
+            .parse()
+            .ok()
+            .and_then(|score| if score <= 100 { Some(score) } else { None })
     }
 
     fn score_to_str(&self, score: u8) -> Cow<str> {
