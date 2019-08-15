@@ -104,6 +104,14 @@ impl<'a> UIState<'a> {
     where
         B: tui::backend::Backend,
     {
+        // This simply compares $var to a list of TUI-specific settings.
+        // The only point of it is to reduce the length of match statements.
+        macro_rules! is_key {
+            ($var:expr, $($name:ident)||+) => {
+                $($var == state.config.tui.keys.$name)||+
+            };
+        }
+
         if !self.is_idle() {
             return Ok(());
         }
@@ -114,31 +122,31 @@ impl<'a> UIState<'a> {
 
         match key {
             // Sync list entry from / to remote
-            Key::Char(ch @ 'r') | Key::Char(ch @ 's') => {
+            Key::Char(ch) if is_key!(ch, sync_from_list || sync_to_list) => {
                 let remote = state.remote.as_ref();
                 let series = &mut self.series;
 
-                if ch == 'r' {
+                if is_key!(ch, sync_from_list) {
                     ui.log_capture("Syncing entry from remote", || {
                         series.force_sync_season_from_remote(remote)
                     });
-                } else if ch == 's' {
+                } else if is_key!(ch, sync_to_list) {
                     ui.log_capture("Syncing entry to remote", || {
                         series.force_sync_season_to_remote(remote)
                     });
                 }
             }
             // Drop series / put on hold
-            Key::Char(ch @ 'd') | Key::Char(ch @ 'h') => {
+            Key::Char(ch) if is_key!(ch, drop_series || put_series_on_hold) => {
                 let remote = state.remote.as_ref();
 
                 let series = &mut self.series;
                 let entry = &mut series.season.tracker.entry;
 
-                if ch == 'd' {
+                if is_key!(ch, drop_series) {
                     entry.mark_as_dropped(&state.config);
                     ui.log_capture("Dropping series", || series.sync_season_to_remote(remote));
-                } else if ch == 'h' {
+                } else if is_key!(ch, put_series_on_hold) {
                     entry.mark_as_on_hold();
 
                     ui.log_capture("Putting series on hold", || {
@@ -147,15 +155,15 @@ impl<'a> UIState<'a> {
                 }
             }
             // Force forwards / backwards watch progress
-            Key::Char(ch @ 'f') | Key::Char(ch @ 'b') => {
+            Key::Char(ch) if is_key!(ch, force_forwards_progress || force_backwards_progress) => {
                 let remote = state.remote.as_ref();
                 let tracker = &mut self.series.season.tracker;
 
-                if ch == 'f' {
+                if is_key!(ch, force_forwards_progress) {
                     ui.log_capture("Forcing forward watch progress", || {
                         tracker.episode_completed(remote, &state.config)
                     });
-                } else if ch == 'b' {
+                } else if is_key!(ch, force_backwards_progress) {
                     ui.log_capture("Forcing backwards watch progress", || {
                         tracker.episode_regressed(remote)
                     });
@@ -164,7 +172,7 @@ impl<'a> UIState<'a> {
                 self.series.season.update_value_cache(remote);
             }
             // Play next episode
-            Key::Char('\n') => {
+            Key::Char(ch) if is_key!(ch, play_next_episode) => {
                 self.series.set_as_last_watched(ui);
 
                 ui.log_capture("Playing next episode", || {
@@ -172,7 +180,7 @@ impl<'a> UIState<'a> {
                 });
             }
             // Score entry prompt
-            Key::Char('e') => {
+            Key::Char(ch) if is_key!(ch, score_prompt) => {
                 self.status_bar_state = StatusBarState::InputScore(String::new());
             }
             // Switch between series and season selection

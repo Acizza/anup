@@ -11,6 +11,7 @@ pub struct Config {
     pub series_dir: PathBuf,
     pub reset_dates_on_rewatch: bool,
     pub episode: EpisodeConfig,
+    pub tui: TuiConfig,
 }
 
 impl Config {
@@ -21,7 +22,8 @@ impl Config {
         Config {
             series_dir: series_dir.into(),
             reset_dates_on_rewatch: false,
-            episode: EpisodeConfig::new(),
+            episode: EpisodeConfig::default(),
+            tui: TuiConfig::default(),
         }
     }
 }
@@ -46,8 +48,8 @@ pub struct EpisodeConfig {
     pub pcnt_must_watch: Percentage,
 }
 
-impl EpisodeConfig {
-    pub fn new() -> EpisodeConfig {
+impl Default for EpisodeConfig {
+    fn default() -> EpisodeConfig {
         EpisodeConfig {
             pcnt_must_watch: Percentage::new(50.0),
         }
@@ -128,5 +130,45 @@ impl Mul<Percentage> for f32 {
 
     fn mul(self, other: Percentage) -> Self::Output {
         self * other.as_multiplier()
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TuiConfig {
+    pub keys: TuiKeys,
+}
+
+impl Default for TuiConfig {
+    fn default() -> TuiConfig {
+        TuiConfig {
+            keys: TuiKeys::default(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TuiKeys {
+    pub sync_from_list: char,
+    pub sync_to_list: char,
+    pub drop_series: char,
+    pub put_series_on_hold: char,
+    pub force_forwards_progress: char,
+    pub force_backwards_progress: char,
+    pub play_next_episode: char,
+    pub score_prompt: char,
+}
+
+impl Default for TuiKeys {
+    fn default() -> TuiKeys {
+        TuiKeys {
+            sync_from_list: 'r',
+            sync_to_list: 's',
+            drop_series: 'd',
+            put_series_on_hold: 'h',
+            force_forwards_progress: 'f',
+            force_backwards_progress: 'b',
+            play_next_episode: '\n',
+            score_prompt: 'e',
+        }
     }
 }
