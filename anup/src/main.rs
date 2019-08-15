@@ -223,7 +223,7 @@ where
     }
 }
 
-fn get_remote(args: &ArgMatches, can_use_offline: bool) -> Result<Box<RemoteService>> {
+fn get_remote(args: &ArgMatches, can_use_offline: bool) -> Result<Box<dyn RemoteService>> {
     use anime::remote::anilist::{self, AccessToken, AniList, AniListConfig};
     use anime::remote::offline::Offline;
 

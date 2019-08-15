@@ -87,7 +87,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 struct CommonState<'a> {
     args: &'a ArgMatches<'a>,
     config: Config,
-    remote: Box<RemoteService>,
+    remote: Box<dyn RemoteService>,
 }
 
 /// Current state of the UI.
