@@ -518,7 +518,8 @@ impl<'a> SeasonState<'a> {
 
         let start_time = Utc::now();
 
-        let child = crate::process::open_with_default(episode)
+        let child = crate::prepare_episode_cmd(&state.config, episode)
+            .spawn()
             .context(err::FailedToPlayEpisode { episode: next_ep })?;
 
         let progress_time = {

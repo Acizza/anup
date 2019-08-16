@@ -46,12 +46,16 @@ impl SaveFile for Config {
 pub struct EpisodeConfig {
     #[serde(rename = "percent_watched_to_progress")]
     pub pcnt_must_watch: Percentage,
+    pub player: String,
+    pub player_args: Vec<String>,
 }
 
 impl Default for EpisodeConfig {
     fn default() -> EpisodeConfig {
         EpisodeConfig {
             pcnt_must_watch: Percentage::new(50.0),
+            player: String::from("mpv"),
+            player_args: Vec::new(),
         }
     }
 }

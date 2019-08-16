@@ -3,7 +3,6 @@ mod detect;
 mod err;
 mod file;
 mod interface;
-mod process;
 mod track;
 mod util;
 
@@ -18,8 +17,10 @@ use clap::ArgMatches;
 use interface::{cli, tui};
 use serde_derive::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
+use std::ffi::OsStr;
 use std::io;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 fn main() {
     let args = clap_app!(anup =>
@@ -299,4 +300,17 @@ where
         }
         Err(err) => Err(err),
     }
+}
+
+fn prepare_episode_cmd<S>(config: &Config, ep_path: S) -> Command
+where
+    S: AsRef<OsStr>,
+{
+    let mut cmd = Command::new(&config.episode.player);
+    cmd.arg(ep_path);
+    cmd.args(&config.episode.player_args);
+    cmd.stdout(Stdio::null());
+    cmd.stderr(Stdio::null());
+    cmd.stdin(Stdio::null());
+    cmd
 }

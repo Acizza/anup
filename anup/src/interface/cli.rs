@@ -170,8 +170,8 @@ where
         .get_episode(ep_num)
         .context(err::EpisodeNotFound { episode: ep_num })?;
 
-    let status = crate::process::open_with_default(episode)
-        .and_then(|mut child| child.wait())
+    let status = crate::prepare_episode_cmd(config, episode)
+        .status()
         .context(err::FailedToPlayEpisode { episode: ep_num })?;
 
     ensure!(status.success(), err::AbnormalPlayerExit);
