@@ -540,10 +540,17 @@ impl<'a> SeasonState<'a> {
     {
         match &mut self.watch_state {
             WatchState::Idle => (),
-            WatchState::Watching(start_time, _, child) => {
+            WatchState::Watching(_, _, child) => {
                 let status = match child.try_wait().context(err::IO)? {
                     Some(status) => status,
                     None => return Ok(()),
+                };
+
+                // Set the watch state to idle immediately so we can't enter a loop from anything
+                // causing this block to exit early.
+                let start_time = match mem::replace(&mut self.watch_state, WatchState::Idle) {
+                    WatchState::Watching(start_time, _, _) => start_time,
+                    WatchState::Idle => unreachable!(),
                 };
 
                 if !status.success() {
@@ -552,7 +559,7 @@ impl<'a> SeasonState<'a> {
                 }
 
                 let mins_watched = {
-                    let watch_time = Utc::now() - *start_time;
+                    let watch_time = Utc::now() - start_time;
                     watch_time.num_seconds() as f32 / 60.0
                 };
 
@@ -570,7 +577,6 @@ impl<'a> SeasonState<'a> {
                     ui.push_log_status("Not marking episode as completed");
                 }
 
-                self.watch_state = WatchState::Idle;
                 self.update_value_cache(remote);
             }
         }
