@@ -243,8 +243,8 @@ impl<'a> SeriesTracker<'a> {
                 entry.set_status(Status::Rewatching);
                 entry.set_watched_eps(0);
             }
-            Status::PlanToWatch => entry.set_status(Status::Watching),
-            Status::OnHold | Status::Dropped => {
+            Status::PlanToWatch | Status::OnHold => entry.set_status(Status::Watching),
+            Status::Dropped => {
                 entry.set_status(Status::Watching);
                 entry.set_watched_eps(0);
             }
