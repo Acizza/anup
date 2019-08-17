@@ -217,6 +217,28 @@ impl<'a> SeriesTracker<'a> {
         Ok(SeriesTracker { info, entry, name })
     }
 
+    pub fn force_sync_changes_from_remote<R>(&mut self, remote: &R) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+    {
+        self.entry
+            .force_sync_changes_from_remote(remote, &self.name)
+    }
+
+    pub fn force_sync_changes_to_remote<R>(&mut self, remote: &R) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+    {
+        self.entry.force_sync_changes_to_remote(remote, &self.name)
+    }
+
+    pub fn sync_changes_to_remote<R>(&mut self, remote: &R) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+    {
+        self.entry.sync_changes_to_remote(remote, &self.name)
+    }
+
     pub fn begin_watching<R>(&mut self, remote: &R, config: &Config) -> Result<()>
     where
         R: RemoteService + ?Sized,

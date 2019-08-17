@@ -127,35 +127,41 @@ impl<'a> UIState<'a> {
             // Sync list entry from / to remote
             Key::Char(ch) if is_key!(ch, sync_from_list || sync_to_list) => {
                 let remote = state.remote.as_ref();
-                let series = &mut self.series;
+                let season = &mut self.series.season;
 
                 if is_key!(ch, sync_from_list) {
                     ui.log_capture("Syncing entry from remote", || {
-                        series.force_sync_season_from_remote(remote)
+                        season.tracker.force_sync_changes_from_remote(remote)
                     });
                 } else if is_key!(ch, sync_to_list) {
                     ui.log_capture("Syncing entry to remote", || {
-                        series.force_sync_season_to_remote(remote)
+                        season.tracker.force_sync_changes_to_remote(remote)
                     });
                 }
+
+                season.update_value_cache(remote);
             }
             // Drop series / put on hold
             Key::Char(ch) if is_key!(ch, drop_series || put_series_on_hold) => {
                 let remote = state.remote.as_ref();
-
-                let series = &mut self.series;
-                let entry = &mut series.season.tracker.entry;
+                let season = &mut self.series.season;
+                let entry = &mut season.tracker.entry;
 
                 if is_key!(ch, drop_series) {
                     entry.mark_as_dropped(&state.config);
-                    ui.log_capture("Dropping series", || series.sync_season_to_remote(remote));
+
+                    ui.log_capture("Dropping series", || {
+                        season.tracker.sync_changes_to_remote(remote)
+                    });
                 } else if is_key!(ch, put_series_on_hold) {
                     entry.mark_as_on_hold();
 
                     ui.log_capture("Putting series on hold", || {
-                        series.sync_season_to_remote(remote)
+                        season.tracker.force_sync_changes_to_remote(remote)
                     });
                 }
+
+                season.update_value_cache(remote);
             }
             // Force forwards / backwards watch progress
             Key::Char(ch) if is_key!(ch, force_forwards_progress || force_backwards_progress) => {
@@ -241,10 +247,11 @@ impl<'a> UIState<'a> {
                 };
 
                 let remote = state.remote.as_ref();
+                let season = &mut self.series.season;
 
-                self.series.season.tracker.entry.set_score(score);
-                self.series.season.update_value_cache(remote);
-                self.series.sync_season_to_remote(remote)?;
+                season.tracker.entry.set_score(score);
+                season.tracker.sync_changes_to_remote(remote)?;
+                season.update_value_cache(remote);
 
                 Ok(())
             }
@@ -443,30 +450,6 @@ impl<'a> SeriesState<'a> {
         })
     }
 
-    fn force_sync_season_from_remote<R>(&mut self, remote: &'a R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
-        self.season
-            .force_sync_entry_from_remote(remote, &self.watch_info.name)
-    }
-
-    fn force_sync_season_to_remote<R>(&mut self, remote: &'a R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
-        self.season
-            .force_sync_entry_to_remote(remote, &self.watch_info.name)
-    }
-
-    fn sync_season_to_remote<R>(&mut self, remote: &'a R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
-        self.season
-            .sync_entry_to_remote(remote, &self.watch_info.name)
-    }
-
     /// Loads the season specified by `season_num` and points `season` to it.
     fn set_season<R>(&mut self, season_num: usize, remote: &'a R) -> Result<()>
     where
@@ -524,40 +507,6 @@ impl<'a> SeasonState<'a> {
             value_cache,
             watch_state: WatchState::Idle,
         })
-    }
-
-    fn force_sync_entry_from_remote<R, S>(&mut self, remote: &'a R, name: S) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-        S: AsRef<str>,
-    {
-        self.tracker
-            .entry
-            .force_sync_changes_from_remote(remote, name)?;
-        self.update_value_cache(remote);
-        Ok(())
-    }
-
-    fn force_sync_entry_to_remote<R, S>(&mut self, remote: &'a R, name: S) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-        S: AsRef<str>,
-    {
-        self.tracker
-            .entry
-            .force_sync_changes_to_remote(remote, name)?;
-        self.update_value_cache(remote);
-        Ok(())
-    }
-
-    fn sync_entry_to_remote<R, S>(&mut self, remote: &'a R, name: S) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-        S: AsRef<str>,
-    {
-        self.tracker.entry.sync_changes_to_remote(remote, name)?;
-        self.update_value_cache(remote);
-        Ok(())
     }
 
     fn play_next_episode_async(&mut self, state: &CommonState) -> Result<()> {
