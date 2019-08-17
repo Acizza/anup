@@ -1,10 +1,10 @@
 use crate::err::{self, Result};
-use hashbrown::HashMap;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
