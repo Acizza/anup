@@ -6,6 +6,7 @@ use crate::file::{SaveDir, SaveFile};
 use crate::track::{EntryState, SeriesTracker};
 use crate::util;
 use crate::CurrentWatchInfo;
+use crate::SeriesPlayerArgs;
 use anime::remote::{RemoteService, SeriesInfo};
 use anime::{SeasonInfoList, Series};
 use chrono::{DateTime, Duration, Utc};
@@ -17,6 +18,8 @@ use std::ops::Add;
 use std::process;
 use termion::event::Key;
 use ui::{Event, Events, LogItem, UI};
+
+// TODO: use SeriesTracker name
 
 pub fn run(args: &ArgMatches) -> Result<()> {
     let cstate = {
@@ -181,7 +184,11 @@ impl<'a> UIState<'a> {
             }
             // Score entry prompt
             Key::Char(ch) if is_key!(ch, score_prompt) => {
-                self.status_bar_state = StatusBarState::InputScore(String::new());
+                self.status_bar_state = StatusBarState::Input(InputType::score());
+            }
+            // Series player args prompt
+            Key::Char(ch) if is_key!(ch, series_player_args_prompt) => {
+                self.status_bar_state = StatusBarState::Input(InputType::series_player_args());
             }
             // Switch between series and season selection
             Key::Left | Key::Right => {
@@ -222,24 +229,41 @@ impl<'a> UIState<'a> {
     where
         B: tui::backend::Backend,
     {
-        if let Some(CompletedInput::Score(value)) = self.status_bar_state.process_key(key) {
-            let score = match state.remote.parse_score(&value) {
-                Some(score) if score == 0 => None,
-                Some(score) => Some(score),
-                None => {
-                    ui.push_log_status(LogItem::failed("Parsing score", None));
-                    return Ok(());
-                }
-            };
+        match self.status_bar_state.process_key(key) {
+            Some(InputType::Score(value)) => {
+                let score = match state.remote.parse_score(&value) {
+                    Some(score) if score == 0 => None,
+                    Some(score) => Some(score),
+                    None => {
+                        ui.push_log_status(LogItem::failed("Parsing score", None));
+                        return Ok(());
+                    }
+                };
 
-            let remote = state.remote.as_ref();
+                let remote = state.remote.as_ref();
 
-            self.series.season.tracker.entry.set_score(score);
-            self.series.season.update_value_cache(remote);
-            self.series.sync_season_to_remote(remote)?;
+                self.series.season.tracker.entry.set_score(score);
+                self.series.season.update_value_cache(remote);
+                self.series.sync_season_to_remote(remote)?;
+
+                Ok(())
+            }
+            Some(InputType::SeriesPlayerArgs(value)) => {
+                let split_args = value
+                    .split_ascii_whitespace()
+                    .map(|s| s.to_string())
+                    .collect();
+
+                let name = self.series.watch_info.name.as_ref();
+
+                ui.log_capture("Saving player args for series", || {
+                    SeriesPlayerArgs::new(split_args).save(name)
+                });
+
+                Ok(())
+            }
+            None => Ok(()),
         }
-
-        Ok(())
     }
 
     fn process_tick<B>(&mut self, state: &'a CommonState, ui: &mut UI<B>) -> Result<()>
@@ -287,26 +311,40 @@ impl Selection {
 
 enum StatusBarState {
     Log,
-    InputScore(String),
+    Input(InputType),
 }
 
 impl StatusBarState {
-    fn process_key(&mut self, key: Key) -> Option<CompletedInput> {
+    /// Processes a key for the current state of the `StatusBarState`.
+    ///
+    /// If input was considered to be completed while processing the current state, it will return
+    /// the `InputType` corrosponding to which type of input was completed with its contents.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let mut state = StatusBarState::Input(InputType::score());
+    ///
+    /// assert_eq!(state.process_key(Key::Char('h')), None);
+    /// assert_eq!(state.process_key(Key::Char('i')), None);
+    /// assert_eq!(state.process_key(Key::Char('\n')), Some(InputType::Score("hi")));
+    /// ```
+    fn process_key(&mut self, key: Key) -> Option<InputType> {
         match self {
             StatusBarState::Log => (),
-            StatusBarState::InputScore(buffer) => match key {
+            StatusBarState::Input(input_type) => match key {
                 Key::Char('\n') => {
-                    let buffer = match mem::replace(self, StatusBarState::default()) {
-                        StatusBarState::InputScore(buffer) => buffer,
+                    let input_type = match mem::replace(self, StatusBarState::default()) {
+                        StatusBarState::Input(input_type) => input_type,
                         StatusBarState::Log => unreachable!(),
                     };
 
-                    return Some(CompletedInput::Score(buffer));
+                    return Some(input_type);
                 }
-                Key::Char('\t') => buffer.push(' '),
-                Key::Char(ch) => buffer.push(ch),
+                Key::Char('\t') => input_type.contents_mut().push(' '),
+                Key::Char(ch) => input_type.contents_mut().push(ch),
                 Key::Backspace => {
-                    buffer.pop();
+                    input_type.contents_mut().pop();
                 }
                 Key::Esc => *self = StatusBarState::default(),
                 _ => (),
@@ -333,8 +371,26 @@ impl Default for StatusBarState {
     }
 }
 
-enum CompletedInput {
+enum InputType {
     Score(String),
+    SeriesPlayerArgs(String),
+}
+
+impl InputType {
+    fn score() -> InputType {
+        InputType::Score(String::new())
+    }
+
+    fn series_player_args() -> InputType {
+        InputType::SeriesPlayerArgs(String::new())
+    }
+
+    fn contents_mut(&mut self) -> &mut String {
+        match self {
+            InputType::Score(contents) => contents,
+            InputType::SeriesPlayerArgs(contents) => contents,
+        }
+    }
 }
 
 pub type ProgressTime = DateTime<Utc>;
@@ -518,7 +574,7 @@ impl<'a> SeasonState<'a> {
 
         let start_time = Utc::now();
 
-        let child = crate::prepare_episode_cmd(&state.config, episode)
+        let child = crate::prepare_episode_cmd(&self.tracker.name, &state.config, episode)?
             .spawn()
             .context(err::FailedToPlayEpisode { episode: next_ep })?;
 

@@ -36,8 +36,10 @@ fn main() {
         (@arg drop: -d --drop "Drop a series")
         (@arg hold: -h --hold "Put a series on hold")
         (@arg path: -p --path +takes_value "Manually specify a path to a series")
+        (@arg series_player_args: -a --args +takes_value "Additional arguments to pass to the video player for the current series")
         (@arg clean: -c --clean "Remove series data that is no longer needed")
         (@arg interactive: -i --interactive "Launch the terminal user interface")
+        (@setting AllowLeadingHyphen)
     )
     .get_matches();
 
@@ -302,15 +304,53 @@ where
     }
 }
 
-fn prepare_episode_cmd<S>(config: &Config, ep_path: S) -> Command
+#[derive(Deserialize, Serialize)]
+struct SeriesPlayerArgs(Vec<String>);
+
+impl SeriesPlayerArgs {
+    fn new(args: Vec<String>) -> SeriesPlayerArgs {
+        SeriesPlayerArgs(args)
+    }
+
+    fn take(self) -> Vec<String> {
+        self.0
+    }
+}
+
+impl SaveFile for SeriesPlayerArgs {
+    fn filename() -> &'static str {
+        "player_args.mpack"
+    }
+
+    fn save_dir() -> SaveDir {
+        SaveDir::LocalData
+    }
+
+    fn file_type() -> FileType {
+        FileType::MessagePack
+    }
+}
+
+fn prepare_episode_cmd<S, P>(name: S, config: &Config, ep_path: P) -> Result<Command>
 where
-    S: AsRef<OsStr>,
+    S: AsRef<str>,
+    P: AsRef<OsStr>,
 {
+    let name = name.as_ref();
+
+    let extra_args = match SeriesPlayerArgs::load(name) {
+        Ok(args) => args.take(),
+        Err(ref err) if err.is_file_nonexistant() => Vec::new(),
+        Err(err) => return Err(err),
+    };
+
     let mut cmd = Command::new(&config.episode.player);
     cmd.arg(ep_path);
     cmd.args(&config.episode.player_args);
+    cmd.args(extra_args);
     cmd.stdout(Stdio::null());
     cmd.stderr(Stdio::null());
     cmd.stdin(Stdio::null());
-    cmd
+
+    Ok(cmd)
 }

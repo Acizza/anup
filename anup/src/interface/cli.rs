@@ -17,6 +17,8 @@ pub fn run(args: &ArgMatches) -> Result<()> {
         modify_series(args)
     } else if args.is_present("clean") {
         remove_orphaned_data()
+    } else if args.is_present("series_player_args") {
+        save_series_player_args(args)
     } else {
         play(args)
     }
@@ -133,6 +135,24 @@ fn remove_orphaned_data() -> Result<()> {
     Ok(())
 }
 
+fn save_series_player_args(args: &ArgMatches) -> Result<()> {
+    use crate::SeriesPlayerArgs;
+
+    let watch_info = crate::get_watch_info(args)?;
+    let name = watch_info.name.as_ref();
+
+    let player_args = args
+        .value_of("series_player_args")
+        .unwrap_or("")
+        .split_ascii_whitespace()
+        .map(|s| s.to_string())
+        .collect();
+
+    SeriesPlayerArgs::new(player_args).save(name)?;
+
+    Ok(())
+}
+
 fn play(args: &ArgMatches) -> Result<()> {
     let watch_info = crate::get_watch_info(args)?;
     let name = &watch_info.name;
@@ -170,7 +190,7 @@ where
         .get_episode(ep_num)
         .context(err::EpisodeNotFound { episode: ep_num })?;
 
-    let status = crate::prepare_episode_cmd(config, episode)
+    let status = crate::prepare_episode_cmd(&tracker.name, config, episode)?
         .status()
         .context(err::FailedToPlayEpisode { episode: ep_num })?;
 

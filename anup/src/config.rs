@@ -160,6 +160,7 @@ pub struct TuiKeys {
     pub force_backwards_progress: char,
     pub play_next_episode: char,
     pub score_prompt: char,
+    pub series_player_args_prompt: char,
 }
 
 impl Default for TuiKeys {
@@ -173,6 +174,7 @@ impl Default for TuiKeys {
             force_backwards_progress: 'b',
             play_next_episode: '\n',
             score_prompt: 'e',
+            series_player_args_prompt: 'l',
         }
     }
 }
