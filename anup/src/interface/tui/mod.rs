@@ -1,12 +1,11 @@
 mod ui;
 
+use super::{CurrentWatchInfo, SeriesPlayerArgs};
 use crate::config::Config;
 use crate::err::{self, Result};
 use crate::file::{SaveDir, SaveFile};
 use crate::track::{EntryState, SeriesTracker};
 use crate::util;
-use crate::CurrentWatchInfo;
-use crate::SeriesPlayerArgs;
 use anime::remote::{RemoteService, SeriesInfo};
 use anime::{SeasonInfoList, Series};
 use chrono::{DateTime, Duration, Utc};
@@ -19,12 +18,10 @@ use std::process;
 use termion::event::Key;
 use ui::{Event, Events, LogItem, UI};
 
-// TODO: use SeriesTracker name
-
 pub fn run(args: &ArgMatches) -> Result<()> {
     let cstate = {
-        let config = crate::get_config()?;
-        let remote = crate::get_remote(args, true)?;
+        let config = super::get_config()?;
+        let remote = super::get_remote(args, true)?;
 
         CommonState {
             args,
@@ -34,7 +31,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
     };
 
     let mut ui_state = {
-        let watch_info = crate::get_watch_info(args)?;
+        let watch_info = super::get_watch_info(args)?;
         let series = SeriesState::new(&cstate, watch_info, true)?;
 
         let series_names = {
@@ -435,8 +432,8 @@ impl<'a> SeriesState<'a> {
         let remote = state.remote.as_ref();
         let name = &watch_info.name;
 
-        let episodes = crate::get_episodes(&state.args, name, &state.config, is_last_watched)?;
-        let seasons = crate::get_season_list(name, remote, &episodes)?;
+        let episodes = super::get_episodes(&state.args, name, &state.config, is_last_watched)?;
+        let seasons = super::get_season_list(name, remote, &episodes)?;
         let num_seasons = seasons.len();
         let series = Series::from_season_list(&seasons, watch_info.season, episodes)?;
         let season = SeasonState::new(remote, name, series)?;
@@ -523,7 +520,7 @@ impl<'a> SeasonState<'a> {
 
         let start_time = Utc::now();
 
-        let child = crate::prepare_episode_cmd(&self.tracker.name, &state.config, episode)?
+        let child = super::prepare_episode_cmd(&self.tracker.name, &state.config, episode)?
             .spawn()
             .context(err::FailedToPlayEpisode { episode: next_ep })?;
 

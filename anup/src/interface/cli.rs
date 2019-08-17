@@ -25,16 +25,16 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 }
 
 fn prefetch(args: &ArgMatches) -> Result<()> {
-    let watch_info = crate::get_watch_info(args)?;
+    let watch_info = super::get_watch_info(args)?;
     let name = &watch_info.name;
 
-    let config = crate::get_config()?;
-    let episodes = crate::get_episodes(args, name, &config, true)?;
+    let config = super::get_config()?;
+    let episodes = super::get_episodes(args, name, &config, true)?;
 
-    let remote = crate::get_remote(args, false)?;
+    let remote = super::get_remote(args, false)?;
     let remote = remote.as_ref();
 
-    let info = crate::get_best_info_from_remote(remote, &episodes.title)?;
+    let info = super::get_best_info_from_remote(remote, &episodes.title)?;
 
     let seasons = SeasonInfoList::from_info_and_remote(info, remote)?;
     seasons.save(name.as_ref())?;
@@ -53,10 +53,10 @@ fn prefetch(args: &ArgMatches) -> Result<()> {
 }
 
 fn sync(args: &ArgMatches) -> Result<()> {
-    let watch_info = crate::get_watch_info(args)?;
+    let watch_info = super::get_watch_info(args)?;
     let name = &watch_info.name;
 
-    let remote = crate::get_remote(args, false)?;
+    let remote = super::get_remote(args, false)?;
     let seasons = SeasonInfoList::load(name.as_ref())?;
 
     for (season_num, season) in seasons.inner().iter().enumerate() {
@@ -83,11 +83,11 @@ fn sync(args: &ArgMatches) -> Result<()> {
 }
 
 fn modify_series(args: &ArgMatches) -> Result<()> {
-    let watch_info = crate::get_watch_info(args)?;
+    let watch_info = super::get_watch_info(args)?;
     let name = &watch_info.name;
 
-    let config = crate::get_config()?;
-    let remote = crate::get_remote(args, true)?;
+    let config = super::get_config()?;
+    let remote = super::get_remote(args, true)?;
     let remote = remote.as_ref();
 
     let season = {
@@ -114,11 +114,11 @@ fn modify_series(args: &ArgMatches) -> Result<()> {
 }
 
 fn remove_orphaned_data() -> Result<()> {
-    let config = crate::get_config()?;
+    let config = super::get_config()?;
     let series_data = SaveDir::LocalData.get_subdirs()?;
 
     for series in series_data {
-        let exists = match crate::get_series_path(&series, &config) {
+        let exists = match super::get_series_path(&series, &config) {
             Ok(dir) => dir.exists(),
             Err(err::Error::NoMatchingSeries { .. }) => false,
             Err(err) => return Err(err),
@@ -136,9 +136,9 @@ fn remove_orphaned_data() -> Result<()> {
 }
 
 fn save_series_player_args(args: &ArgMatches) -> Result<()> {
-    use crate::SeriesPlayerArgs;
+    use super::SeriesPlayerArgs;
 
-    let watch_info = crate::get_watch_info(args)?;
+    let watch_info = super::get_watch_info(args)?;
     let name = watch_info.name.as_ref();
 
     let player_args = args
@@ -154,16 +154,16 @@ fn save_series_player_args(args: &ArgMatches) -> Result<()> {
 }
 
 fn play(args: &ArgMatches) -> Result<()> {
-    let watch_info = crate::get_watch_info(args)?;
+    let watch_info = super::get_watch_info(args)?;
     let name = &watch_info.name;
 
-    let config = crate::get_config()?;
-    let episodes = crate::get_episodes(args, name, &config, true)?;
+    let config = super::get_config()?;
+    let episodes = super::get_episodes(args, name, &config, true)?;
 
-    let remote = crate::get_remote(args, true)?;
+    let remote = super::get_remote(args, true)?;
     let remote = remote.as_ref();
 
-    let seasons = crate::get_season_list(name, remote, &episodes)?;
+    let seasons = super::get_season_list(name, remote, &episodes)?;
     let series = Series::from_season_list(&seasons, watch_info.season, episodes)?;
 
     let mut tracker = SeriesTracker::init(&series.info, name)?;
@@ -190,7 +190,7 @@ where
         .get_episode(ep_num)
         .context(err::EpisodeNotFound { episode: ep_num })?;
 
-    let status = crate::prepare_episode_cmd(&tracker.name, config, episode)?
+    let status = super::prepare_episode_cmd(&tracker.name, config, episode)?
         .status()
         .context(err::FailedToPlayEpisode { episode: ep_num })?;
 
