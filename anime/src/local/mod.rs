@@ -50,7 +50,7 @@ impl EpisodeMatcher {
             // Series_Name_-_01.mkv
             // Series.Name.-.01.mkv
             static ref DEFAULT_MATCHER: Regex = {
-                Regex::new(r"(?:\[.+?\](?:_+|\.+|\s*))?(?P<title>.+)(?:\s*|_*|\.*)(?:-|\.|_).*?(?P<episode>\d+)").unwrap()
+                Regex::new(r"(?:\[.+?\](?:_+|\.+|\s*))?(?P<title>.+)(?:\s*|_*|\.*)(?:-|\.|_).*?(?P<episode>\d+)(?:\s*?\(|\s*?\[|\.mkv|\.mp4|\.avi)").unwrap()
             };
         }
 
