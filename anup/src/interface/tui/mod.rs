@@ -295,7 +295,7 @@ impl<'a> UIState<'a> {
 }
 
 #[derive(PartialEq, Copy, Clone)]
-pub enum Selection {
+enum Selection {
     Series,
     Season,
 }
@@ -397,10 +397,10 @@ impl InputType {
     }
 }
 
-pub type ProgressTime = DateTime<Utc>;
-pub type StartTime = DateTime<Utc>;
+type ProgressTime = DateTime<Utc>;
+type StartTime = DateTime<Utc>;
 
-pub enum WatchState {
+enum WatchState {
     Idle,
     Watching(StartTime, ProgressTime, process::Child),
 }
@@ -482,11 +482,11 @@ impl<'a> SeriesState<'a> {
     }
 }
 
-pub struct SeasonState<'a> {
-    pub series: Series<'a>,
-    pub tracker: SeriesTracker<'a>,
-    pub value_cache: SeasonValueCache<'a>,
-    pub watch_state: WatchState,
+struct SeasonState<'a> {
+    series: Series<'a>,
+    tracker: SeriesTracker<'a>,
+    value_cache: SeasonValueCache<'a>,
+    watch_state: WatchState,
 }
 
 impl<'a> SeasonState<'a> {
@@ -595,19 +595,19 @@ impl<'a> SeasonState<'a> {
     }
 }
 
-pub struct SeasonValueCache<'a> {
-    pub progress: String,
-    pub score: Cow<'a, str>,
-    pub start_date: Cow<'a, str>,
-    pub end_date: Cow<'a, str>,
-    pub watch_time_left: String,
+struct SeasonValueCache<'a> {
+    progress: String,
+    score: Cow<'a, str>,
+    start_date: Cow<'a, str>,
+    end_date: Cow<'a, str>,
+    watch_time_left: String,
     // The following fields will not change
-    pub watch_time: String,
-    pub episode_length: String,
+    watch_time: String,
+    episode_length: String,
 }
 
 impl<'a> SeasonValueCache<'a> {
-    pub fn new<R>(remote: &'a R, tracker: &SeriesTracker<'a>) -> SeasonValueCache<'a>
+    fn new<R>(remote: &'a R, tracker: &SeriesTracker<'a>) -> SeasonValueCache<'a>
     where
         R: RemoteService + ?Sized,
     {
@@ -632,7 +632,7 @@ impl<'a> SeasonValueCache<'a> {
         }
     }
 
-    pub fn update<R>(&mut self, remote: &'a R, tracker: &SeriesTracker<'a>)
+    fn update<R>(&mut self, remote: &'a R, tracker: &SeriesTracker<'a>)
     where
         R: RemoteService + ?Sized,
     {
