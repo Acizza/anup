@@ -312,3 +312,27 @@ where
 
     Ok(cmd)
 }
+
+fn remove_orphaned_data<F>(config: &Config, mut on_removed: F) -> Result<()>
+where
+    F: FnMut(&str),
+{
+    let series_data = SaveDir::LocalData.get_subdirs()?;
+
+    for series in series_data {
+        let exists = match get_series_path(&series, &config) {
+            Ok(dir) => dir.exists(),
+            Err(err::Error::NoMatchingSeries { .. }) => false,
+            Err(err) => return Err(err),
+        };
+
+        if exists {
+            continue;
+        }
+
+        on_removed(&series);
+        SaveDir::LocalData.remove_subdir(&series)?;
+    }
+
+    Ok(())
+}

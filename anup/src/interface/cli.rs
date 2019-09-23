@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::err::{self, Result};
-use crate::file::{SaveDir, SaveFile};
+use crate::file::SaveFile;
 use crate::track::{EntryState, SeriesTracker};
 use anime::remote::RemoteService;
 use anime::{SeasonInfoList, Series};
@@ -16,7 +16,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
     } else if args.is_present("rate") || args.is_present("drop") || args.is_present("hold") {
         modify_series(args)
     } else if args.is_present("clean") {
-        remove_orphaned_data()
+        cleanup_data()
     } else if args.is_present("series_player_args") {
         save_series_player_args(args)
     } else {
@@ -113,26 +113,9 @@ fn modify_series(args: &ArgMatches) -> Result<()> {
     state.sync_changes_to_remote(remote, name)
 }
 
-fn remove_orphaned_data() -> Result<()> {
+fn cleanup_data() -> Result<()> {
     let config = super::get_config()?;
-    let series_data = SaveDir::LocalData.get_subdirs()?;
-
-    for series in series_data {
-        let exists = match super::get_series_path(&series, &config) {
-            Ok(dir) => dir.exists(),
-            Err(err::Error::NoMatchingSeries { .. }) => false,
-            Err(err) => return Err(err),
-        };
-
-        if exists {
-            continue;
-        }
-
-        println!("{} will be purged", series);
-        SaveDir::LocalData.remove_subdir(&series)?;
-    }
-
-    Ok(())
+    super::remove_orphaned_data(&config, |removed| println!("removing {}", removed))
 }
 
 fn save_series_player_args(args: &ArgMatches) -> Result<()> {

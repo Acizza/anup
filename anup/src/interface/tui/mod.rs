@@ -30,6 +30,17 @@ pub fn run(args: &ArgMatches) -> Result<()> {
         }
     };
 
+    let mut ui = UI::init()?;
+
+    // Due to the way series selection works, we can't select a saved series that no longer
+    // has matching episodes on disk, so we might as well just remove the series data.
+    //
+    // Series data could be deleted simply by renaming the folder episodes are in to something
+    // the program can't recognize; however, the risk is small enough for this to be worth it.
+    super::remove_orphaned_data(&cstate.config, |removed| {
+        ui.push_log_status(format!("Removing {}", removed))
+    })?;
+
     let mut ui_state = {
         let watch_info = super::get_watch_info(args)?;
         let series = SeriesState::new(&cstate, watch_info, true)?;
@@ -54,7 +65,6 @@ pub fn run(args: &ArgMatches) -> Result<()> {
         }
     };
 
-    let mut ui = UI::init()?;
     let events = Events::new(Duration::seconds(1));
 
     loop {
