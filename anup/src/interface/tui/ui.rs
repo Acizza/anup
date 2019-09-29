@@ -63,7 +63,7 @@ where
         S: Into<String>,
         F: FnOnce() -> Result<()>,
     {
-        self.status_log.capture(text, f);
+        self.status_log.capture_status(text, f);
     }
 
     pub fn draw(&mut self, state: &UIState) -> Result<()> {
@@ -472,7 +472,16 @@ impl<'a> StatusLog<'a> {
         self.rebuild();
     }
 
-    pub fn capture<S, F>(&mut self, text: S, f: F)
+    /// Execute the function defined by `f` and pushes its result
+    /// as a new `LogItem` with the description specified by `desc`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let mut log = StatusLog::new();
+    /// log.capture_status("Executing function 1", || Ok(()));
+    /// ```
+    pub fn capture_status<S, F>(&mut self, desc: S, f: F)
     where
         S: Into<String>,
         F: FnOnce() -> Result<()>,
@@ -482,7 +491,7 @@ impl<'a> StatusLog<'a> {
             Err(err) => LogItemStatus::Failed(Some(err)),
         };
 
-        self.push(LogItem::with_status(text, status));
+        self.push(LogItem::with_status(desc, status));
     }
 
     pub fn prepare_to_draw(&mut self, size: Rect) {
