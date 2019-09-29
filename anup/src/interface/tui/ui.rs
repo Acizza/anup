@@ -472,29 +472,17 @@ impl<'a> StatusLog<'a> {
         self.rebuild();
     }
 
-    pub fn set_status_on_last(&mut self, status: LogItemStatus) {
-        let last = match self.items.get_mut(self.items.len() - 1) {
-            Some(last) => last,
-            None => return,
-        };
-
-        last.status = status;
-        self.rebuild();
-    }
-
     pub fn capture<S, F>(&mut self, text: S, f: F)
     where
         S: Into<String>,
         F: FnOnce() -> Result<()>,
     {
-        self.push(text);
-
         let status = match f() {
             Ok(_) => LogItemStatus::Ok,
             Err(err) => LogItemStatus::Failed(Some(err)),
         };
 
-        self.set_status_on_last(status);
+        self.push(LogItem::with_status(text, status));
     }
 
     pub fn prepare_to_draw(&mut self, size: Rect) {
