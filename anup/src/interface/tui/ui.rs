@@ -18,23 +18,6 @@ use tui::style::{Color, Modifier, Style};
 use tui::terminal::{Frame, Terminal};
 use tui::widgets::{Block, Borders, Paragraph, SelectableList, Text, Widget};
 
-macro_rules! create_stat_list {
-    ($($header:expr => $value:expr),+) => {
-        [$(
-            create_stat_list!(h $header),
-            create_stat_list!(v $header.len(), $value),
-        )+]
-    };
-
-    (h $header:expr) => {
-        Text::styled(format!("{}\n", $header), Style::default().modifier(Modifier::BOLD))
-    };
-
-    (v $len:expr, $value:expr) => {
-        Text::styled(format!("{:^width$}\n\n", $value, width = $len), Style::default().modifier(Modifier::ITALIC))
-    };
-}
-
 pub struct UI<'a, B>
 where
     B: Backend,
@@ -131,6 +114,23 @@ where
     }
 
     fn draw_info_panel(state: &UIState, layout: &[Rect], frame: &mut Frame<B>) {
+        macro_rules! create_stat_list {
+            ($($header:expr => $value:expr),+) => {
+                [$(
+                    create_stat_list!(h $header),
+                    create_stat_list!(v $header.len(), $value),
+                )+]
+            };
+
+            (h $header:expr) => {
+                Text::styled(format!("{}\n", $header), Style::default().modifier(Modifier::BOLD))
+            };
+
+            (v $len:expr, $value:expr) => {
+                Text::styled(format!("{:^width$}\n\n", $value, width = $len), Style::default().modifier(Modifier::ITALIC))
+            };
+        }
+
         Block::default()
             .title("Info")
             .borders(Borders::ALL)
