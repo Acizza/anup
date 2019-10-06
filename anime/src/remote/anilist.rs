@@ -1,4 +1,4 @@
-use super::{RemoteService, SeriesEntry, SeriesInfo, SeriesTitle, Status};
+use super::{RemoteService, ScoreParser, SeriesEntry, SeriesInfo, SeriesTitle, Status};
 use crate::err::{self, Result};
 use chrono::{Datelike, NaiveDate};
 use lazy_static::lazy_static;
@@ -120,7 +120,9 @@ impl RemoteService for AniList {
 
         Ok(())
     }
+}
 
+impl ScoreParser for AniList {
     fn parse_score(&self, score: &str) -> Option<u8> {
         let raw_score = match self.user.options.score_format {
             ScoreFormat::Point100 => score.parse().ok()?,

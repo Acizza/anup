@@ -1,4 +1,4 @@
-use super::{RemoteService, SeriesEntry, SeriesInfo};
+use super::{RemoteService, ScoreParser, SeriesEntry, SeriesInfo};
 use crate::err::{self, Result};
 
 #[derive(Default)]
@@ -31,3 +31,5 @@ impl RemoteService for Offline {
         true
     }
 }
+
+impl ScoreParser for Offline {}

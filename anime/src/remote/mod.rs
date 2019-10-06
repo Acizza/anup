@@ -6,7 +6,7 @@ use serde_derive::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt;
 
-pub trait RemoteService {
+pub trait RemoteService: ScoreParser {
     fn search_info_by_name(&self, name: &str) -> Result<Vec<SeriesInfo>>;
     fn search_info_by_id(&self, id: u32) -> Result<SeriesInfo>;
 
@@ -16,7 +16,9 @@ pub trait RemoteService {
     fn is_offline(&self) -> bool {
         false
     }
+}
 
+pub trait ScoreParser {
     fn parse_score(&self, score: &str) -> Option<u8> {
         score
             .parse()
