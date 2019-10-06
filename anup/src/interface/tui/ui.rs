@@ -23,7 +23,7 @@ where
     B: Backend,
 {
     terminal: Terminal<B>,
-    status_log: StatusLog<'a>,
+    pub status_log: StatusLog<'a>,
 }
 
 impl<'a, B> UI<'a, B>
@@ -32,21 +32,6 @@ where
 {
     pub fn clear(&mut self) -> Result<()> {
         self.terminal.clear().context(err::IO)
-    }
-
-    pub fn push_log_status<S>(&mut self, text: S)
-    where
-        S: Into<LogItem<'a>>,
-    {
-        self.status_log.push(text);
-    }
-
-    pub fn log_capture<S, F>(&mut self, text: S, f: F)
-    where
-        S: Into<String>,
-        F: FnOnce() -> Result<()>,
-    {
-        self.status_log.capture_status(text, f);
     }
 
     pub fn draw(&mut self, state: &UIState) -> Result<()> {

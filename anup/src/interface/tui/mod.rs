@@ -38,7 +38,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
     // Series data could be deleted simply by renaming the folder episodes are in to something
     // the program can't recognize; however, the risk is small enough for this to be worth it.
     super::remove_orphaned_data(&cstate.config, |removed| {
-        ui.push_log_status(format!("Removing {}", removed))
+        ui.status_log.push(format!("Removing {}", removed))
     })?;
 
     let mut ui_state = {
@@ -81,13 +81,13 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                 key => match ui_state.process_key(&cstate, &mut ui, key) {
                     Ok(_) => (),
                     Err(err) => {
-                        ui.push_log_status(LogItem::failed("Processing key", err));
+                        ui.status_log.push(LogItem::failed("Processing key", err));
                     }
                 },
             },
             Event::Tick => match ui_state.process_tick(&cstate, &mut ui) {
                 Ok(_) => (),
-                Err(err) => ui.push_log_status(LogItem::failed("Processing tick", err)),
+                Err(err) => ui.status_log.push(LogItem::failed("Processing tick", err)),
             },
         }
     }
@@ -137,11 +137,12 @@ impl<'a> UIState<'a> {
                 let season = &mut self.series.season;
 
                 if is_key!(ch, sync_from_list) {
-                    ui.log_capture("Syncing entry from remote", || {
-                        season.tracker.force_sync_changes_from_remote(remote)
-                    });
+                    ui.status_log
+                        .capture_status("Syncing entry from remote", || {
+                            season.tracker.force_sync_changes_from_remote(remote)
+                        });
                 } else if is_key!(ch, sync_to_list) {
-                    ui.log_capture("Syncing entry to remote", || {
+                    ui.status_log.capture_status("Syncing entry to remote", || {
                         season.tracker.force_sync_changes_to_remote(remote)
                     });
                 }
@@ -157,13 +158,13 @@ impl<'a> UIState<'a> {
                 if is_key!(ch, drop_series) {
                     entry.mark_as_dropped(&state.config);
 
-                    ui.log_capture("Dropping series", || {
+                    ui.status_log.capture_status("Dropping series", || {
                         season.tracker.sync_changes_to_remote(remote)
                     });
                 } else if is_key!(ch, put_series_on_hold) {
                     entry.mark_as_on_hold();
 
-                    ui.log_capture("Putting series on hold", || {
+                    ui.status_log.capture_status("Putting series on hold", || {
                         season.tracker.force_sync_changes_to_remote(remote)
                     });
                 }
@@ -176,13 +177,15 @@ impl<'a> UIState<'a> {
                 let tracker = &mut self.series.season.tracker;
 
                 if is_key!(ch, force_forwards_progress) {
-                    ui.log_capture("Forcing forward watch progress", || {
-                        tracker.episode_completed(remote, &state.config)
-                    });
+                    ui.status_log
+                        .capture_status("Forcing forward watch progress", || {
+                            tracker.episode_completed(remote, &state.config)
+                        });
                 } else if is_key!(ch, force_backwards_progress) {
-                    ui.log_capture("Forcing backwards watch progress", || {
-                        tracker.episode_regressed(remote)
-                    });
+                    ui.status_log
+                        .capture_status("Forcing backwards watch progress", || {
+                            tracker.episode_regressed(remote)
+                        });
                 }
 
                 self.series.season.update_value_cache(remote);
@@ -191,7 +194,7 @@ impl<'a> UIState<'a> {
             Key::Char(ch) if is_key!(ch, play_next_episode) => {
                 self.series.set_as_last_watched(ui);
 
-                ui.log_capture("Playing next episode", || {
+                ui.status_log.capture_status("Playing next episode", || {
                     self.series.season.play_next_episode_async(&state)
                 });
             }
@@ -248,7 +251,7 @@ impl<'a> UIState<'a> {
                     Some(score) if score == 0 => None,
                     Some(score) => Some(score),
                     None => {
-                        ui.push_log_status(LogItem::failed("Parsing score", None));
+                        ui.status_log.push(LogItem::failed("Parsing score", None));
                         return Ok(());
                     }
                 };
@@ -270,9 +273,10 @@ impl<'a> UIState<'a> {
 
                 let name = self.series.watch_info.name.as_ref();
 
-                ui.log_capture("Saving player args for series", || {
-                    SeriesPlayerArgs::new(split_args).save(name)
-                });
+                ui.status_log
+                    .capture_status("Saving player args for series", || {
+                        SeriesPlayerArgs::new(split_args).save(name)
+                    });
 
                 Ok(())
             }
@@ -484,9 +488,10 @@ impl<'a> SeriesState<'a> {
             return;
         }
 
-        ui.log_capture("Marking as the last watched series", || {
-            self.watch_info.save(None)
-        });
+        ui.status_log
+            .capture_status("Marking as the last watched series", || {
+                self.watch_info.save(None)
+            });
 
         self.is_last_watched = true;
     }
@@ -567,7 +572,7 @@ impl<'a> SeasonState<'a> {
                 };
 
                 if !status.success() {
-                    ui.push_log_status("Player did not exit properly");
+                    ui.status_log.push("Player did not exit properly");
                     return Ok(());
                 }
 
@@ -583,11 +588,12 @@ impl<'a> SeasonState<'a> {
                     self.series.info.episode_length as f32 * config.episode.pcnt_must_watch;
 
                 if mins_watched >= mins_must_watch {
-                    ui.log_capture("Marking episode as completed", || {
-                        self.tracker.episode_completed(remote, config)
-                    });
+                    ui.status_log
+                        .capture_status("Marking episode as completed", || {
+                            self.tracker.episode_completed(remote, config)
+                        });
                 } else {
-                    ui.push_log_status("Not marking episode as completed");
+                    ui.status_log.push("Not marking episode as completed");
                 }
 
                 self.update_value_cache(remote);
