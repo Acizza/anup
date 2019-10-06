@@ -44,14 +44,7 @@ impl<'a> StatusLog<'a> {
         };
 
         while self.items.len() > self.max_items as usize {
-            let item = match self.items.pop_front() {
-                Some(item) => item,
-                None => continue,
-            };
-
-            for _ in 0..item.text_items().len() {
-                self.draw_items.pop_front();
-            }
+            self.pop_front();
         }
     }
 
@@ -71,6 +64,20 @@ impl<'a> StatusLog<'a> {
         let item = item.into();
         self.draw_items.extend(item.text_items().iter().cloned());
         self.items.push_back(item);
+    }
+
+    /// Removes the first `LogItem` from the `StatusLog` if it exists.
+    pub fn pop_front(&mut self) {
+        let item = match self.items.pop_front() {
+            Some(item) => item,
+            None => return,
+        };
+
+        // Since we only allow pushing items to the back of the log, we can safely
+        // pop all of the item's internal elements from the front of the draw list.
+        for _ in 0..item.text_items().len() {
+            self.draw_items.pop_front();
+        }
     }
 
     /// Execute the function defined by `f` and pushes its result
