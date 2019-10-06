@@ -49,7 +49,7 @@ impl<'a> StatusLog<'a> {
                 None => continue,
             };
 
-            for _ in 0..item.text_items.len() {
+            for _ in 0..item.text_items().len() {
                 self.draw_items.pop_front();
             }
         }
@@ -69,7 +69,7 @@ impl<'a> StatusLog<'a> {
         I: Into<LogItem<'a>>,
     {
         let item = item.into();
-        self.draw_items.extend(item.text_items.iter().cloned());
+        self.draw_items.extend(item.text_items().iter().cloned());
         self.items.push_back(item);
     }
 
@@ -102,9 +102,7 @@ impl<'a> StatusLog<'a> {
 }
 
 /// A log entry meant to be used with `StatusLog`.
-pub struct LogItem<'a> {
-    text_items: SmallVec<[Text<'a>; 3]>,
-}
+pub struct LogItem<'a>(SmallVec<[Text<'a>; 3]>);
 
 impl<'a> LogItem<'a> {
     /// Create a LogItem with the specified description and status.
@@ -113,7 +111,7 @@ impl<'a> LogItem<'a> {
         S: Into<String>,
     {
         let text_items = LogItem::create_text_items(desc, status);
-        LogItem { text_items }
+        LogItem(text_items)
     }
 
     /// Create a LogItem with its status set to `LogItemStatus::Pending`.
@@ -168,6 +166,13 @@ impl<'a> LogItem<'a> {
         }
 
         text_items
+    }
+
+    /// Returns a reference to all of the internal text elements.
+    ///
+    /// This method is useful for drawing the `LogItem`.
+    pub fn text_items(&self) -> &SmallVec<[Text<'a>; 3]> {
+        &self.0
     }
 }
 
