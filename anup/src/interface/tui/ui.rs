@@ -2,9 +2,11 @@ use super::log::StatusLog;
 use super::{Selection, UIState, WatchState};
 use crate::err::{self, Result};
 use crate::util;
+use anime::remote::ScoreParser;
 use chrono::{Duration, Utc};
 use smallvec::SmallVec;
 use snafu::ResultExt;
+use std::borrow::Cow;
 use std::io;
 use std::sync::mpsc;
 use std::thread;
@@ -33,7 +35,10 @@ where
         self.terminal.clear().context(err::IO)
     }
 
-    pub fn draw(&mut self, state: &UIState) -> Result<()> {
+    pub fn draw<S>(&mut self, state: &UIState, score_parser: &S) -> Result<()>
+    where
+        S: ScoreParser + ?Sized,
+    {
         let status_log = &mut self.status_log;
 
         self.terminal
@@ -59,7 +64,7 @@ where
                     .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
                     .split(horiz_splitter[2]);
 
-                UI::draw_info_panel(state, &info_panel_splitter, &mut frame);
+                UI::draw_info_panel(state, score_parser, &info_panel_splitter, &mut frame);
                 UI::draw_status_bar(state, status_log, info_panel_splitter[1], &mut frame);
             })
             .context(err::IO)
@@ -97,7 +102,10 @@ where
         season_list.render(frame, layout[1]);
     }
 
-    fn draw_info_panel(state: &UIState, layout: &[Rect], frame: &mut Frame<B>) {
+    fn draw_info_panel<S>(state: &UIState, score_parser: &S, layout: &[Rect], frame: &mut Frame<B>)
+    where
+        S: ScoreParser + ?Sized,
+    {
         macro_rules! create_stat_list {
             ($($header:expr => $value:expr),+) => {
                 [$(
@@ -177,9 +185,17 @@ where
 
         {
             let left_items = create_stat_list!(
-                "Watch Time" => season.value_cache.watch_time,
-                "Time Left" => season.value_cache.watch_time_left,
-                "Episode Length" => season.value_cache.episode_length
+                "Watch Time" => {
+                    let watch_time_mins = info.episodes * info.episode_length;
+                    util::hm_from_mins(watch_time_mins as f32)
+                },
+                "Time Left" => {
+                    let eps_left = info.episodes - entry.watched_eps().min(info.episodes);
+                    let time_left_mins = eps_left * info.episode_length;
+
+                    util::hm_from_mins(time_left_mins as f32)
+                },
+                "Episode Length" => format!("{}M", info.episode_length)
             );
 
             Paragraph::new(left_items.iter())
@@ -189,8 +205,11 @@ where
 
         {
             let center_items = create_stat_list!(
-                "Progress" => season.value_cache.progress,
-                "Score" => season.value_cache.score,
+                "Progress" => format!("{}|{}", entry.watched_eps(), info.episodes),
+                "Score" => match entry.score() {
+                    Some(score) => score_parser.score_to_str(score),
+                    None => "??".into(),
+                },
                 "Status" => entry.status()
             );
 
@@ -201,8 +220,14 @@ where
 
         {
             let right_items = create_stat_list!(
-                "Start Date" => season.value_cache.start_date,
-                "Finish Date" => season.value_cache.end_date,
+                "Start Date" => match entry.start_date() {
+                    Some(date) => format!("{}", date.format("%D")).into(),
+                    None => Cow::Borrowed("??"),
+                },
+                "Finish Date" => match entry.end_date() {
+                    Some(date) => format!("{}", date.format("%D")).into(),
+                    None => Cow::Borrowed("??"),
+                },
                 "Rewatched" => entry.times_rewatched()
             );
 

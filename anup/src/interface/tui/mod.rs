@@ -5,15 +5,13 @@ use super::{CurrentWatchInfo, SeriesPlayerArgs};
 use crate::config::Config;
 use crate::err::{self, Result};
 use crate::file::{SaveDir, SaveFile};
-use crate::track::{EntryState, SeriesTracker};
-use crate::util;
-use anime::remote::{RemoteService, SeriesInfo};
+use crate::track::SeriesTracker;
+use anime::remote::RemoteService;
 use anime::{SeasonInfoList, Series};
 use chrono::{DateTime, Duration, Utc};
 use clap::ArgMatches;
 use log::LogItem;
 use snafu::{OptionExt, ResultExt};
-use std::borrow::Cow;
 use std::mem;
 use std::ops::Add;
 use std::process;
@@ -70,7 +68,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
     let events = Events::new(Duration::seconds(1));
 
     loop {
-        ui.draw(&ui_state)?;
+        ui.draw(&ui_state, cstate.remote.as_ref())?;
 
         match events.next()? {
             Event::Input(key) => match key {
@@ -148,8 +146,6 @@ impl<'a> UIState<'a> {
                         season.tracker.force_sync_changes_to_remote(remote)
                     });
                 }
-
-                season.update_value_cache(remote);
             }
             // Drop series / put on hold
             Key::Char(ch) if is_key!(ch, drop_series || put_series_on_hold) => {
@@ -170,8 +166,6 @@ impl<'a> UIState<'a> {
                         season.tracker.force_sync_changes_to_remote(remote)
                     });
                 }
-
-                season.update_value_cache(remote);
             }
             // Force forwards / backwards watch progress
             Key::Char(ch) if is_key!(ch, force_forwards_progress || force_backwards_progress) => {
@@ -189,8 +183,6 @@ impl<'a> UIState<'a> {
                             tracker.episode_regressed(remote)
                         });
                 }
-
-                self.series.season.update_value_cache(remote);
             }
             // Play next episode
             Key::Char(ch) if is_key!(ch, play_next_episode) => {
@@ -228,9 +220,8 @@ impl<'a> UIState<'a> {
             }
             // Select season
             Key::Up | Key::Down if self.selection == Selection::Season => {
-                let remote = state.remote.as_ref();
                 let new_season = UIState::next_arrow_key_value(key, self.series.watch_info.season);
-                self.series.set_season(new_season, remote)?;
+                self.series.set_season(new_season)?;
             }
             _ => (),
         }
@@ -263,7 +254,6 @@ impl<'a> UIState<'a> {
 
                 season.tracker.entry.set_score(score);
                 season.tracker.sync_changes_to_remote(remote)?;
-                season.update_value_cache(remote);
 
                 Ok(())
             }
@@ -452,7 +442,7 @@ impl<'a> SeriesState<'a> {
         let seasons = super::get_season_list(name, remote, &episodes)?;
         let num_seasons = seasons.len();
         let series = Series::from_season_list(&seasons, watch_info.season, episodes)?;
-        let season = SeasonState::new(remote, name, series)?;
+        let season = SeasonState::new(name, series)?;
 
         Ok(SeriesState {
             watch_info,
@@ -464,10 +454,7 @@ impl<'a> SeriesState<'a> {
     }
 
     /// Loads the season specified by `season_num` and points `season` to it.
-    fn set_season<R>(&mut self, season_num: usize, remote: &'a R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
+    fn set_season(&mut self, season_num: usize) -> Result<()> {
         if !self.seasons.has(season_num) {
             return Ok(());
         }
@@ -475,7 +462,7 @@ impl<'a> SeriesState<'a> {
         let episodes = self.season.series.episodes.clone();
         let series = Series::from_season_list(&self.seasons, season_num, episodes)?;
 
-        self.season = SeasonState::new(remote, &self.watch_info.name, series)?;
+        self.season = SeasonState::new(&self.watch_info.name, series)?;
         self.watch_info.season = season_num;
 
         Ok(())
@@ -502,23 +489,19 @@ impl<'a> SeriesState<'a> {
 struct SeasonState<'a> {
     series: Series<'a>,
     tracker: SeriesTracker<'a>,
-    value_cache: SeasonValueCache<'a>,
     watch_state: WatchState,
 }
 
 impl<'a> SeasonState<'a> {
-    fn new<R, S>(remote: &'a R, name: S, series: Series<'a>) -> Result<SeasonState<'a>>
+    fn new<S>(name: S, series: Series<'a>) -> Result<SeasonState<'a>>
     where
-        R: RemoteService + ?Sized,
         S: Into<String>,
     {
         let tracker = SeriesTracker::init(series.info.clone(), name)?;
-        let value_cache = SeasonValueCache::new(remote, &tracker);
 
         Ok(SeasonState {
             series,
             tracker,
-            value_cache,
             watch_state: WatchState::Idle,
         })
     }
@@ -597,105 +580,9 @@ impl<'a> SeasonState<'a> {
                 } else {
                     ui.status_log.push("Not marking episode as completed");
                 }
-
-                self.update_value_cache(remote);
             }
         }
 
         Ok(())
-    }
-
-    fn update_value_cache<R>(&mut self, remote: &'a R)
-    where
-        R: RemoteService + ?Sized,
-    {
-        self.value_cache.update(remote, &self.tracker);
-    }
-}
-
-struct SeasonValueCache<'a> {
-    progress: String,
-    score: Cow<'a, str>,
-    start_date: Cow<'a, str>,
-    end_date: Cow<'a, str>,
-    watch_time_left: String,
-    // The following fields will not change
-    watch_time: String,
-    episode_length: String,
-}
-
-impl<'a> SeasonValueCache<'a> {
-    fn new<R>(remote: &'a R, tracker: &SeriesTracker<'a>) -> SeasonValueCache<'a>
-    where
-        R: RemoteService + ?Sized,
-    {
-        let info = &tracker.info;
-        let entry = &tracker.entry;
-
-        let watch_time = {
-            let watch_time_mins = info.episodes * info.episode_length;
-            util::hm_from_mins(watch_time_mins as f32)
-        };
-
-        let episode_length = format!("{}M", info.episode_length);
-
-        SeasonValueCache {
-            progress: SeasonValueCache::progress(info, entry),
-            score: SeasonValueCache::score(remote, entry),
-            start_date: SeasonValueCache::start_date(entry),
-            end_date: SeasonValueCache::end_date(entry),
-            watch_time_left: SeasonValueCache::watch_time_left(info, entry),
-            watch_time,
-            episode_length,
-        }
-    }
-
-    fn update<R>(&mut self, remote: &'a R, tracker: &SeriesTracker<'a>)
-    where
-        R: RemoteService + ?Sized,
-    {
-        let info = &tracker.info;
-        let entry = &tracker.entry;
-
-        self.progress = SeasonValueCache::progress(info, entry);
-        self.score = SeasonValueCache::score(remote, entry);
-        self.start_date = SeasonValueCache::start_date(entry);
-        self.end_date = SeasonValueCache::end_date(entry);
-        self.watch_time_left = SeasonValueCache::watch_time_left(info, entry);
-    }
-
-    fn progress(info: &SeriesInfo, entry: &EntryState) -> String {
-        format!("{}|{}", entry.watched_eps(), info.episodes)
-    }
-
-    fn score<R>(remote: &'a R, entry: &EntryState) -> Cow<'a, str>
-    where
-        R: RemoteService + ?Sized,
-    {
-        match entry.score() {
-            Some(score) => remote.score_to_str(score),
-            None => "??".into(),
-        }
-    }
-
-    fn start_date(entry: &EntryState) -> Cow<'a, str> {
-        match entry.start_date() {
-            Some(date) => format!("{}", date.format("%D")).into(),
-            None => "??".into(),
-        }
-    }
-
-    fn end_date(entry: &EntryState) -> Cow<'a, str> {
-        match entry.end_date() {
-            Some(date) => format!("{}", date.format("%D")).into(),
-            None => "??".into(),
-        }
-    }
-
-    fn watch_time_left(info: &SeriesInfo, entry: &EntryState) -> String {
-        let eps_left = info.episodes - entry.watched_eps().min(info.episodes);
-        let time_left_mins = eps_left * info.episode_length;
-
-        util::hm_from_mins(time_left_mins as f32)
     }
 }
