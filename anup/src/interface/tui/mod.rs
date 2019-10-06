@@ -1,3 +1,4 @@
+mod log;
 mod ui;
 
 use super::{CurrentWatchInfo, SeriesPlayerArgs};
@@ -10,13 +11,14 @@ use anime::remote::{RemoteService, SeriesInfo};
 use anime::{SeasonInfoList, Series};
 use chrono::{DateTime, Duration, Utc};
 use clap::ArgMatches;
+use log::LogItem;
 use snafu::{OptionExt, ResultExt};
 use std::borrow::Cow;
 use std::mem;
 use std::ops::Add;
 use std::process;
 use termion::event::Key;
-use ui::{Event, Events, LogItem, UI};
+use ui::{Event, Events, UI};
 
 pub fn run(args: &ArgMatches) -> Result<()> {
     let cstate = {
