@@ -203,24 +203,32 @@ impl<'a> UIState<'a> {
             Key::Left | Key::Right => {
                 self.selection.set_opposite();
             }
-            // Select series
-            Key::Up | Key::Down if self.selection == Selection::Series => {
-                let index = UIState::next_arrow_key_value(key, self.selected_series);
-
-                let new_name = match self.series_names.get(index) {
-                    Some(new_name) => new_name,
-                    None => return Ok(()),
+            // Select series / season
+            Key::Up | Key::Down => {
+                let next_value = |value: usize| match key {
+                    Key::Up => value.saturating_sub(1),
+                    Key::Down => value + 1,
+                    _ => value,
                 };
 
-                let watch_info = CurrentWatchInfo::new(new_name, 0);
+                match self.selection {
+                    Selection::Series => {
+                        let series_index = next_value(self.selected_series);
+                        let new_name = match self.series_names.get(series_index) {
+                            Some(new_name) => new_name,
+                            None => return Ok(()),
+                        };
 
-                self.series = SeriesState::new(state, watch_info, false)?;
-                self.selected_series = index;
-            }
-            // Select season
-            Key::Up | Key::Down if self.selection == Selection::Season => {
-                let new_season = UIState::next_arrow_key_value(key, self.series.watch_info.season);
-                self.series.set_season(new_season)?;
+                        let watch_info = CurrentWatchInfo::new(new_name, 0);
+
+                        self.series = SeriesState::new(state, watch_info, false)?;
+                        self.selected_series = series_index;
+                    }
+                    Selection::Season => {
+                        let season_index = next_value(self.series.watch_info.season);
+                        self.series.set_season(season_index)?;
+                    }
+                }
             }
             _ => (),
         }
@@ -282,14 +290,6 @@ impl<'a> UIState<'a> {
         self.series.season.process_tick(state, ui)
     }
 
-    fn next_arrow_key_value(key: Key, value: usize) -> usize {
-        match key {
-            Key::Up => value.saturating_sub(1),
-            Key::Down => value + 1,
-            _ => value,
-        }
-    }
-
     fn is_idle(&self) -> bool {
         self.series.season.watch_state == WatchState::Idle
     }
@@ -299,7 +299,7 @@ impl<'a> UIState<'a> {
     }
 }
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(Copy, Clone)]
 enum Selection {
     Series,
     Season,
