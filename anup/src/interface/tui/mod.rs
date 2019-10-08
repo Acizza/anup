@@ -13,7 +13,6 @@ use clap::ArgMatches;
 use log::LogItem;
 use snafu::{OptionExt, ResultExt};
 use std::mem;
-use std::ops::Add;
 use std::process;
 use termion::event::Key;
 use ui::{Event, Events, UI};
@@ -403,24 +402,6 @@ impl InputType {
     }
 }
 
-type ProgressTime = DateTime<Utc>;
-type StartTime = DateTime<Utc>;
-
-enum WatchState {
-    Idle,
-    Watching(StartTime, ProgressTime, process::Child),
-}
-
-impl PartialEq for WatchState {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (WatchState::Idle, WatchState::Idle) => true,
-            (WatchState::Watching(_, _, _), WatchState::Watching(_, _, _)) => true,
-            _ => false,
-        }
-    }
-}
-
 struct SeriesState<'a> {
     watch_info: CurrentWatchInfo,
     season: SeasonState<'a>,
@@ -518,8 +499,6 @@ impl<'a> SeasonState<'a> {
             .get_episode(next_ep)
             .context(err::EpisodeNotFound { episode: next_ep })?;
 
-        let start_time = Utc::now();
-
         let child = super::prepare_episode_cmd(&self.tracker.name, &state.config, episode)?
             .spawn()
             .context(err::FailedToPlayEpisode { episode: next_ep })?;
@@ -529,10 +508,10 @@ impl<'a> SeasonState<'a> {
                 (self.series.info.episode_length as f32 * config.episode.pcnt_must_watch) * 60.0;
             let time_must_watch = Duration::seconds(secs_must_watch as i64);
 
-            start_time.add(time_must_watch)
+            Utc::now() + time_must_watch
         };
 
-        self.watch_state = WatchState::Watching(start_time, progress_time, child);
+        self.watch_state = WatchState::Watching(progress_time, child);
 
         Ok(())
     }
@@ -543,16 +522,15 @@ impl<'a> SeasonState<'a> {
     {
         match &mut self.watch_state {
             WatchState::Idle => (),
-            WatchState::Watching(_, _, child) => {
+            WatchState::Watching(_, child) => {
                 let status = match child.try_wait().context(err::IO)? {
                     Some(status) => status,
                     None => return Ok(()),
                 };
 
-                // Set the watch state to idle immediately so we can't enter a loop from anything
-                // causing this block to exit early.
-                let start_time = match mem::replace(&mut self.watch_state, WatchState::Idle) {
-                    WatchState::Watching(start_time, _, _) => start_time,
+                // The watch state should be set to idle immediately to avoid a potential infinite loop.
+                let progress_time = match mem::replace(&mut self.watch_state, WatchState::Idle) {
+                    WatchState::Watching(progress_time, _) => progress_time,
                     WatchState::Idle => unreachable!(),
                 };
 
@@ -561,21 +539,11 @@ impl<'a> SeasonState<'a> {
                     return Ok(());
                 }
 
-                let mins_watched = {
-                    let watch_time = Utc::now() - start_time;
-                    watch_time.num_seconds() as f32 / 60.0
-                };
-
-                let remote = state.remote.as_ref();
-                let config = &state.config;
-
-                let mins_must_watch =
-                    self.series.info.episode_length as f32 * config.episode.pcnt_must_watch;
-
-                if mins_watched >= mins_must_watch {
+                if Utc::now() >= progress_time {
                     ui.status_log
                         .capture_status("Marking episode as completed", || {
-                            self.tracker.episode_completed(remote, config)
+                            self.tracker
+                                .episode_completed(state.remote.as_ref(), &state.config)
                         });
                 } else {
                     ui.status_log.push("Not marking episode as completed");
@@ -584,5 +552,22 @@ impl<'a> SeasonState<'a> {
         }
 
         Ok(())
+    }
+}
+
+type ProgressTime = DateTime<Utc>;
+
+enum WatchState {
+    Idle,
+    Watching(ProgressTime, process::Child),
+}
+
+impl PartialEq for WatchState {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (WatchState::Idle, WatchState::Idle) => true,
+            (WatchState::Watching(_, _), WatchState::Watching(_, _)) => true,
+            _ => false,
+        }
     }
 }

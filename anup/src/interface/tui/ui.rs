@@ -239,7 +239,7 @@ where
         // Watch time needed indicator at bottom
         match season.watch_state {
             WatchState::Idle => (),
-            WatchState::Watching(_, progress_time, _) => {
+            WatchState::Watching(progress_time, _) => {
                 let watch_time = progress_time - Utc::now();
                 let watch_secs = watch_time.num_seconds();
 
