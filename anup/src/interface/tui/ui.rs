@@ -78,12 +78,6 @@ where
             .style(Style::default().fg(Color::White))
             .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC));
 
-        if state.selection == Selection::Series {
-            series_list = series_list.highlight_symbol(">");
-        }
-
-        series_list.render(frame, layout[0]);
-
         let season_nums = (1..=state.series.num_seasons)
             .map(|i| i.to_string())
             .collect::<SmallVec<[_; 4]>>();
@@ -95,10 +89,12 @@ where
             .style(Style::default().fg(Color::White))
             .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC));
 
-        if state.selection == Selection::Season {
-            season_list = season_list.highlight_symbol(">");
+        match state.selection {
+            Selection::Series => series_list = series_list.highlight_symbol(">"),
+            Selection::Season => season_list = season_list.highlight_symbol(">"),
         }
 
+        series_list.render(frame, layout[0]);
         season_list.render(frame, layout[1]);
     }
 
