@@ -98,6 +98,18 @@ pub enum Error {
 
     #[snafu(display("please run the program in CLI mode to set your AniList token"))]
     GetAniListTokenFromCLI,
+
+    #[snafu(display("no command specified"))]
+    NoCommandSpecified,
+
+    #[snafu(display("command not found: {}", command))]
+    CommandNotFound { command: String },
+
+    #[snafu(display("{} argument(s) specified, need at least {}", has, need))]
+    NotEnoughArguments { has: usize, need: usize },
+
+    #[snafu(display("unknown argument: {}", value))]
+    UnknownCmdPromptArg { value: String },
 }
 
 impl Error {

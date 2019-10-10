@@ -152,29 +152,13 @@ impl Default for TuiConfig {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TuiKeys {
-    pub sync_from_list: char,
-    pub sync_to_list: char,
-    pub drop_series: char,
-    pub put_series_on_hold: char,
-    pub force_forwards_progress: char,
-    pub force_backwards_progress: char,
     pub play_next_episode: char,
-    pub score_prompt: char,
-    pub series_player_args_prompt: char,
 }
 
 impl Default for TuiKeys {
     fn default() -> TuiKeys {
         TuiKeys {
-            sync_from_list: 'r',
-            sync_to_list: 's',
-            drop_series: 'd',
-            put_series_on_hold: 'h',
-            force_forwards_progress: 'f',
-            force_backwards_progress: 'b',
             play_next_episode: '\n',
-            score_prompt: 'e',
-            series_player_args_prompt: 'l',
         }
     }
 }

@@ -10,6 +10,7 @@ use anime::remote::RemoteService;
 use anime::{SeasonInfoList, Series};
 use chrono::{DateTime, Duration, Utc};
 use clap::ArgMatches;
+use component::command_prompt::{Command, CommandPrompt};
 use component::log::{LogItem, StatusLog};
 use snafu::{OptionExt, ResultExt};
 use std::mem;
@@ -72,7 +73,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
         match events.next()? {
             Event::Input(key) => match key {
                 // Exit
-                Key::Char('q') => {
+                Key::Char('q') if !ui_state.status_bar_state.in_input_dialog() => {
                     // Prevent ruining the user's terminal
                     ui.clear().ok();
                     break Ok(());
@@ -105,7 +106,7 @@ pub struct UIState<'a> {
     series_names: Vec<String>,
     selected_series: usize,
     selection: Selection,
-    status_bar_state: StatusBarState,
+    status_bar_state: StatusBarState<'a>,
 }
 
 impl<'a> UIState<'a> {
@@ -113,91 +114,26 @@ impl<'a> UIState<'a> {
     where
         B: tui::backend::Backend,
     {
-        // This simply compares $var to a list of TUI-specific settings.
-        // The only point of it is to reduce the length of match statements.
-        macro_rules! is_key {
-            ($var:expr, $($name:ident)||+) => {
-                $($var == state.config.tui.keys.$name)||+
-            };
-        }
-
         if !self.is_idle() {
             return Ok(());
         }
 
-        if self.in_input_dialog() {
+        if self.status_bar_state.in_input_dialog() {
             return self.process_input_dialog_key(state, ui, key);
         }
 
         match key {
-            // Sync list entry from / to remote
-            Key::Char(ch) if is_key!(ch, sync_from_list || sync_to_list) => {
-                let remote = state.remote.as_ref();
-                let season = &mut self.series.season;
-
-                if is_key!(ch, sync_from_list) {
-                    ui.status_log
-                        .capture_status("Syncing entry from remote", || {
-                            season.tracker.force_sync_changes_from_remote(remote)
-                        });
-                } else if is_key!(ch, sync_to_list) {
-                    ui.status_log.capture_status("Syncing entry to remote", || {
-                        season.tracker.force_sync_changes_to_remote(remote)
-                    });
-                }
-            }
-            // Drop series / put on hold
-            Key::Char(ch) if is_key!(ch, drop_series || put_series_on_hold) => {
-                let remote = state.remote.as_ref();
-                let season = &mut self.series.season;
-                let entry = &mut season.tracker.entry;
-
-                if is_key!(ch, drop_series) {
-                    entry.mark_as_dropped(&state.config);
-
-                    ui.status_log.capture_status("Dropping series", || {
-                        season.tracker.sync_changes_to_remote(remote)
-                    });
-                } else if is_key!(ch, put_series_on_hold) {
-                    entry.mark_as_on_hold();
-
-                    ui.status_log.capture_status("Putting series on hold", || {
-                        season.tracker.force_sync_changes_to_remote(remote)
-                    });
-                }
-            }
-            // Force forwards / backwards watch progress
-            Key::Char(ch) if is_key!(ch, force_forwards_progress || force_backwards_progress) => {
-                let remote = state.remote.as_ref();
-                let tracker = &mut self.series.season.tracker;
-
-                if is_key!(ch, force_forwards_progress) {
-                    ui.status_log
-                        .capture_status("Forcing forward watch progress", || {
-                            tracker.episode_completed(remote, &state.config)
-                        });
-                } else if is_key!(ch, force_backwards_progress) {
-                    ui.status_log
-                        .capture_status("Forcing backwards watch progress", || {
-                            tracker.episode_regressed(remote)
-                        });
-                }
-            }
             // Play next episode
-            Key::Char(ch) if is_key!(ch, play_next_episode) => {
+            Key::Char(ch) if ch == state.config.tui.keys.play_next_episode => {
                 self.series.set_as_last_watched(ui);
 
                 ui.status_log.capture_status("Playing next episode", || {
                     self.series.season.play_next_episode_async(&state)
                 });
             }
-            // Score entry prompt
-            Key::Char(ch) if is_key!(ch, score_prompt) => {
-                self.status_bar_state = StatusBarState::Input(InputType::score());
-            }
-            // Series player args prompt
-            Key::Char(ch) if is_key!(ch, series_player_args_prompt) => {
-                self.status_bar_state = StatusBarState::Input(InputType::series_player_args());
+            // Command prompt
+            Key::Char(':') => {
+                self.status_bar_state.set_to_command_prompt();
             }
             // Switch between series and season selection
             Key::Left | Key::Right => {
@@ -245,41 +181,119 @@ impl<'a> UIState<'a> {
     where
         B: tui::backend::Backend,
     {
-        match self.status_bar_state.process_key(key) {
-            Some(InputType::Score(value)) => {
-                let score = match state.remote.parse_score(&value) {
+        match &mut self.status_bar_state {
+            StatusBarState::Log => Ok(()),
+            StatusBarState::CommandPrompt(prompt) => {
+                use component::command_prompt::PromptResult;
+
+                match prompt.process_key(key) {
+                    Ok(PromptResult::Command(command)) => {
+                        self.status_bar_state.reset();
+                        self.process_command(command, state, &mut ui.status_log)
+                    }
+                    Ok(PromptResult::Done) => {
+                        self.status_bar_state.reset();
+                        Ok(())
+                    }
+                    Ok(PromptResult::NotDone) => Ok(()),
+                    // We need to set the status bar state back before propagating errors,
+                    // otherwise we'll be stuck in the prompt
+                    Err(err) => {
+                        self.status_bar_state.reset();
+                        Err(err)
+                    }
+                }
+            }
+        }
+    }
+
+    fn process_command(
+        &mut self,
+        command: Command,
+        cstate: &CommonState,
+        log: &mut StatusLog,
+    ) -> Result<()> {
+        let remote = cstate.remote.as_ref();
+
+        match command {
+            Command::SyncFromRemote => {
+                let season = &mut self.series.season;
+
+                log.capture_status("Syncing entry from remote", || {
+                    season.tracker.force_sync_changes_from_remote(remote)
+                });
+
+                Ok(())
+            }
+            Command::SyncToRemote => {
+                let season = &mut self.series.season;
+
+                log.capture_status("Syncing entry to remote", || {
+                    season.tracker.force_sync_changes_to_remote(remote)
+                });
+
+                Ok(())
+            }
+            Command::Status(status) => {
+                let season = &mut self.series.season;
+                let entry = &mut season.tracker.entry;
+
+                entry.set_status(status);
+
+                log.capture_status(format!("Setting series status to \"{}\"", status), || {
+                    season.tracker.sync_changes_to_remote(remote)
+                });
+
+                Ok(())
+            }
+            Command::Progress(direction) => {
+                use component::command_prompt::ProgressDirection;
+
+                let tracker = &mut self.series.season.tracker;
+
+                match direction {
+                    ProgressDirection::Forwards => {
+                        log.capture_status("Forcing forward watch progress", || {
+                            tracker.episode_completed(remote, &cstate.config)
+                        });
+                    }
+                    ProgressDirection::Backwards => {
+                        log.capture_status("Forcing backwards watch progress", || {
+                            tracker.episode_regressed(remote)
+                        });
+                    }
+                }
+
+                Ok(())
+            }
+            Command::Score(raw_score) => {
+                let score = match cstate.remote.parse_score(&raw_score) {
                     Some(score) if score == 0 => None,
                     Some(score) => Some(score),
                     None => {
-                        ui.status_log.push(LogItem::failed("Parsing score", None));
+                        log.push(LogItem::failed("Parsing score", None));
                         return Ok(());
                     }
                 };
 
-                let remote = state.remote.as_ref();
-                let season = &mut self.series.season;
+                let tracker = &mut self.series.season.tracker;
+                tracker.entry.set_score(score);
 
-                season.tracker.entry.set_score(score);
-                season.tracker.sync_changes_to_remote(remote)?;
+                log.capture_status("Setting score", || {
+                    tracker.sync_changes_to_remote(cstate.remote.as_ref())
+                });
 
                 Ok(())
             }
-            Some(InputType::SeriesPlayerArgs(value)) => {
-                let split_args = value
-                    .split_ascii_whitespace()
-                    .map(|s| s.to_string())
-                    .collect();
-
+            Command::PlayerArgs(args) => {
                 let name = self.series.watch_info.name.as_ref();
 
-                ui.status_log
-                    .capture_status("Saving player args for series", || {
-                        SeriesPlayerArgs::new(split_args).save(name)
-                    });
+                log.capture_status("Saving player args for series", || {
+                    SeriesPlayerArgs::new(args).save(name)
+                });
 
                 Ok(())
             }
-            None => Ok(()),
         }
     }
 
@@ -292,10 +306,6 @@ impl<'a> UIState<'a> {
 
     fn is_idle(&self) -> bool {
         self.series.season.watch_state == WatchState::Idle
-    }
-
-    fn in_input_dialog(&self) -> bool {
-        self.status_bar_state.in_input_dialog()
     }
 }
 
@@ -318,87 +328,31 @@ impl Selection {
     }
 }
 
-enum StatusBarState {
+enum StatusBarState<'a> {
     Log,
-    Input(InputType),
+    CommandPrompt(CommandPrompt<'a>),
 }
 
-impl StatusBarState {
-    /// Processes a key for the current state of the `StatusBarState`.
-    ///
-    /// If input was considered to be completed while processing the current state, it will return
-    /// the `InputType` corrosponding to which type of input was completed with its contents.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let mut state = StatusBarState::Input(InputType::score());
-    ///
-    /// assert_eq!(state.process_key(Key::Char('h')), None);
-    /// assert_eq!(state.process_key(Key::Char('i')), None);
-    /// assert_eq!(state.process_key(Key::Char('\n')), Some(InputType::Score("hi")));
-    /// ```
-    fn process_key(&mut self, key: Key) -> Option<InputType> {
-        match self {
-            StatusBarState::Log => (),
-            StatusBarState::Input(input_type) => match key {
-                Key::Char('\n') => {
-                    let input_type = match mem::replace(self, StatusBarState::default()) {
-                        StatusBarState::Input(input_type) => input_type,
-                        StatusBarState::Log => unreachable!(),
-                    };
+impl<'a> StatusBarState<'a> {
+    fn set_to_command_prompt(&mut self) {
+        *self = StatusBarState::CommandPrompt(CommandPrompt::new());
+    }
 
-                    return Some(input_type);
-                }
-                Key::Char('\t') => input_type.contents_mut().push(' '),
-                Key::Char(ch) => input_type.contents_mut().push(ch),
-                Key::Backspace => {
-                    input_type.contents_mut().pop();
-                }
-                Key::Esc => *self = StatusBarState::default(),
-                _ => (),
-            },
-        }
-
-        None
+    fn reset(&mut self) {
+        *self = StatusBarState::default();
     }
 
     fn in_input_dialog(&self) -> bool {
-        *self != StatusBarState::Log
-    }
-}
-
-impl PartialEq for StatusBarState {
-    fn eq(&self, other: &Self) -> bool {
-        mem::discriminant(self) == mem::discriminant(other)
-    }
-}
-
-impl Default for StatusBarState {
-    fn default() -> StatusBarState {
-        StatusBarState::Log
-    }
-}
-
-enum InputType {
-    Score(String),
-    SeriesPlayerArgs(String),
-}
-
-impl InputType {
-    fn score() -> InputType {
-        InputType::Score(String::new())
-    }
-
-    fn series_player_args() -> InputType {
-        InputType::SeriesPlayerArgs(String::new())
-    }
-
-    fn contents_mut(&mut self) -> &mut String {
         match self {
-            InputType::Score(contents) => contents,
-            InputType::SeriesPlayerArgs(contents) => contents,
+            StatusBarState::Log => false,
+            StatusBarState::CommandPrompt(_) => true,
         }
+    }
+}
+
+impl<'a> Default for StatusBarState<'a> {
+    fn default() -> StatusBarState<'a> {
+        StatusBarState::Log
     }
 }
 

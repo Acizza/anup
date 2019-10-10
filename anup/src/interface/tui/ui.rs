@@ -258,27 +258,28 @@ where
     }
 
     fn draw_status_bar(state: &UIState, log: &mut StatusLog, layout: Rect, frame: &mut Frame<B>) {
-        use super::{InputType, StatusBarState};
+        use super::StatusBarState;
 
         match &state.status_bar_state {
             StatusBarState::Log => {
                 log.adjust_to_size(layout, true);
 
                 Paragraph::new(log.draw_items_iter())
-                    .block(Block::default().title("Status").borders(Borders::ALL))
+                    .block(
+                        Block::default()
+                            .title("Status [':' for command entry]")
+                            .borders(Borders::ALL),
+                    )
                     .wrap(true)
                     .render(frame, layout);
             }
-            StatusBarState::Input(input_type) => {
-                let (title, buffer) = match input_type {
-                    InputType::Score(buffer) => ("Input Score", buffer),
-                    InputType::SeriesPlayerArgs(buffer) => ("Input Player Args For Series", buffer),
-                };
-
-                let text = Text::raw(buffer);
-
-                Paragraph::new([text].iter())
-                    .block(Block::default().title(title).borders(Borders::ALL))
+            StatusBarState::CommandPrompt(prompt) => {
+                Paragraph::new(prompt.draw_items().iter())
+                    .block(
+                        Block::default()
+                            .title("Enter Command")
+                            .borders(Borders::ALL),
+                    )
                     .wrap(true)
                     .render(frame, layout);
             }
