@@ -1,4 +1,4 @@
-use super::log::StatusLog;
+use super::component::log::StatusLog;
 use super::{Selection, UIState, WatchState};
 use crate::err::{self, Result};
 use crate::util;

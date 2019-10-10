@@ -1,4 +1,4 @@
-mod log;
+mod component;
 mod ui;
 
 use super::{CurrentWatchInfo, SeriesPlayerArgs};
@@ -10,7 +10,7 @@ use anime::remote::RemoteService;
 use anime::{SeasonInfoList, Series};
 use chrono::{DateTime, Duration, Utc};
 use clap::ArgMatches;
-use log::LogItem;
+use component::log::{LogItem, StatusLog};
 use snafu::{OptionExt, ResultExt};
 use std::mem;
 use std::process;
