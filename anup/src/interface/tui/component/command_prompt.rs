@@ -1,4 +1,5 @@
 use crate::err::{self, Result};
+use crate::util;
 use smallvec::{smallvec, SmallVec};
 use snafu::ensure;
 use std::convert::TryFrom;
@@ -232,27 +233,12 @@ impl Command {
     fn best_matching_name(name: &str) -> Option<&'static str> {
         const MIN_CONFIDENCE: f32 = 0.7;
 
-        let mut max_score = 0.0;
-        let mut best_match = None;
-
-        for (i, cmd_name) in Command::CMD_NAMES.iter().enumerate() {
-            let score = strsim::jaro_winkler(&cmd_name, name) as f32;
-
-            if score > max_score {
-                if score > 0.99 {
-                    return Some(Command::CMD_NAMES[i]);
-                }
-
-                best_match = Some(Command::CMD_NAMES[i]);
-                max_score = score;
-            }
-        }
-
-        if max_score < MIN_CONFIDENCE {
-            return None;
-        }
-
-        best_match
+        util::closest_str_match(
+            &Command::CMD_NAMES,
+            name,
+            MIN_CONFIDENCE,
+            strsim::jaro_winkler,
+        )
     }
 }
 

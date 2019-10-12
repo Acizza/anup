@@ -1,51 +1,20 @@
 use crate::err::{self, Result};
+use crate::util;
 use anime::remote::SeriesInfo;
 use lazy_static::lazy_static;
 use regex::Regex;
 use snafu::{OptionExt, ResultExt};
 use std::borrow::Cow;
-use std::f32;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub fn best_matching_title<S, I, SI>(name: S, titles: I) -> Option<usize>
+pub fn best_matching_title<'a, I, S>(titles: I, name: S) -> Option<usize>
 where
-    S: Into<String>,
-    I: IntoIterator<Item = SI>,
-    SI: Into<String>,
+    I: Iterator<Item = Cow<'a, str>>,
+    S: AsRef<str>,
 {
     const MIN_CONFIDENCE: f32 = 0.6;
-
-    let name = {
-        let mut name = name.into();
-        name.make_ascii_lowercase();
-        name
-    };
-
-    let mut max_score = 0.0;
-    let mut title_idx = None;
-
-    for (i, title) in titles.into_iter().enumerate() {
-        let mut title = title.into();
-        title.make_ascii_lowercase();
-
-        let score = strsim::jaro(&title, &name) as f32;
-
-        if score > max_score {
-            if score >= 0.99 {
-                return Some(i);
-            }
-
-            title_idx = Some(i);
-            max_score = score;
-        }
-    }
-
-    if max_score < MIN_CONFIDENCE {
-        return None;
-    }
-
-    title_idx
+    util::closest_str_match_idx(titles, name, MIN_CONFIDENCE, strsim::jaro)
 }
 
 pub fn best_matching_folder<S, P>(name: S, dir: P) -> Result<PathBuf>
@@ -69,14 +38,18 @@ where
         dirs.push(entry);
     }
 
-    let name = name.as_ref();
+    let dir = {
+        let dir_names = dirs
+            .iter()
+            .filter_map(|name| parse_folder_title(name.file_name().to_string_lossy()))
+            .map(Cow::Owned);
 
-    let filenames = dirs
-        .iter()
-        .filter_map(|name| parse_folder_title(name.file_name().to_string_lossy()));
+        let dir_idx = best_matching_title(dir_names, &name).context(err::NoMatchingSeries {
+            name: name.as_ref(),
+        })?;
 
-    let dir_idx = best_matching_title(name, filenames).context(err::NoMatchingSeries { name })?;
-    let dir = dirs.swap_remove(dir_idx);
+        dirs.swap_remove(dir_idx)
+    };
 
     Ok(dir.path())
 }
@@ -100,12 +73,11 @@ where
 
 pub fn best_matching_info<S>(name: S, items: &[SeriesInfo]) -> Option<usize>
 where
-    S: Into<String>,
+    S: AsRef<str>,
 {
     let items = items
         .iter()
-        .map(|info| Cow::Borrowed(info.title.romaji.as_ref()))
-        .collect::<Vec<_>>();
+        .map(|info| Cow::Borrowed(info.title.romaji.as_ref()));
 
-    best_matching_title(name, items)
+    best_matching_title(items, name)
 }
