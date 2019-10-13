@@ -79,14 +79,14 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                     ui.clear().ok();
                     break Ok(());
                 }
-                key => match ui_state.process_key(&cstate, &mut ui, key) {
+                key => match ui_state.process_key(&cstate, &mut ui.status_log, key) {
                     Ok(_) => (),
                     Err(err) => {
                         ui.status_log.push(LogItem::failed("Processing key", err));
                     }
                 },
             },
-            Event::Tick => match ui_state.process_tick(&cstate, &mut ui) {
+            Event::Tick => match ui_state.process_tick(&cstate, &mut ui.status_log) {
                 Ok(_) => (),
                 Err(err) => ui.status_log.push(LogItem::failed("Processing tick", err)),
             },
@@ -112,24 +112,21 @@ pub struct UIState<'a> {
 }
 
 impl<'a> UIState<'a> {
-    fn process_key<B>(&mut self, state: &'a CommonState, ui: &mut UI<B>, key: Key) -> Result<()>
-    where
-        B: tui::backend::Backend,
-    {
+    fn process_key(&mut self, state: &'a CommonState, log: &mut StatusLog, key: Key) -> Result<()> {
         if !self.is_idle() {
             return Ok(());
         }
 
         if self.status_bar_state.in_input_dialog() {
-            return self.process_input_dialog_key(state, ui, key);
+            return self.process_input_dialog_key(state, log, key);
         }
 
         match key {
             // Play next episode
             Key::Char(ch) if ch == state.config.tui.keys.play_next_episode => {
-                self.series.set_as_last_watched(ui);
+                self.series.set_as_last_watched(log);
 
-                ui.status_log.capture_status("Playing next episode", || {
+                log.capture_status("Playing next episode", || {
                     self.series.season.play_next_episode_async(&state)
                 });
             }
@@ -144,7 +141,7 @@ impl<'a> UIState<'a> {
                     None => return Ok(()),
                 };
 
-                self.process_command(cmd, state, &mut ui.status_log)?;
+                self.process_command(cmd, state, log)?;
             }
             // Switch between series and season selection
             Key::Left | Key::Right => {
@@ -183,15 +180,12 @@ impl<'a> UIState<'a> {
         Ok(())
     }
 
-    fn process_input_dialog_key<B>(
+    fn process_input_dialog_key(
         &mut self,
         state: &'a CommonState,
-        ui: &mut UI<B>,
+        log: &mut StatusLog,
         key: Key,
-    ) -> Result<()>
-    where
-        B: tui::backend::Backend,
-    {
+    ) -> Result<()> {
         match &mut self.status_bar_state {
             StatusBarState::Log => Ok(()),
             StatusBarState::CommandPrompt(prompt) => {
@@ -201,7 +195,7 @@ impl<'a> UIState<'a> {
                     Ok(PromptResult::Command(command)) => {
                         self.status_bar_state.reset();
                         self.last_used_command = Some(command.clone());
-                        self.process_command(command, state, &mut ui.status_log)
+                        self.process_command(command, state, log)
                     }
                     Ok(PromptResult::Done) => {
                         self.status_bar_state.reset();
@@ -309,11 +303,8 @@ impl<'a> UIState<'a> {
         }
     }
 
-    fn process_tick<B>(&mut self, state: &'a CommonState, ui: &mut UI<B>) -> Result<()>
-    where
-        B: tui::backend::Backend,
-    {
-        self.series.season.process_tick(state, ui)
+    fn process_tick(&mut self, state: &'a CommonState, log: &mut StatusLog) -> Result<()> {
+        self.series.season.process_tick(state, log)
     }
 
     fn is_idle(&self) -> bool {
@@ -416,18 +407,14 @@ impl<'a> SeriesState<'a> {
     }
 
     /// Sets the current series as the last watched one if it isn't already.
-    fn set_as_last_watched<B>(&mut self, ui: &mut UI<B>)
-    where
-        B: tui::backend::Backend,
-    {
+    fn set_as_last_watched(&mut self, log: &mut StatusLog) {
         if self.is_last_watched {
             return;
         }
 
-        ui.status_log
-            .capture_status("Marking as the last watched series", || {
-                self.watch_info.save(None)
-            });
+        log.capture_status("Marking as the last watched series", || {
+            self.watch_info.save(None)
+        });
 
         self.is_last_watched = true;
     }
@@ -482,10 +469,7 @@ impl<'a> SeasonState<'a> {
         Ok(())
     }
 
-    fn process_tick<B>(&mut self, state: &'a CommonState, ui: &mut UI<B>) -> Result<()>
-    where
-        B: tui::backend::Backend,
-    {
+    fn process_tick(&mut self, state: &'a CommonState, log: &mut StatusLog) -> Result<()> {
         match &mut self.watch_state {
             WatchState::Idle => (),
             WatchState::Watching(_, child) => {
@@ -501,18 +485,17 @@ impl<'a> SeasonState<'a> {
                 };
 
                 if !status.success() {
-                    ui.status_log.push("Player did not exit properly");
+                    log.push("Player did not exit properly");
                     return Ok(());
                 }
 
                 if Utc::now() >= progress_time {
-                    ui.status_log
-                        .capture_status("Marking episode as completed", || {
-                            self.tracker
-                                .episode_completed(state.remote.as_ref(), &state.config)
-                        });
+                    log.capture_status("Marking episode as completed", || {
+                        self.tracker
+                            .episode_completed(state.remote.as_ref(), &state.config)
+                    });
                 } else {
-                    ui.status_log.push("Not marking episode as completed");
+                    log.push("Not marking episode as completed");
                 }
             }
         }
