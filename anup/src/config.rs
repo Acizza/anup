@@ -153,12 +153,14 @@ impl Default for TuiConfig {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TuiKeys {
     pub play_next_episode: char,
+    pub run_last_command: char,
 }
 
 impl Default for TuiKeys {
     fn default() -> TuiKeys {
         TuiKeys {
             play_next_episode: '\n',
+            run_last_command: ';',
         }
     }
 }

@@ -146,7 +146,7 @@ macro_rules! impl_command_matching {
 }
 
 /// A parsed command with its arguments.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Command {
     /// Syncronize the selected season to the remote service.
     SyncFromRemote,
@@ -243,7 +243,7 @@ impl Command {
 }
 
 /// Indicates which way to advance the episode count of a season.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum ProgressDirection {
     /// Increase the episode count.
     Forwards,

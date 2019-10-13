@@ -62,6 +62,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
             selected_series,
             selection: Selection::Series,
             status_bar_state: StatusBarState::default(),
+            last_used_command: None,
         }
     };
 
@@ -107,6 +108,7 @@ pub struct UIState<'a> {
     selected_series: usize,
     selection: Selection,
     status_bar_state: StatusBarState<'a>,
+    last_used_command: Option<Command>,
 }
 
 impl<'a> UIState<'a> {
@@ -134,6 +136,15 @@ impl<'a> UIState<'a> {
             // Command prompt
             Key::Char(':') => {
                 self.status_bar_state.set_to_command_prompt();
+            }
+            // Run last used command
+            Key::Char(ch) if ch == state.config.tui.keys.run_last_command => {
+                let cmd = match &self.last_used_command {
+                    Some(cmd) => cmd.clone(),
+                    None => return Ok(()),
+                };
+
+                self.process_command(cmd, state, &mut ui.status_log)?;
             }
             // Switch between series and season selection
             Key::Left | Key::Right => {
@@ -189,6 +200,7 @@ impl<'a> UIState<'a> {
                 match prompt.process_key(key) {
                     Ok(PromptResult::Command(command)) => {
                         self.status_bar_state.reset();
+                        self.last_used_command = Some(command.clone());
                         self.process_command(command, state, &mut ui.status_log)
                     }
                     Ok(PromptResult::Done) => {
