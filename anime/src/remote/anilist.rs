@@ -61,8 +61,9 @@ macro_rules! query {
 
 #[derive(Debug)]
 pub struct AniList {
+    /// The authenticated user.
+    pub user: User,
     token: AccessToken,
-    user: User,
 }
 
 impl AniList {
@@ -209,6 +210,33 @@ impl fmt::Debug for AccessToken {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct User {
+    pub id: u32,
+    #[serde(rename = "mediaListOptions")]
+    pub options: ListOptions,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListOptions {
+    #[serde(rename = "scoreFormat")]
+    pub score_format: ScoreFormat,
+}
+
+#[derive(Debug, Deserialize)]
+pub enum ScoreFormat {
+    #[serde(rename = "POINT_100")]
+    Point100,
+    #[serde(rename = "POINT_10_DECIMAL")]
+    Point10Decimal,
+    #[serde(rename = "POINT_10")]
+    Point10,
+    #[serde(rename = "POINT_5")]
+    Point5,
+    #[serde(rename = "POINT_3")]
+    Point3,
+}
+
 fn send_gql_request<S>(query: S, vars: &json::Value, token: &AccessToken) -> Result<json::Value>
 where
     S: Into<String>,
@@ -255,34 +283,6 @@ where
     let mut value = value.into();
     value.retain(|c| c != ' ' && c != '\n');
     value
-}
-
-#[derive(Debug, Deserialize)]
-struct User {
-    id: u32,
-    #[serde(rename = "mediaListOptions")]
-    options: ListOptions,
-}
-
-#[derive(Debug, Deserialize)]
-struct ListOptions {
-    #[serde(rename = "scoreFormat")]
-    score_format: ScoreFormat,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(clippy::enum_variant_names)]
-enum ScoreFormat {
-    #[serde(rename = "POINT_100")]
-    Point100,
-    #[serde(rename = "POINT_10_DECIMAL")]
-    Point10Decimal,
-    #[serde(rename = "POINT_10")]
-    Point10,
-    #[serde(rename = "POINT_5")]
-    Point5,
-    #[serde(rename = "POINT_3")]
-    Point3,
 }
 
 #[derive(Debug, Deserialize)]
