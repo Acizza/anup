@@ -28,6 +28,7 @@ pub fn auth_url(client_id: u32) -> String {
     )
 }
 
+/// Send an API query to AniList, without attemping to parse a response.
 macro_rules! send {
     ($token:expr, $file:expr, {$($vars:tt)*}, $($resp_root:expr)=>*) => {{
         if cfg!(debug_assertions) && cfg!(feature = "print-requests-debug") {
@@ -51,6 +52,7 @@ macro_rules! send {
     }};
 }
 
+/// Send an API query to AniList, and attempt to parse the response into a specified type.
 macro_rules! query {
     ($token:expr, $file:expr, {$($vars:tt)*}, $($resp_root:expr)=>*) => {
         send!($token, $file, {$($vars)*}, $($resp_root)=>*).and_then(|json| {
@@ -59,6 +61,7 @@ macro_rules! query {
     };
 }
 
+/// An authenticated connection that allows requests to the AniList API.
 #[derive(Debug)]
 pub struct AniList {
     /// The authenticated user.
@@ -174,28 +177,35 @@ impl ScoreParser for AniList {
     }
 }
 
+/// A user's account access token for the API.
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct AccessToken {
     encoded_token: String,
 }
 
 impl AccessToken {
-    pub fn new<S>(token: S) -> AccessToken
+    /// Encode a new `AccessToken`.
+    #[inline]
+    pub fn encode<S>(token: S) -> AccessToken
     where
         S: AsRef<str>,
     {
         AccessToken {
-            encoded_token: AccessToken::encode(token),
+            encoded_token: base64::encode(token.as_ref()),
         }
     }
 
-    fn encode<S>(value: S) -> String
-    where
-        S: AsRef<str>,
-    {
-        base64::encode(value.as_ref())
-    }
-
+    /// Get the content of the `AccessToken`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use anime::remote::anilist::AccessToken;
+    ///
+    /// let token = AccessToken::encode("test");
+    /// assert_eq!(token.decode().unwrap(), "test");
+    /// ```
+    #[inline]
     pub fn decode(&self) -> Result<String> {
         let bytes = base64::decode(&self.encoded_token).context(err::Base64Decode)?;
         let string = String::from_utf8(bytes).context(err::UTF8Decode)?;
@@ -204,35 +214,55 @@ impl AccessToken {
     }
 }
 
+// Better to not accidently expose a base64 encoded token..
 impl fmt::Debug for AccessToken {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "AccessToken {{}}")
     }
 }
 
+/// An AniList user.
 #[derive(Debug, Deserialize)]
 pub struct User {
+    /// The user's account ID.
     pub id: u32,
+    /// Settings related to the user's anime list.
     #[serde(rename = "mediaListOptions")]
     pub options: ListOptions,
 }
 
+/// Anime list settings for a user.
 #[derive(Debug, Deserialize)]
 pub struct ListOptions {
+    /// The user's preferred scoring format.
     #[serde(rename = "scoreFormat")]
     pub score_format: ScoreFormat,
 }
 
+/// AniList score formats.
 #[derive(Debug, Deserialize)]
 pub enum ScoreFormat {
+    /// Range between 0 - 100.
     #[serde(rename = "POINT_100")]
     Point100,
+    /// Range between 0.0 - 10.0.
     #[serde(rename = "POINT_10_DECIMAL")]
     Point10Decimal,
+    /// Range between 0 - 10.
     #[serde(rename = "POINT_10")]
     Point10,
+    /// Range between 0 - 5.
     #[serde(rename = "POINT_5")]
     Point5,
+    /// Range between 0 - 100. This variant is unique in that it is
+    /// represented by an ASCII-style face. Value ranges for each face
+    /// are shown below:
+    ///
+    /// | Range    | Face |
+    /// | -------- | ---- |
+    /// | 0 - 33   | :(   |
+    /// | 34 - 66  | :\|  |
+    /// | 67 - 100 | :)   |
     #[serde(rename = "POINT_3")]
     Point3,
 }
@@ -276,6 +306,7 @@ where
     Ok(json)
 }
 
+// TODO: convert to const fn when mutable references can be used
 fn minimize_query<S>(value: S) -> String
 where
     S: Into<String>,

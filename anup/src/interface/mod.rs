@@ -234,7 +234,7 @@ fn get_remote(args: &ArgMatches, can_use_offline: bool) -> Result<Box<dyn Remote
                     io::stdin().read_line(&mut buffer).context(err::IO)?;
                     let buffer = buffer.trim_end();
 
-                    AccessToken::new(buffer)
+                    AccessToken::encode(buffer)
                 };
 
                 token.save(None)?;
