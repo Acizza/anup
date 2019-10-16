@@ -212,14 +212,14 @@ where
 }
 
 fn get_remote(args: &ArgMatches, can_use_offline: bool) -> Result<Box<dyn RemoteService>> {
-    use anime::remote::anilist::{self, AccessToken, AniList, AniListConfig};
+    use anime::remote::anilist::{self, AccessToken, AniList};
     use anime::remote::offline::Offline;
 
     if args.is_present("offline") {
         ensure!(can_use_offline, err::MustRunOnline);
         Ok(Box::new(Offline::new()))
     } else {
-        let config = match AniListConfig::load(None) {
+        let token = match AccessToken::load(None) {
             Ok(config) => config,
             Err(ref err) if err.is_file_nonexistant() => {
                 ensure!(!args.is_present("interactive"), err::GetAniListTokenFromCLI);
@@ -237,14 +237,13 @@ fn get_remote(args: &ArgMatches, can_use_offline: bool) -> Result<Box<dyn Remote
                     AccessToken::new(buffer)
                 };
 
-                let config = AniListConfig::new(token);
-                config.save(None)?;
-                config
+                token.save(None)?;
+                token
             }
             Err(err) => return Err(err),
         };
 
-        let anilist = AniList::login(config)?;
+        let anilist = AniList::login(token)?;
         Ok(Box::new(anilist))
     }
 }

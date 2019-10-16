@@ -218,7 +218,7 @@ impl SaveFile for anime::local::EpisodeMatcher {
     }
 }
 
-impl SaveFile for anime::remote::anilist::AniListConfig {
+impl SaveFile for anime::remote::anilist::AccessToken {
     fn filename() -> &'static str {
         "anilist.toml"
     }

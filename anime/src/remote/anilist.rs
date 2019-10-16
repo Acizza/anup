@@ -61,24 +61,21 @@ macro_rules! query {
 
 #[derive(Debug)]
 pub struct AniList {
-    config: AniListConfig,
+    token: AccessToken,
     user: User,
 }
 
 impl AniList {
-    pub fn login(config: AniListConfig) -> Result<AniList> {
-        let token = config.token.decode()?;
+    pub fn login(token: AccessToken) -> Result<AniList> {
         let user = query!(&token, "user", {}, "data" => "Viewer")?;
-
-        Ok(AniList { config, user })
+        Ok(AniList { token, user })
     }
 }
 
 impl RemoteService for AniList {
     fn search_info_by_name(&self, name: &str) -> Result<Vec<SeriesInfo>> {
-        let token = self.config.token.decode()?;
         let entries: Vec<Media> = query!(
-            &token,
+            &self.token,
             "info_by_name",
             { "name": name },
             "data" => "Page" => "media"
@@ -89,16 +86,13 @@ impl RemoteService for AniList {
     }
 
     fn search_info_by_id(&self, id: u32) -> Result<SeriesInfo> {
-        let token = self.config.token.decode()?;
-        let info: Media = query!(&token, "info_by_id", { "id": id }, "data" => "Media")?;
-
+        let info: Media = query!(&self.token, "info_by_id", { "id": id }, "data" => "Media")?;
         Ok(info.into())
     }
 
     fn get_list_entry(&self, id: u32) -> Result<Option<SeriesEntry>> {
-        let token = self.config.token.decode()?;
         let query: Result<MediaEntry> = query!(
-            &token,
+            &self.token,
             "get_list_entry",
             { "id": id, "userID": self.user.id },
             "data" => "MediaList"
@@ -112,10 +106,8 @@ impl RemoteService for AniList {
     }
 
     fn update_list_entry(&self, entry: &SeriesEntry) -> Result<()> {
-        let token = self.config.token.decode()?;
-
         send!(
-            &token,
+            &self.token,
             "update_list_entry",
             {
                 "mediaId": entry.id,
@@ -181,18 +173,6 @@ impl ScoreParser for AniList {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct AniListConfig {
-    #[serde(flatten)]
-    pub token: AccessToken,
-}
-
-impl AniListConfig {
-    pub fn new(token: AccessToken) -> AniListConfig {
-        AniListConfig { token }
-    }
-}
-
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct AccessToken {
     encoded_token: String,
@@ -229,10 +209,9 @@ impl fmt::Debug for AccessToken {
     }
 }
 
-fn send_gql_request<S, R>(query: S, vars: &json::Value, token: R) -> Result<json::Value>
+fn send_gql_request<S>(query: S, vars: &json::Value, token: &AccessToken) -> Result<json::Value>
 where
     S: Into<String>,
-    R: AsRef<str>,
 {
     lazy_static! {
         static ref CLIENT: Client = Client::new();
@@ -250,7 +229,7 @@ where
         .post(API_URL)
         .header("Content-Type", "application/json")
         .header("Accept", "application/json")
-        .bearer_auth(token.as_ref())
+        .bearer_auth(&token.decode()?)
         .body(body)
         .send()
         .context(err::Reqwest)?
