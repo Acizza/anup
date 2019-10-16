@@ -11,6 +11,8 @@ use clap::clap_app;
 use clap::ArgMatches;
 use interface::{cli, tui};
 
+const ANILIST_CLIENT_ID: u32 = 427;
+
 fn main() {
     let args = clap_app!(anup =>
         (version: env!("CARGO_PKG_VERSION"))

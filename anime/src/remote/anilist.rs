@@ -12,10 +12,21 @@ use std::convert::TryInto;
 use std::fmt;
 use std::result;
 
-pub const LOGIN_URL: &str =
-    "https://anilist.co/api/v2/oauth/authorize?client_id=427&response_type=token";
-
+/// The URL to the API endpoint.
 pub const API_URL: &str = "https://graphql.anilist.co";
+
+/// Returns the URL that the user needs to go to in order to authenticate their account
+/// so the API can make changes to it.
+///
+/// `client_id` is the ID of the application you wish to use the API with.
+/// It can be retrieved from the `Developer` section of your account settings.
+#[inline]
+pub fn auth_url(client_id: u32) -> String {
+    format!(
+        "https://anilist.co/api/v2/oauth/authorize?client_id={}&response_type=token",
+        client_id
+    )
+}
 
 macro_rules! send {
     ($token:expr, $file:expr, {$($vars:tt)*}, $($resp_root:expr)=>*) => {{
@@ -29,7 +40,6 @@ macro_rules! send {
 
         let query = include_str!(concat!("../../graphql/anilist/", $file, ".gql"));
 
-        // We must bind the json variable mutably, but the compiler warns that it can be removed.
         #[allow(unused_mut)]
         match send_gql_request(query, &vars, $token) {
             Ok(mut json) => {

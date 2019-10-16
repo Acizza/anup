@@ -226,7 +226,7 @@ fn get_remote(args: &ArgMatches, can_use_offline: bool) -> Result<Box<dyn Remote
 
                 println!(
                     "need AniList login token\ngo to {}\n\npaste your token:",
-                    anilist::LOGIN_URL
+                    anilist::auth_url(super::ANILIST_CLIENT_ID)
                 );
 
                 let token = {
