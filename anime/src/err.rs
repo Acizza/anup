@@ -41,9 +41,9 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("failed to create regex matcher \"{}\": {}", matcher, source))]
+    #[snafu(display("failed to create regex pattern \"{}\": {}", pattern, source))]
     Regex {
-        matcher: String,
+        pattern: String,
         source: regex::Error,
         backtrace: Backtrace,
     },
@@ -81,6 +81,9 @@ pub enum Error {
 
     #[snafu(display("no data found for season {}", season))]
     NoSeason { season: usize },
+
+    #[snafu(display("missing group \"{}\" in custom episode matcher", group))]
+    MissingCustomMatcherGroup { group: &'static str },
 }
 
 impl Error {

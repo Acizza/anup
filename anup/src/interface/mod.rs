@@ -155,18 +155,33 @@ fn get_episode_matcher<S>(name: S, matcher: Option<&str>, save_new: bool) -> Res
 where
     S: AsRef<str>,
 {
+    let create_matcher = |pattern: &str| {
+        let pattern = pattern
+            .replace("{title}", "(?P<title>.+)")
+            .replace("{episode}", r"(?P<episode>\d+)");
+
+        match EpisodeMatcher::from_pattern(pattern) {
+            Ok(matcher) => Ok(matcher),
+            // We want to use a more specific error message than the one the anime library
+            // provides
+            Err(anime::Error::MissingCustomMatcherGroup { group }) => {
+                Err(err::Error::MissingEpisodeMatcherGroup { group })
+            }
+            Err(err) => Err(err.into()),
+        }
+    };
+
     let name = name.as_ref();
 
     match EpisodeMatcher::load(name) {
         Ok(matcher) => Ok(matcher),
         Err(ref err) if err.is_file_nonexistant() => match matcher {
-            Some(matcher) if save_new => {
-                let matcher = EpisodeMatcher::with_matcher(matcher)?;
+            Some(pattern) if save_new => {
+                let matcher = create_matcher(pattern)?;
                 matcher.save(name)?;
                 Ok(matcher)
             }
-            Some(_) => Ok(EpisodeMatcher::new()),
-            None => Ok(EpisodeMatcher::new()),
+            _ => Ok(EpisodeMatcher::new()),
         },
         Err(err) => Err(err),
     }
