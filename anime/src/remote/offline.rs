@@ -1,6 +1,15 @@
 use super::{RemoteService, ScoreParser, SeriesEntry, SeriesInfo};
 use crate::err::{self, Result};
 
+/// A remote service that will not connect to the internet.
+///
+/// This service is intended to make it easier to implement an offline mode
+/// for your application by letting you seamlessly switch between online and offline
+/// modes.
+///
+/// Note that the `search_info_by_name` and `search_info_by_id` methods will always
+/// return an error with the variant `NeedExistingSeriesData`. All other methods simply
+/// do nothing.
 #[derive(Default)]
 pub struct Offline;
 
