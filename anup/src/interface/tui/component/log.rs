@@ -7,15 +7,6 @@ use tui::style::{Color, Style};
 use tui::widgets::Text;
 
 /// A scrolling log to display messages along with their status.
-///
-/// # Example Output
-///
-/// ```
-/// Message with ok status... ok
-/// Message with failed status... failed
-/// .. error cause
-/// Message with pending status...
-/// ```
 pub struct StatusLog<'a> {
     items: VecDeque<LogItem<'a>>,
     draw_items: VecDeque<Text<'a>>,
@@ -32,7 +23,7 @@ impl<'a> StatusLog<'a> {
         }
     }
 
-    /// Trim the log so all items fit within the specified `size`.
+    /// Trims the `StatusLog` so all items fit within `size`.
     ///
     /// Assumes there is both a top and bottom border if `with_border` is true.
     pub fn adjust_to_size(&mut self, size: Rect, with_border: bool) {
@@ -48,15 +39,7 @@ impl<'a> StatusLog<'a> {
         }
     }
 
-    /// Push a new `LogItem` to the log.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let mut log = StatusLog::new();
-    /// log.push(LogItem::pending("Explicitly defined LogItem"));
-    /// log.push("Implicitly defined LogItem with a pending status");
-    /// ```
+    /// Pushes a new `LogItem` to the end of the log.
     pub fn push<I>(&mut self, item: I)
     where
         I: Into<LogItem<'a>>,
@@ -80,15 +63,8 @@ impl<'a> StatusLog<'a> {
         }
     }
 
-    /// Execute the function defined by `f` and pushes its result
-    /// as a new `LogItem` with the description specified by `desc`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let mut log = StatusLog::new();
-    /// log.capture_status("Executing function 1", || Ok(()));
-    /// ```
+    /// Executes the function defined by `f` and pushes its result
+    /// to the end of the `StatusLog` with the description specified by `desc`.
     pub fn capture_status<S, F>(&mut self, desc: S, f: F)
     where
         S: Into<String>,
