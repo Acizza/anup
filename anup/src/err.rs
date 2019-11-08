@@ -1,4 +1,4 @@
-use snafu::{Backtrace, ErrorCompat, Snafu};
+use snafu::{Backtrace, ErrorCompat, GenerateBacktrace, Snafu};
 use std::io;
 use std::path;
 use std::result;
@@ -122,7 +122,7 @@ impl From<anime::Error> for Error {
     fn from(source: anime::Error) -> Error {
         Error::Anime {
             source,
-            backtrace: Backtrace::new(),
+            backtrace: Backtrace::generate(),
         }
     }
 }
