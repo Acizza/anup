@@ -69,23 +69,17 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("no series found with name similar to {}", name))]
+    #[snafu(display("no series found with name: {}", name))]
     NoMatchingSeries { name: String },
 
     #[snafu(display("need existing series info to run in offline mode\nrun the program with --prefetch first when an internet connection is available"))]
     RunWithPrefetch,
 
-    #[snafu(display("series name must be specified as there is no last played series"))]
-    NoSavedSeriesName,
+    #[snafu(display("series name must be specified"))]
+    MustSpecifySeriesName,
 
     #[snafu(display("command can only be ran in online mode"))]
     MustRunOnline,
-
-    #[snafu(display("failed to parse score"))]
-    ScoreParseFailed,
-
-    #[snafu(display("cannot drop and put series on hold at the same time"))]
-    CantDropAndHold,
 
     #[snafu(display("failed to play episode {}: {}", episode, source))]
     FailedToPlayEpisode { episode: u32, source: io::Error },

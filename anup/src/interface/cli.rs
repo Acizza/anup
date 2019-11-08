@@ -1,204 +1,137 @@
 use crate::config::Config;
 use crate::err::{self, Result};
-use crate::file::SaveFile;
-use crate::track::{EntryState, SeriesTracker};
-use anime::remote::RemoteService;
-use anime::{SeasonInfoList, Series};
-use chrono::Utc;
+use crate::series::{SavedSeries, Series};
+use chrono::{Duration, Utc};
 use clap::ArgMatches;
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::{ensure, ResultExt};
 
 pub fn run(args: &ArgMatches) -> Result<()> {
     if args.is_present("prefetch") {
         prefetch(args)
     } else if args.is_present("sync") {
         sync(args)
-    } else if args.is_present("rate") || args.is_present("drop") || args.is_present("hold") {
-        modify_series(args)
-    } else if args.is_present("clean") {
-        cleanup_data()
-    } else if args.is_present("series_player_args") {
-        save_series_player_args(args)
     } else {
         play(args)
     }
 }
 
 fn prefetch(args: &ArgMatches) -> Result<()> {
-    let watch_info = super::get_watch_info(args)?;
-    let name = &watch_info.name;
+    let mut saved_series = SavedSeries::load_or_default()?;
 
-    let config = super::get_config()?;
-    let episodes = super::get_episodes(args, name, &config, true)?;
+    let desired_series = match args.value_of("series") {
+        Some(desired_series) => desired_series,
+        None => return Err(err::Error::MustSpecifySeriesName),
+    };
 
+    let config = Config::load_or_create()?;
     let remote = super::get_remote(args, false)?;
-    let remote = remote.as_ref();
 
-    let info = super::get_best_info_from_remote(remote, &episodes.title)?;
+    let series = saved_series.insert_and_save_from_args_and_remote(
+        args,
+        desired_series,
+        &config,
+        remote.as_ref(),
+    )?;
 
-    let seasons = SeasonInfoList::from_info_and_remote(info, remote)?;
-    seasons.save(name.as_ref())?;
+    println!(
+        "{} was fetched\nyou can now watch this series offline",
+        series.info.title.preferred
+    );
 
-    for (season_num, season) in seasons.inner().iter().enumerate() {
-        if let Some(entry) = remote.get_list_entry(season.id)? {
-            let state = EntryState::new(entry);
-            state.save_with_id(season.id, name.as_ref())?;
-        }
-
-        println!("season {} -> {}", 1 + season_num, season.title.preferred);
-    }
-
-    println!("\nprefetch complete\nyou can now fully watch this series offline");
     Ok(())
 }
 
 fn sync(args: &ArgMatches) -> Result<()> {
-    let watch_info = super::get_watch_info(args)?;
-    let name = &watch_info.name;
+    let mut saved_series = SavedSeries::load_or_default()?;
+    let mut series_list = saved_series.load_all_series_and_validate()?;
 
     let remote = super::get_remote(args, false)?;
-    let seasons = SeasonInfoList::load(name.as_ref())?;
 
-    for (season_num, season) in seasons.inner().iter().enumerate() {
-        let mut state = match EntryState::load_with_id(season.id, name.as_ref()) {
-            Ok(state) => state,
-            Err(ref err) if err.is_file_nonexistant() => continue,
-            Err(err) => return Err(err),
-        };
-
-        if !state.needs_sync() {
+    for series in &mut series_list {
+        if !series.entry.needs_sync() {
             continue;
         }
 
-        println!(
-            "syncing season {}: {}",
-            1 + season_num,
-            season.title.preferred
-        );
+        println!("{} is being synced..", series.info.title.preferred);
 
-        state.sync_changes_to_remote(remote.as_ref(), name)?;
+        match series.force_sync_changes_to_remote(remote.as_ref()) {
+            Ok(()) => series.save()?,
+            Err(err) => eprintln!("{} failed to sync:\n", err),
+        }
     }
-
-    Ok(())
-}
-
-fn modify_series(args: &ArgMatches) -> Result<()> {
-    let watch_info = super::get_watch_info(args)?;
-    let name = &watch_info.name;
-
-    let config = super::get_config()?;
-    let remote = super::get_remote(args, true)?;
-    let remote = remote.as_ref();
-
-    let season = {
-        let seasons = SeasonInfoList::load(name.as_ref())?;
-        seasons.take_unchecked(watch_info.season)
-    };
-
-    let mut state = EntryState::load_with_id(season.id, name.as_ref())?;
-    state.sync_changes_from_remote(remote, name)?;
-
-    if let Some(score) = args.value_of("rate") {
-        let score = remote.parse_score(score).context(err::ScoreParseFailed)?;
-        state.set_score(Some(score));
-    }
-
-    match (args.is_present("drop"), args.is_present("hold")) {
-        (true, true) => return Err(err::Error::CantDropAndHold),
-        (true, false) => state.mark_as_dropped(&config),
-        (false, true) => state.mark_as_on_hold(),
-        (false, false) => (),
-    }
-
-    state.sync_changes_to_remote(remote, name)
-}
-
-fn cleanup_data() -> Result<()> {
-    let config = super::get_config()?;
-    super::remove_orphaned_data(&config, |removed| println!("removing {}", removed))
-}
-
-fn save_series_player_args(args: &ArgMatches) -> Result<()> {
-    use super::SeriesPlayerArgs;
-
-    let watch_info = super::get_watch_info(args)?;
-    let name = watch_info.name.as_ref();
-
-    let player_args = args
-        .value_of("series_player_args")
-        .unwrap_or("")
-        .split_ascii_whitespace()
-        .map(|s| s.to_string())
-        .collect();
-
-    SeriesPlayerArgs::new(player_args).save(name)?;
 
     Ok(())
 }
 
 fn play(args: &ArgMatches) -> Result<()> {
-    let watch_info = super::get_watch_info(args)?;
-    let name = &watch_info.name;
-
-    let config = super::get_config()?;
-    let episodes = super::get_episodes(args, name, &config, true)?;
-
-    let remote = super::get_remote(args, true)?;
-    let remote = remote.as_ref();
-
-    let seasons = super::get_season_list(name, remote, &episodes)?;
-    let series = Series::from_season_list(&seasons, watch_info.season, episodes)?;
-
-    let mut tracker = SeriesTracker::init(&series.info, name)?;
-    tracker.begin_watching(remote, &config)?;
-
-    play_episode(remote, &config, &series, &mut tracker)
-}
-
-fn play_episode<R>(
-    remote: &R,
-    config: &Config,
-    series: &Series,
-    tracker: &mut SeriesTracker,
-) -> Result<()>
-where
-    R: RemoteService + ?Sized,
-{
     use anime::remote::Status;
 
-    let ep_num = tracker.entry.watched_eps() + 1;
-    let start_time = Utc::now();
+    let mut saved_series = SavedSeries::load_or_default()?;
 
-    let episode = series
-        .get_episode(ep_num)
-        .context(err::EpisodeNotFound { episode: ep_num })?;
+    let config = Config::load_or_create()?;
+    let remote = super::get_remote(args, true)?;
 
-    let status = super::prepare_episode_cmd(&tracker.name, config, episode)?
+    // TODO: refactor
+    let mut series = match args.value_of("series") {
+        Some(existing_series) if saved_series.contains(&existing_series) => {
+            saved_series.load_series(existing_series)?
+        }
+        Some(new_series) => saved_series.insert_and_save_from_args_and_remote(
+            args,
+            new_series,
+            &config,
+            remote.as_ref(),
+        )?,
+        None => match saved_series.last_watched_id {
+            Some(last_id) => {
+                // TODO: fetch from remote if this fails
+                // We won't be saving this, so we don't need to set the nickname
+                Series::load(last_id, "")?
+            }
+            None => return Err(err::Error::MustSpecifySeriesName),
+        },
+    };
+
+    if saved_series.set_last_watched(series.info.id) {
+        saved_series.save()?;
+    }
+
+    series.begin_watching(remote.as_ref(), &config)?;
+
+    let progress_time = {
+        let secs_must_watch =
+            (series.info.episode_length as f32 * config.episode.pcnt_must_watch) * 60.0;
+        let time_must_watch = Duration::seconds(secs_must_watch as i64);
+
+        Utc::now() + time_must_watch
+    };
+
+    let next_episode_num = series.entry.watched_eps() + 1;
+
+    let status = series
+        .play_episode_cmd(next_episode_num, &config)?
         .status()
-        .context(err::FailedToPlayEpisode { episode: ep_num })?;
+        .context(err::FailedToPlayEpisode {
+            episode: next_episode_num,
+        })?;
 
     ensure!(status.success(), err::AbnormalPlayerExit);
 
-    let end_time = Utc::now();
+    if Utc::now() >= progress_time {
+        series.episode_completed(remote.as_ref(), &config)?;
 
-    let mins_watched = {
-        let watch_time = end_time - start_time;
-        watch_time.num_seconds() as f32 / 60.0
-    };
-
-    let mins_must_watch = series.info.episode_length as f32 * config.episode.pcnt_must_watch;
-
-    if mins_watched < mins_must_watch {
-        println!("did not watch episode long enough");
-        return Ok(());
-    }
-
-    tracker.episode_completed(remote, config)?;
-
-    if let Status::Completed = tracker.entry.status() {
-        println!("completed!");
+        if series.entry.status() == Status::Completed {
+            println!("{} completed!", series.info.title.preferred);
+        } else {
+            println!(
+                "{}/{} of {} completed",
+                series.entry.watched_eps(),
+                series.info.episodes,
+                series.info.title.preferred
+            );
+        }
     } else {
-        println!("{}/{} completed", ep_num, series.info.episodes)
+        println!("did not watch long enough to count episode as completed");
     }
 
     Ok(())

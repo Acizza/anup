@@ -1,5 +1,5 @@
 use super::component::log::StatusLog;
-use super::{Selection, UIState, WatchState};
+use super::{SeriesState, UIState, WatchState};
 use crate::err::{self, Result};
 use crate::util;
 use anime::remote::ScoreParser;
@@ -27,6 +27,23 @@ where
     pub status_log: StatusLog<'a>,
 }
 
+macro_rules! create_stat_list {
+    ($($header:expr => $value:expr),+) => {
+        [$(
+            create_stat_list!(h $header),
+            create_stat_list!(v $header.len(), $value),
+        )+]
+    };
+
+    (h $header:expr) => {
+        Text::styled(format!("{}\n", $header), Style::default().modifier(Modifier::BOLD))
+    };
+
+    (v $len:expr, $value:expr) => {
+        Text::styled(format!("{:^width$}\n\n", $value, width = $len), Style::default().modifier(Modifier::ITALIC))
+    };
+}
+
 impl<'a, B> UI<'a, B>
 where
     B: Backend,
@@ -46,14 +63,7 @@ where
                 // Top panels for series information
                 let horiz_splitter = Layout::default()
                     .direction(Direction::Horizontal)
-                    .constraints(
-                        [
-                            Constraint::Min(20),
-                            Constraint::Min(8),
-                            Constraint::Percentage(60),
-                        ]
-                        .as_ref(),
-                    )
+                    .constraints([Constraint::Min(20), Constraint::Percentage(70)].as_ref())
                     .split(frame.size());
 
                 UI::draw_top_panels(state, &horiz_splitter, &mut frame);
@@ -62,7 +72,7 @@ where
                 let info_panel_splitter = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
-                    .split(horiz_splitter[2]);
+                    .split(horiz_splitter[1]);
 
                 UI::draw_info_panel(state, score_parser, &info_panel_splitter, &mut frame);
                 UI::draw_status_bar(state, status_log, info_panel_splitter[1], &mut frame);
@@ -71,54 +81,27 @@ where
     }
 
     fn draw_top_panels(state: &UIState, layout: &[Rect], frame: &mut Frame<B>) {
+        let series_names = state
+            .series
+            .iter()
+            .map(|series| &series.inner.nickname)
+            .collect::<SmallVec<[_; 8]>>();
+
         let mut series_list = SelectableList::default()
             .block(Block::default().title("Series").borders(Borders::ALL))
-            .items(state.series_names.as_ref())
+            .items(&series_names)
             .select(Some(state.selected_series))
             .style(Style::default().fg(Color::White))
-            .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC));
-
-        let season_nums = (1..=state.series.num_seasons)
-            .map(|i| i.to_string())
-            .collect::<SmallVec<[_; 4]>>();
-
-        let mut season_list = SelectableList::default()
-            .block(Block::default().title("Season").borders(Borders::ALL))
-            .items(season_nums.as_ref())
-            .select(Some(state.series.watch_info.season))
-            .style(Style::default().fg(Color::White))
-            .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC));
-
-        match state.selection {
-            Selection::Series => series_list = series_list.highlight_symbol(">"),
-            Selection::Season => season_list = season_list.highlight_symbol(">"),
-        }
+            .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC))
+            .highlight_symbol(">");
 
         series_list.render(frame, layout[0]);
-        season_list.render(frame, layout[1]);
     }
 
     fn draw_info_panel<S>(state: &UIState, score_parser: &S, layout: &[Rect], frame: &mut Frame<B>)
     where
         S: ScoreParser + ?Sized,
     {
-        macro_rules! create_stat_list {
-            ($($header:expr => $value:expr),+) => {
-                [$(
-                    create_stat_list!(h $header),
-                    create_stat_list!(v $header.len(), $value),
-                )+]
-            };
-
-            (h $header:expr) => {
-                Text::styled(format!("{}\n", $header), Style::default().modifier(Modifier::BOLD))
-            };
-
-            (v $len:expr, $value:expr) => {
-                Text::styled(format!("{:^width$}\n\n", $value, width = $len), Style::default().modifier(Modifier::ITALIC))
-            };
-        }
-
         Block::default()
             .title("Info")
             .borders(Borders::ALL)
@@ -137,9 +120,21 @@ where
             .margin(2)
             .split(layout[0]);
 
-        let season = &state.series.season;
-        let info = &season.series.info;
-        let entry = &season.tracker.entry;
+        if let Some(series) = state.cur_series() {
+            UI::draw_series_info(series, score_parser, &info_layout, frame)
+        }
+    }
+
+    fn draw_series_info<S>(
+        series: &SeriesState,
+        score_parser: &S,
+        info_layout: &[Rect],
+        frame: &mut Frame<B>,
+    ) where
+        S: ScoreParser + ?Sized,
+    {
+        let info = &series.inner.info;
+        let entry = &series.inner.entry;
 
         // Series title
         {
@@ -233,7 +228,7 @@ where
         }
 
         // Watch time needed indicator at bottom
-        match season.watch_state {
+        match series.watch_state {
             WatchState::Idle => (),
             WatchState::Watching(progress_time, _) => {
                 let watch_time = progress_time - Utc::now();

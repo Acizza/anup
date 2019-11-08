@@ -1,18 +1,15 @@
 mod component;
 mod ui;
 
-use super::{CurrentWatchInfo, SeriesPlayerArgs};
 use crate::config::Config;
 use crate::err::{self, Result};
-use crate::file::{SaveDir, SaveFile};
-use crate::track::SeriesTracker;
+use crate::series::{SavedSeries, Series};
 use anime::remote::RemoteService;
-use anime::{SeasonInfoList, Series};
 use chrono::{DateTime, Duration, Utc};
 use clap::ArgMatches;
 use component::command_prompt::{Command, CommandPrompt};
 use component::log::{LogItem, StatusLog};
-use snafu::{OptionExt, ResultExt};
+use snafu::ResultExt;
 use std::mem;
 use std::process;
 use termion::event::Key;
@@ -20,51 +17,14 @@ use ui::{Event, Events, UI};
 
 pub fn run(args: &ArgMatches) -> Result<()> {
     let cstate = {
-        let config = super::get_config()?;
+        let config = Config::load_or_create()?;
         let remote = super::get_remote(args, true)?;
 
-        CommonState {
-            args,
-            config,
-            remote,
-        }
+        CommonState { config, remote }
     };
 
     let mut ui = UI::init()?;
-
-    // Due to the way series selection works, we can't select a saved series that no longer
-    // has matching episodes on disk, so we might as well just remove the series data.
-    //
-    // Series data could be deleted simply by renaming the folder episodes are in to something
-    // the program can't recognize; however, the risk is small enough for this to be worth it.
-    super::remove_orphaned_data(&cstate.config, |removed| {
-        ui.status_log.push(format!("Removing {}", removed))
-    })?;
-
-    let mut ui_state = {
-        let watch_info = super::get_watch_info(args)?;
-        let series = SeriesState::new(&cstate, watch_info, true)?;
-
-        let series_names = {
-            let mut names = SaveDir::LocalData.get_subdirs()?;
-            names.sort_unstable();
-            names
-        };
-
-        let selected_series = series_names
-            .iter()
-            .position(|s| *s == series.watch_info.name)
-            .unwrap_or(0);
-
-        UIState {
-            series,
-            series_names,
-            selected_series,
-            selection: Selection::Series,
-            status_bar_state: StatusBarState::default(),
-            last_used_command: None,
-        }
-    };
+    let mut ui_state = init_ui_state(&cstate, args)?;
 
     let events = Events::new(Duration::seconds(1));
 
@@ -95,23 +55,99 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 }
 
 /// Items that are not tied to the UI and are commonly used together.
-struct CommonState<'a> {
-    args: &'a ArgMatches<'a>,
+struct CommonState {
     config: Config,
     remote: Box<dyn RemoteService>,
 }
 
+fn init_ui_state<'a>(cstate: &CommonState, args: &ArgMatches) -> Result<UIState<'a>> {
+    let mut saved_series = SavedSeries::load_or_default()?;
+    let series = init_series_list(&cstate, args, &mut saved_series)?;
+
+    let selected_series = match saved_series.last_watched_id {
+        Some(id) => series
+            .iter()
+            .position(|series| series.info.id == id)
+            .unwrap_or(0),
+        None => 0,
+    };
+
+    let series = series.into_iter().map(SeriesState::new).collect();
+
+    Ok(UIState {
+        series,
+        selected_series,
+        saved_series,
+        status_bar_state: StatusBarState::default(),
+        last_used_command: None,
+    })
+}
+
+fn init_series_list(
+    cstate: &CommonState,
+    args: &ArgMatches,
+    saved_series: &mut SavedSeries,
+) -> Result<Vec<Series>> {
+    let mut series = saved_series.load_all_series_and_validate()?;
+
+    // If the user specified a series, we'll need to check to see if we
+    // already have it or fetch & save it otherwise.
+    let desired_series = match args.value_of("series") {
+        Some(desired_series) => desired_series,
+        None => return Ok(series),
+    };
+
+    if saved_series.contains(desired_series) {
+        return Ok(series);
+    }
+
+    let new_series = saved_series.insert_and_save_from_args_and_remote(
+        args,
+        desired_series,
+        &cstate.config,
+        cstate.remote.as_ref(),
+    )?;
+
+    series.push(new_series);
+    Ok(series)
+}
+
 /// Current state of the UI.
 pub struct UIState<'a> {
-    series: SeriesState<'a>,
-    series_names: Vec<String>,
+    series: Vec<SeriesState>,
     selected_series: usize,
-    selection: Selection,
+    saved_series: SavedSeries,
     status_bar_state: StatusBarState<'a>,
     last_used_command: Option<Command>,
 }
 
+macro_rules! cur_series {
+    ($struct:ident) => {
+        match $struct.cur_series() {
+            Some(value) => value,
+            None => return Ok(()),
+        }
+    };
+}
+
+macro_rules! cur_series_mut {
+    ($struct:ident) => {
+        match $struct.cur_series_mut() {
+            Some(value) => value,
+            None => return Ok(()),
+        }
+    };
+}
+
 impl<'a> UIState<'a> {
+    fn cur_series(&self) -> Option<&SeriesState> {
+        self.series.get(self.selected_series)
+    }
+
+    fn cur_series_mut(&mut self) -> Option<&mut SeriesState> {
+        self.series.get_mut(self.selected_series)
+    }
+
     fn process_key(&mut self, state: &'a CommonState, log: &mut StatusLog, key: Key) -> Result<()> {
         if !self.is_idle() {
             return Ok(());
@@ -124,10 +160,19 @@ impl<'a> UIState<'a> {
         match key {
             // Play next episode
             Key::Char(ch) if ch == state.config.tui.keys.play_next_episode => {
-                self.series.set_as_last_watched(log);
+                let last_watched_changed = {
+                    let id = cur_series!(self).inner.info.id;
+                    self.saved_series.set_last_watched(id)
+                };
+
+                if last_watched_changed {
+                    log.capture_status("Marking series as the last watched one", || {
+                        self.saved_series.save()
+                    });
+                }
 
                 log.capture_status("Playing next episode", || {
-                    self.series.season.play_next_episode_async(&state)
+                    cur_series_mut!(self).play_next_episode_async(&state)
                 });
             }
             // Command prompt
@@ -143,36 +188,15 @@ impl<'a> UIState<'a> {
 
                 self.process_command(cmd, state, log)?;
             }
-            // Switch between series and season selection
-            Key::Left | Key::Right => {
-                self.selection.set_opposite();
-            }
-            // Select series / season
+            // Select series
             Key::Up | Key::Down => {
-                let next_value = |value: usize| match key {
-                    Key::Up => value.saturating_sub(1),
-                    Key::Down => value + 1,
-                    _ => value,
+                self.selected_series = match key {
+                    Key::Up => self.selected_series.saturating_sub(1),
+                    Key::Down if self.selected_series < self.series.len().saturating_sub(1) => {
+                        self.selected_series + 1
+                    }
+                    _ => self.selected_series,
                 };
-
-                match self.selection {
-                    Selection::Series => {
-                        let series_index = next_value(self.selected_series);
-                        let new_name = match self.series_names.get(series_index) {
-                            Some(new_name) => new_name,
-                            None => return Ok(()),
-                        };
-
-                        let watch_info = CurrentWatchInfo::new(new_name, 0);
-
-                        self.series = SeriesState::new(state, watch_info, false)?;
-                        self.selected_series = series_index;
-                    }
-                    Selection::Season => {
-                        let season_index = next_value(self.series.watch_info.season);
-                        self.series.set_season(season_index)?;
-                    }
-                }
             }
             _ => (),
         }
@@ -219,35 +243,29 @@ impl<'a> UIState<'a> {
         cstate: &CommonState,
         log: &mut StatusLog,
     ) -> Result<()> {
+        let series = &mut cur_series_mut!(self).inner;
         let remote = cstate.remote.as_ref();
 
         match command {
             Command::SyncFromRemote => {
-                let season = &mut self.series.season;
-
                 log.capture_status("Syncing entry from remote", || {
-                    season.tracker.force_sync_changes_from_remote(remote)
+                    series.force_sync_changes_from_remote(remote)
                 });
 
                 Ok(())
             }
             Command::SyncToRemote => {
-                let season = &mut self.series.season;
-
                 log.capture_status("Syncing entry to remote", || {
-                    season.tracker.force_sync_changes_to_remote(remote)
+                    series.force_sync_changes_to_remote(remote)
                 });
 
                 Ok(())
             }
             Command::Status(status) => {
-                let season = &mut self.series.season;
-                let entry = &mut season.tracker.entry;
-
-                entry.set_status(status);
+                series.entry.set_status(status, &cstate.config);
 
                 log.capture_status(format!("Setting series status to \"{}\"", status), || {
-                    season.tracker.sync_changes_to_remote(remote)
+                    series.sync_changes_to_remote(remote)
                 });
 
                 Ok(())
@@ -255,17 +273,15 @@ impl<'a> UIState<'a> {
             Command::Progress(direction) => {
                 use component::command_prompt::ProgressDirection;
 
-                let tracker = &mut self.series.season.tracker;
-
                 match direction {
                     ProgressDirection::Forwards => {
                         log.capture_status("Forcing forward watch progress", || {
-                            tracker.episode_completed(remote, &cstate.config)
+                            series.episode_completed(remote, &cstate.config)
                         });
                     }
                     ProgressDirection::Backwards => {
                         log.capture_status("Forcing backwards watch progress", || {
-                            tracker.episode_regressed(remote)
+                            series.episode_regressed(remote, &cstate.config)
                         });
                     }
                 }
@@ -282,20 +298,18 @@ impl<'a> UIState<'a> {
                     }
                 };
 
-                let tracker = &mut self.series.season.tracker;
-                tracker.entry.set_score(score);
+                series.entry.set_score(score);
 
                 log.capture_status("Setting score", || {
-                    tracker.sync_changes_to_remote(cstate.remote.as_ref())
+                    series.sync_changes_to_remote(cstate.remote.as_ref())
                 });
 
                 Ok(())
             }
             Command::PlayerArgs(args) => {
-                let name = self.series.watch_info.name.as_ref();
-
                 log.capture_status("Saving player args for series", || {
-                    SeriesPlayerArgs::new(args).save(name)
+                    series.player_args = args;
+                    series.save()
                 });
 
                 Ok(())
@@ -304,30 +318,14 @@ impl<'a> UIState<'a> {
     }
 
     fn process_tick(&mut self, state: &'a CommonState, log: &mut StatusLog) -> Result<()> {
-        self.series.season.process_tick(state, log)
+        cur_series_mut!(self).process_tick(state, log)
     }
 
     fn is_idle(&self) -> bool {
-        self.series.season.watch_state == WatchState::Idle
-    }
-}
-
-#[derive(Copy, Clone)]
-enum Selection {
-    Series,
-    Season,
-}
-
-impl Selection {
-    fn opposite(self) -> Selection {
-        match self {
-            Selection::Series => Selection::Season,
-            Selection::Season => Selection::Series,
+        match self.cur_series() {
+            Some(cur_series) => cur_series.watch_state == WatchState::Idle,
+            None => true,
         }
-    }
-
-    fn set_opposite(&mut self) {
-        *self = self.opposite();
     }
 }
 
@@ -359,106 +357,36 @@ impl<'a> Default for StatusBarState<'a> {
     }
 }
 
-struct SeriesState<'a> {
-    watch_info: CurrentWatchInfo,
-    season: SeasonState<'a>,
-    seasons: SeasonInfoList,
-    num_seasons: usize,
-    is_last_watched: bool,
-}
-
-impl<'a> SeriesState<'a> {
-    fn new(
-        state: &'a CommonState,
-        watch_info: CurrentWatchInfo,
-        is_last_watched: bool,
-    ) -> Result<SeriesState<'a>> {
-        let remote = state.remote.as_ref();
-        let name = &watch_info.name;
-
-        let episodes = super::get_episodes(&state.args, name, &state.config, is_last_watched)?;
-        let seasons = super::get_season_list(name, remote, &episodes)?;
-        let num_seasons = seasons.len();
-        let series = Series::from_season_list(&seasons, watch_info.season, episodes)?;
-        let season = SeasonState::new(name, series)?;
-
-        Ok(SeriesState {
-            watch_info,
-            season,
-            seasons,
-            num_seasons,
-            is_last_watched,
-        })
-    }
-
-    /// Loads the season specified by `season_num` and points `season` to it.
-    fn set_season(&mut self, season_num: usize) -> Result<()> {
-        if !self.seasons.has(season_num) {
-            return Ok(());
-        }
-
-        let episodes = self.season.series.episodes.clone();
-        let series = Series::from_season_list(&self.seasons, season_num, episodes)?;
-
-        self.season = SeasonState::new(&self.watch_info.name, series)?;
-        self.watch_info.season = season_num;
-
-        Ok(())
-    }
-
-    /// Sets the current series as the last watched one if it isn't already.
-    fn set_as_last_watched(&mut self, log: &mut StatusLog) {
-        if self.is_last_watched {
-            return;
-        }
-
-        log.capture_status("Marking as the last watched series", || {
-            self.watch_info.save(None)
-        });
-
-        self.is_last_watched = true;
-    }
-}
-
-struct SeasonState<'a> {
-    series: Series<'a>,
-    tracker: SeriesTracker<'a>,
+#[derive(Debug)]
+struct SeriesState {
+    inner: Series,
     watch_state: WatchState,
 }
 
-impl<'a> SeasonState<'a> {
-    fn new<S>(name: S, series: Series<'a>) -> Result<SeasonState<'a>>
-    where
-        S: Into<String>,
-    {
-        let tracker = SeriesTracker::init(series.info.clone(), name)?;
-
-        Ok(SeasonState {
-            series,
-            tracker,
+impl SeriesState {
+    fn new(inner: Series) -> SeriesState {
+        SeriesState {
+            inner,
             watch_state: WatchState::Idle,
-        })
+        }
     }
 
     fn play_next_episode_async(&mut self, state: &CommonState) -> Result<()> {
         let remote = state.remote.as_ref();
         let config = &state.config;
 
-        self.tracker.begin_watching(remote, config)?;
-        let next_ep = self.tracker.entry.watched_eps() + 1;
+        self.inner.begin_watching(remote, config)?;
+        let next_ep = self.inner.entry.watched_eps() + 1;
 
-        let episode = self
-            .series
-            .get_episode(next_ep)
-            .context(err::EpisodeNotFound { episode: next_ep })?;
-
-        let child = super::prepare_episode_cmd(&self.tracker.name, &state.config, episode)?
+        let child = self
+            .inner
+            .play_episode_cmd(next_ep, &state.config)?
             .spawn()
             .context(err::FailedToPlayEpisode { episode: next_ep })?;
 
         let progress_time = {
             let secs_must_watch =
-                (self.series.info.episode_length as f32 * config.episode.pcnt_must_watch) * 60.0;
+                (self.inner.info.episode_length as f32 * config.episode.pcnt_must_watch) * 60.0;
             let time_must_watch = Duration::seconds(secs_must_watch as i64);
 
             Utc::now() + time_must_watch
@@ -469,7 +397,7 @@ impl<'a> SeasonState<'a> {
         Ok(())
     }
 
-    fn process_tick(&mut self, state: &'a CommonState, log: &mut StatusLog) -> Result<()> {
+    fn process_tick(&mut self, state: &CommonState, log: &mut StatusLog) -> Result<()> {
         match &mut self.watch_state {
             WatchState::Idle => (),
             WatchState::Watching(_, child) => {
@@ -491,7 +419,7 @@ impl<'a> SeasonState<'a> {
 
                 if Utc::now() >= progress_time {
                     log.capture_status("Marking episode as completed", || {
-                        self.tracker
+                        self.inner
                             .episode_completed(state.remote.as_ref(), &state.config)
                     });
                 } else {
@@ -506,6 +434,7 @@ impl<'a> SeasonState<'a> {
 
 type ProgressTime = DateTime<Utc>;
 
+#[derive(Debug)]
 enum WatchState {
     Idle,
     Watching(ProgressTime, process::Child),

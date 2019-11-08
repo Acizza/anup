@@ -70,17 +70,11 @@ pub enum Error {
     ))]
     MultipleTitles { expecting: String, found: String },
 
-    #[snafu(display("no episodes found at path: {:?}", path))]
-    NoEpisodes { path: path::PathBuf },
-
-    #[snafu(display("need existing series info to run in offline mode"))]
+    #[snafu(display("need existing series info to use offline backend"))]
     NeedExistingSeriesData,
 
     #[snafu(display("received bad response from AniList (code {}): {}", code, message))]
     BadAniListResponse { code: u16, message: String },
-
-    #[snafu(display("no data found for season {}", season))]
-    NoSeason { season: usize },
 
     #[snafu(display("missing group \"{}\" in custom episode matcher", group))]
     MissingCustomMatcherGroup { group: &'static str },

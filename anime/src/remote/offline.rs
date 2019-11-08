@@ -1,4 +1,4 @@
-use super::{RemoteService, ScoreParser, SeriesEntry, SeriesInfo};
+use super::{RemoteService, ScoreParser, SeriesEntry, SeriesID, SeriesInfo};
 use crate::err::{self, Result};
 
 /// A remote service that will not connect to the internet.
@@ -24,11 +24,11 @@ impl RemoteService for Offline {
         Err(err::Error::NeedExistingSeriesData)
     }
 
-    fn search_info_by_id(&self, _: u32) -> Result<SeriesInfo> {
+    fn search_info_by_id(&self, _: SeriesID) -> Result<SeriesInfo> {
         Err(err::Error::NeedExistingSeriesData)
     }
 
-    fn get_list_entry(&self, _: u32) -> Result<Option<SeriesEntry>> {
+    fn get_list_entry(&self, _: SeriesID) -> Result<Option<SeriesEntry>> {
         Ok(None)
     }
 

@@ -1,4 +1,5 @@
-use crate::file::{FileType, SaveDir, SaveFile};
+use crate::err::Result;
+use crate::file::{SaveDir, TomlSaveFile};
 use serde::de::{self, Deserializer, Visitor};
 use serde::ser::Serializer;
 use serde_derive::{Deserialize, Serialize};
@@ -26,19 +27,32 @@ impl Config {
             tui: TuiConfig::default(),
         }
     }
+
+    pub fn load_or_create() -> Result<Config> {
+        match Config::load() {
+            Ok(config) => Ok(config),
+            Err(ref err) if err.is_file_nonexistant() => {
+                // Fallback path is ~/anime/
+                let mut dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("~/"));
+                dir.push("anime");
+
+                let config = Config::new(dir);
+                config.save()?;
+
+                Ok(config)
+            }
+            Err(err) => Err(err),
+        }
+    }
 }
 
-impl SaveFile for Config {
+impl TomlSaveFile for Config {
     fn filename() -> &'static str {
-        "config.toml"
+        "config"
     }
 
     fn save_dir() -> SaveDir {
         SaveDir::Config
-    }
-
-    fn file_type() -> FileType {
-        FileType::Toml
     }
 }
 

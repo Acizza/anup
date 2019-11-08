@@ -6,6 +6,9 @@ use serde_derive::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt;
 
+/// Type representing the ID of an anime series.
+pub type SeriesID = u32;
+
 /// Core functionality to interact with an anime tracking service.
 pub trait RemoteService: ScoreParser {
     /// Search for an anime's information by title and return all of the matches.
@@ -13,12 +16,12 @@ pub trait RemoteService: ScoreParser {
 
     /// Get an anime's information by its ID.
     /// Note that the ID will differ from service to service.
-    fn search_info_by_id(&self, id: u32) -> Result<SeriesInfo>;
+    fn search_info_by_id(&self, id: SeriesID) -> Result<SeriesInfo>;
 
     /// Retrieve the anime list entry from the currently authenticated user.
     ///
     /// `id` is the ID of the anime, which differs from service to service.
-    fn get_list_entry(&self, id: u32) -> Result<Option<SeriesEntry>>;
+    fn get_list_entry(&self, id: SeriesID) -> Result<Option<SeriesEntry>>;
 
     /// Upload `entry` to the currently authenticated user's anime list.
     ///
@@ -54,19 +57,17 @@ pub trait ScoreParser {
     }
 }
 
-pub type Minutes = u32;
-
 /// General information for an anime series.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SeriesInfo {
     /// The ID of the series.
-    pub id: u32,
+    pub id: SeriesID,
     /// The titles of the series.
     pub title: SeriesTitle,
     /// The number of episodes.
     pub episodes: u32,
     /// The length of a single episode in minutes.
-    pub episode_length: Minutes,
+    pub episode_length: u32,
     /// An ID pointing to the sequel of this series.
     pub sequel: Option<u32>,
 }

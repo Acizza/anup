@@ -1,4 +1,4 @@
-use super::{RemoteService, ScoreParser, SeriesEntry, SeriesInfo, SeriesTitle, Status};
+use super::{RemoteService, ScoreParser, SeriesEntry, SeriesID, SeriesInfo, SeriesTitle, Status};
 use crate::err::{self, Result};
 use chrono::{Datelike, NaiveDate};
 use lazy_static::lazy_static;
@@ -89,12 +89,12 @@ impl RemoteService for AniList {
         Ok(entries)
     }
 
-    fn search_info_by_id(&self, id: u32) -> Result<SeriesInfo> {
+    fn search_info_by_id(&self, id: SeriesID) -> Result<SeriesInfo> {
         let info: Media = query!(&self.token, "info_by_id", { "id": id }, "data" => "Media")?;
         Ok(info.into())
     }
 
-    fn get_list_entry(&self, id: u32) -> Result<Option<SeriesEntry>> {
+    fn get_list_entry(&self, id: SeriesID) -> Result<Option<SeriesEntry>> {
         let query: Result<MediaEntry> = query!(
             &self.token,
             "get_list_entry",

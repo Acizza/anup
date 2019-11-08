@@ -3,10 +3,10 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::ops::Deref;
+use std::path::Path;
 
 /// A regex pattern to parse episode files.
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -164,9 +164,12 @@ mod optional_regex_parser {
     }
 }
 
+/// Episode of an anime series on disk.
 #[derive(Debug)]
 pub struct Episode {
-    pub name: String,
+    /// The detected title of the anime series.
+    pub series_name: String,
+    /// The detected episode number.
     pub num: u32,
 }
 
@@ -176,12 +179,13 @@ impl Episode {
         S: AsRef<str> + Into<String> + 'a,
     {
         let name = name.as_ref();
+
         let caps = matcher
             .get()
             .captures(name)
             .context(err::NoEpMatches { name })?;
 
-        let name = caps
+        let series_name = caps
             .name("title")
             .context(err::NoEpisodeTitle { name })?
             .as_str()
@@ -191,82 +195,68 @@ impl Episode {
         let num = caps
             .name("episode")
             .and_then(|val| val.as_str().parse::<u32>().ok())
-            .context(err::ExpectedEpNumber { name: &name })?;
+            .context(err::ExpectedEpNumber { name })?;
 
-        Ok(Episode { name, num })
+        Ok(Episode { series_name, num })
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct EpisodeList {
-    pub title: String,
-    pub paths: HashMap<u32, PathBuf>,
-}
+/// A mapping between episode numbers and their filename.
+#[derive(Debug, Default)]
+pub struct EpisodeMap(HashMap<u32, String>);
 
-impl EpisodeList {
-    pub fn parse<P>(dir: P, matcher: &EpisodeMatcher) -> Result<EpisodeList>
+impl EpisodeMap {
+    /// Detect all episodes in `dir` with the specified `matcher` and return them in a new `EpisodeMap`.
+    pub fn parse<P>(dir: P, matcher: &EpisodeMatcher) -> Result<EpisodeMap>
     where
         P: AsRef<Path>,
     {
         let dir = dir.as_ref();
         let entries = fs::read_dir(dir).context(err::FileIO { path: dir })?;
-
-        let mut title: Option<String> = None;
-        let mut paths = HashMap::new();
+        let mut results = HashMap::new();
+        let mut last_title: Option<String> = None;
 
         for entry in entries {
             let entry = entry.context(err::EntryIO { dir })?;
-            let etype = entry.file_type().context(err::EntryIO { dir })?;
+            let entry_type = entry.file_type().context(err::EntryIO { dir })?;
 
-            if etype.is_dir() {
+            if entry_type.is_dir() {
                 continue;
             }
 
-            let fname = entry.file_name();
-            let fname = fname.to_string_lossy();
+            let filename = entry.file_name();
+            let filename = filename.to_string_lossy();
 
-            // A .part extension indicates that the file is being downloaded
-            if fname.ends_with(".part") {
+            // The .part extension is commonly used to indicate that a file is incomplete
+            if filename.ends_with(".part") {
                 continue;
             }
 
-            let episode = Episode::parse(fname, matcher)?;
+            let episode = Episode::parse(filename.as_ref(), matcher)?;
 
-            match &mut title {
-                Some(name) => {
-                    ensure!(
-                        *name == episode.name,
-                        err::MultipleTitles {
-                            expecting: name.clone(),
-                            found: episode.name
-                        }
-                    );
-                }
-                None => title = Some(episode.name),
+            match &mut last_title {
+                Some(last_title) => ensure!(
+                    *last_title == episode.series_name,
+                    err::MultipleTitles {
+                        expecting: last_title.clone(),
+                        found: episode.series_name
+                    }
+                ),
+                None => last_title = Some(episode.series_name.clone()),
             }
 
-            paths.insert(episode.num, entry.path());
+            results.insert(episode.num, filename.into_owned());
         }
 
-        let title = title.context(err::NoEpisodes { path: dir })?;
-
-        Ok(EpisodeList { title, paths })
-    }
-
-    pub fn get(&self, episode: u32) -> Option<&PathBuf> {
-        self.paths.get(&episode)
+        Ok(EpisodeMap(results))
     }
 }
 
-impl<'a> Into<Cow<'a, EpisodeList>> for EpisodeList {
-    fn into(self) -> Cow<'a, EpisodeList> {
-        Cow::Owned(self)
-    }
-}
+impl Deref for EpisodeMap {
+    type Target = HashMap<u32, String>;
 
-impl<'a> Into<Cow<'a, EpisodeList>> for &'a EpisodeList {
-    fn into(self) -> Cow<'a, EpisodeList> {
-        Cow::Borrowed(self)
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
