@@ -71,12 +71,7 @@ impl Series {
     }
 
     pub fn episode_path(&self, episode: u32) -> Option<PathBuf> {
-        if episode == 0 || episode > self.info.episodes {
-            return None;
-        }
-
         let episode_filename = self.episodes.get(&episode)?;
-
         let mut path = self.path.clone();
         path.push(episode_filename);
         path.canonicalize().ok()
