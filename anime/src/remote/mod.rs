@@ -1,8 +1,9 @@
 pub mod anilist;
 pub mod offline;
 
-use crate::err::Result;
+use crate::err::{self, Result};
 use serde_derive::{Deserialize, Serialize};
+use snafu::ResultExt;
 use std::borrow::Cow;
 use std::fmt;
 
@@ -157,5 +158,52 @@ impl fmt::Display for Status {
         };
 
         write!(f, "{}", value)
+    }
+}
+
+/// A user's access token for a remote service.
+///
+/// Most remote services will require you to use this in order to make changes to
+/// a user's list.
+#[derive(Clone, Default, Deserialize, Serialize)]
+pub struct AccessToken {
+    encoded_token: String,
+}
+
+impl AccessToken {
+    /// Encode a new `AccessToken`.
+    #[inline]
+    pub fn encode<S>(token: S) -> AccessToken
+    where
+        S: AsRef<str>,
+    {
+        AccessToken {
+            encoded_token: base64::encode(token.as_ref()),
+        }
+    }
+
+    /// Get the content of the `AccessToken`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use anime::remote::AccessToken;
+    ///
+    /// let token = AccessToken::encode("test");
+    /// assert_eq!(token.decode().unwrap(), "test");
+    /// ```
+    #[inline]
+    pub fn decode(&self) -> Result<String> {
+        let bytes = base64::decode(&self.encoded_token).context(err::Base64Decode)?;
+        let string = String::from_utf8(bytes).context(err::UTF8Decode)?;
+
+        Ok(string)
+    }
+}
+
+// Better to not accidently expose a base64 encoded token..
+impl fmt::Debug for AccessToken {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "AccessToken {{}}")
     }
 }

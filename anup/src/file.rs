@@ -118,9 +118,9 @@ impl SaveDir {
     }
 }
 
-impl SaveFile for anime::remote::anilist::AccessToken {
+impl SaveFile for anime::remote::AccessToken {
     fn filename() -> &'static str {
-        "anilist"
+        "token"
     }
 
     fn file_type() -> FileType {
