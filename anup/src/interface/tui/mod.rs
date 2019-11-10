@@ -17,16 +17,16 @@ use termion::event::Key;
 use ui::{Event, Events, UI};
 
 pub fn run(args: &ArgMatches) -> Result<()> {
-    let cstate = {
+    let mut ui = UI::init()?;
+
+    let mut cstate = {
         let config = Config::load_or_create()?;
-        let remote = super::get_remote(args, true)?;
+        let remote = init_remote(args, &mut ui.status_log);
 
         CommonState { config, remote }
     };
 
-    let mut ui = UI::init()?;
     let mut ui_state = init_ui_state(&cstate, args)?;
-
     let events = Events::new(Duration::seconds(1));
 
     loop {
@@ -40,7 +40,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                     ui.clear().ok();
                     break Ok(());
                 }
-                key => match ui_state.process_key(&cstate, &mut ui.status_log, key) {
+                key => match ui_state.process_key(&mut cstate, &mut ui.status_log, key) {
                     Ok(_) => (),
                     Err(err) => {
                         ui.status_log.push(LogItem::failed("Processing key", err));
@@ -51,6 +51,33 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                 Ok(_) => (),
                 Err(err) => ui.status_log.push(LogItem::failed("Processing tick", err)),
             },
+        }
+    }
+}
+
+fn init_remote(args: &ArgMatches, log: &mut StatusLog) -> Box<dyn RemoteService> {
+    use anime::remote::anilist;
+    use anime::remote::offline::Offline;
+
+    match crate::init_remote(args, true) {
+        Ok(remote) => remote,
+        Err(err::Error::NeedAniListToken) => {
+            log.push(format!(
+                "No access token found. Go to {} and set your token with the 'token' command",
+                anilist::auth_url(crate::ANILIST_CLIENT_ID)
+            ));
+
+            Box::new(Offline::new())
+        }
+        Err(err) => {
+            log.push(LogItem::failed("Logging in", err));
+            log.push(format!(
+                "If you need a new token, go to {} and set it with the 'token' command",
+                anilist::auth_url(crate::ANILIST_CLIENT_ID)
+            ));
+            log.push("Continuing in offline mode");
+
+            Box::new(Offline::new())
         }
     }
 }
@@ -149,7 +176,12 @@ impl<'a> UIState<'a> {
         self.series.get_mut(self.selected_series)
     }
 
-    fn process_key(&mut self, state: &'a CommonState, log: &mut StatusLog, key: Key) -> Result<()> {
+    fn process_key(
+        &mut self,
+        state: &mut CommonState,
+        log: &mut StatusLog,
+        key: Key,
+    ) -> Result<()> {
         if !self.is_idle() {
             return Ok(());
         }
@@ -207,7 +239,7 @@ impl<'a> UIState<'a> {
 
     fn process_input_dialog_key(
         &mut self,
-        state: &'a CommonState,
+        state: &mut CommonState,
         log: &mut StatusLog,
         key: Key,
     ) -> Result<()> {
@@ -241,7 +273,7 @@ impl<'a> UIState<'a> {
     fn process_command(
         &mut self,
         command: Command,
-        cstate: &CommonState,
+        cstate: &mut CommonState,
         log: &mut StatusLog,
     ) -> Result<()> {
         let series = &mut cur_series_mut!(self).inner;
@@ -315,10 +347,23 @@ impl<'a> UIState<'a> {
 
                 Ok(())
             }
+            Command::LoginToken(token) => {
+                use anime::remote::anilist::AniList;
+                use anime::remote::AccessToken;
+
+                log.capture_status("Setting user access token", || {
+                    let token = AccessToken::encode(token);
+                    token.save()?;
+                    cstate.remote = Box::new(AniList::login(token)?);
+                    Ok(())
+                });
+
+                Ok(())
+            }
         }
     }
 
-    fn process_tick(&mut self, state: &'a CommonState, log: &mut StatusLog) -> Result<()> {
+    fn process_tick(&mut self, state: &CommonState, log: &mut StatusLog) -> Result<()> {
         cur_series_mut!(self).process_tick(state, log)
     }
 

@@ -25,7 +25,7 @@ fn prefetch(args: &ArgMatches) -> Result<()> {
     };
 
     let config = Config::load_or_create()?;
-    let remote = super::get_remote(args, false)?;
+    let remote = crate::init_remote(args, false)?;
 
     let series = saved_series.insert_and_save_from_args_and_remote(
         args,
@@ -46,7 +46,7 @@ fn sync(args: &ArgMatches) -> Result<()> {
     let mut saved_series = SavedSeries::load_or_default()?;
     let mut series_list = saved_series.load_all_series_and_validate()?;
 
-    let remote = super::get_remote(args, false)?;
+    let remote = crate::init_remote(args, false)?;
 
     for series in &mut series_list {
         if !series.entry.needs_sync() {
@@ -70,7 +70,7 @@ fn play(args: &ArgMatches) -> Result<()> {
     let mut saved_series = SavedSeries::load_or_default()?;
 
     let config = Config::load_or_create()?;
-    let remote = super::get_remote(args, true)?;
+    let remote = crate::init_remote(args, true)?;
 
     // TODO: refactor
     let mut series = match args.value_of("series") {

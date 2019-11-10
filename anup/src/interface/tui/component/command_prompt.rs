@@ -160,9 +160,11 @@ pub enum Command {
     Score(String),
     /// Specify the video player arguments for the selected season.
     PlayerArgs(Vec<String>),
+    /// Set the user's login token for a remote service.
+    LoginToken(String),
 }
 
-impl_command_matching!(Command, 6,
+impl_command_matching!(Command, 7,
     SyncFromRemote => {
         name: "syncfromremote",
         min_args: 0,
@@ -221,6 +223,13 @@ impl_command_matching!(Command, 6,
                 .collect();
 
             Ok(Command::PlayerArgs(args))
+        },
+    },
+    LoginToken(_) => {
+        name: "token",
+        min_args: 1,
+        fn: |args: &[&str]| {
+            Ok(Command::LoginToken(args.join(" ")))
         },
     },
 );
@@ -332,6 +341,11 @@ mod tests {
                 }
             }
             other => expected!(other, Command::PlayerArgs(expected_args)),
+        }
+
+        match enter_command("token inserttokenhere\n") {
+            Command::LoginToken(token) if token == "inserttokenhere" => (),
+            other => expected!(other, Command::LoginToken(String::from("inserttokenhere"))),
         }
     }
 }

@@ -1,3 +1,4 @@
+use anime::remote::anilist;
 use snafu::{Backtrace, ErrorCompat, GenerateBacktrace, Snafu};
 use std::io;
 use std::path;
@@ -90,8 +91,11 @@ pub enum Error {
     #[snafu(display("episode {} not found", episode))]
     EpisodeNotFound { episode: u32 },
 
-    #[snafu(display("please run the program in CLI mode to set your AniList token"))]
-    GetAniListTokenFromCLI,
+    #[snafu(display(
+        "need access token for AniList\ngo to {} and specify your token with the -t flag",
+        anilist::auth_url(crate::ANILIST_CLIENT_ID)
+    ))]
+    NeedAniListToken,
 
     #[snafu(display("no command specified"))]
     NoCommandSpecified,
