@@ -1,5 +1,5 @@
 use crate::err::Result;
-use crate::file::{SaveDir, TomlSaveFile};
+use crate::file::{FileType, SaveDir, SaveFile};
 use serde::de::{self, Deserializer, Visitor};
 use serde::ser::Serializer;
 use serde_derive::{Deserialize, Serialize};
@@ -46,9 +46,13 @@ impl Config {
     }
 }
 
-impl TomlSaveFile for Config {
+impl SaveFile for Config {
     fn filename() -> &'static str {
         "config"
+    }
+
+    fn file_type() -> FileType {
+        FileType::Toml
     }
 
     fn save_dir() -> SaveDir {

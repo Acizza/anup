@@ -1,14 +1,14 @@
 use crate::config::Config;
 use crate::detect;
 use crate::err::{self, Result};
-use crate::file::SaveDir;
+use crate::file::{FileType, SaveDir, SaveFile};
 use anime::local::{EpisodeMap, EpisodeMatcher};
 use anime::remote::{RemoteService, SeriesInfo, Status};
 use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
-use snafu::{OptionExt, ResultExt};
+use snafu::OptionExt;
 use std::collections::HashMap;
-use std::fs::{self, File};
+use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -26,6 +26,8 @@ pub struct Series {
 }
 
 impl Series {
+    const FILE_TYPE: FileType = FileType::MessagePack;
+
     pub fn from_args_and_remote<S, R>(
         args: &clap::ArgMatches,
         nickname: S,
@@ -96,21 +98,13 @@ impl Series {
     pub fn save_path(id: anime::remote::SeriesID) -> PathBuf {
         let mut path = PathBuf::from(SaveDir::LocalData.path());
         path.push(id.to_string());
-        path.set_extension("mpack");
+        path.set_extension(Series::FILE_TYPE.extension());
         path
     }
 
     pub fn save(&self) -> Result<()> {
         let path = Series::save_path(self.info.id);
-
-        if let Some(dir) = path.parent() {
-            if !dir.exists() {
-                fs::create_dir_all(dir).context(err::FileIO { path: path.clone() })?;
-            }
-        }
-
-        let serialized = rmp_serde::to_vec(self).context(err::RMPEncode { path: path.clone() })?;
-        fs::write(&path, serialized).context(err::FileIO { path })
+        Series::FILE_TYPE.serialize_to_file(path, self)
     }
 
     pub fn load<S>(id: anime::remote::SeriesID, nickname: S) -> Result<Series>
@@ -118,9 +112,8 @@ impl Series {
         S: Into<String>,
     {
         let path = Series::save_path(id);
-        let file = File::open(&path).context(err::FileIO { path: path.clone() })?;
 
-        let mut series: Series = rmp_serde::from_read(file).context(err::RMPDecode { path })?;
+        let mut series: Series = Series::FILE_TYPE.deserialize_from_file(path)?;
         series.nickname = nickname.into();
         series.episodes = EpisodeMap::parse(&series.path, &series.episode_matcher)?;
 
@@ -436,36 +429,6 @@ pub struct SavedSeries {
 }
 
 impl SavedSeries {
-    pub fn save_path() -> PathBuf {
-        let mut path = PathBuf::from(SaveDir::LocalData.path());
-        path.push("saved_series");
-        path.set_extension("toml");
-        path
-    }
-
-    pub fn save(&self) -> Result<()> {
-        let path = SavedSeries::save_path();
-
-        if let Some(dir) = path.parent() {
-            if !dir.exists() {
-                fs::create_dir_all(dir).context(err::FileIO { path: path.clone() })?;
-            }
-        }
-
-        let serialized = toml::to_string(self).context(err::TomlEncode { path: path.clone() })?;
-        fs::write(&path, serialized).context(err::FileIO { path })
-    }
-
-    pub fn load() -> Result<SavedSeries> {
-        let path = SavedSeries::save_path();
-        let contents = fs::read_to_string(&path).context(err::FileIO { path: path.clone() })?;
-
-        let saved_series: SavedSeries =
-            toml::from_str(&contents).context(err::TomlDecode { path })?;
-
-        Ok(saved_series)
-    }
-
     pub fn load_or_default() -> Result<SavedSeries> {
         match SavedSeries::load() {
             Ok(saved_series) => Ok(saved_series),
@@ -557,5 +520,19 @@ impl SavedSeries {
         self.save()?;
 
         Ok(series)
+    }
+}
+
+impl SaveFile for SavedSeries {
+    fn filename() -> &'static str {
+        "series_list"
+    }
+
+    fn file_type() -> FileType {
+        FileType::Toml
+    }
+
+    fn save_dir() -> SaveDir {
+        SaveDir::LocalData
     }
 }

@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::err::{self, Result};
+use crate::file::SaveFile;
 use crate::series::{SavedSeries, Series};
 use chrono::{Duration, Utc};
 use clap::ArgMatches;

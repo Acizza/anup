@@ -3,6 +3,7 @@ mod ui;
 
 use crate::config::Config;
 use crate::err::{self, Result};
+use crate::file::SaveFile;
 use crate::series::{SavedSeries, Series};
 use anime::remote::RemoteService;
 use chrono::{DateTime, Duration, Utc};

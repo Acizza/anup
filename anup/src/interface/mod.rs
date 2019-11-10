@@ -1,5 +1,5 @@
 use crate::err::{self, Result};
-use crate::file::TomlSaveFile;
+use crate::file::SaveFile;
 use anime::remote::RemoteService;
 use clap::ArgMatches;
 use snafu::{ensure, ResultExt};
