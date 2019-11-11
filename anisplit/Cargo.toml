@@ -1,0 +1,9 @@
+[package]
+name = "anisplit"
+version = "0.1.0"
+authors = ["Acizza <jgit@tuta.io>"]
+edition = "2018"
+
+[dependencies]
+anime = { path = "../anime" }
+clap = "~2.33.0"

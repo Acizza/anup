@@ -3,6 +3,7 @@ name = "anup"
 version = "0.0.0"
 authors = ["Acizza <jgit@tuta.io>"]
 edition = "2018"
+default-run = "anup"
 
 [dependencies]
 anime = { path = "../anime" }
