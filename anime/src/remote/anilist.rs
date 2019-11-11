@@ -62,7 +62,7 @@ macro_rules! query {
     };
 }
 
-/// An authenticated connection that allows requests to the AniList API.
+/// A connection to the AniList API.
 #[derive(Debug)]
 pub struct AniList {
     /// The currently authenticated user.
