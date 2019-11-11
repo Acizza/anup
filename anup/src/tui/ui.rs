@@ -120,8 +120,35 @@ where
             .margin(2)
             .split(layout[0]);
 
-        if let Some(series) = state.cur_series() {
-            UI::draw_series_info(series, score_parser, &info_layout, frame)
+        match state.cur_series() {
+            Some(series) => UI::draw_series_info(series, score_parser, &info_layout, frame),
+            None => {
+                let header =
+                    Text::styled("No Series Found", Style::default().modifier(Modifier::BOLD));
+
+                Paragraph::new([header].iter())
+                    .alignment(Alignment::Center)
+                    .render(frame, info_layout[0]);
+
+                let body = Text::raw(
+                    "Add one by launching the program with a \
+                    \nkeyword similar to the series name on disk. \
+                    
+                    \n\nFor example: assuming the path \"~/anime/Ooga Booga\" \
+                    \nexists, launching the program with the keyword 'booga' \
+                    \nwill add it to the series list. \
+                    
+                    \n\nYou can also use a non-similar keyword along with \
+                    \nthe -p flag to manually specify the path to the series. \
+                    
+                    \n\nNote that by default, the program will look for a series \
+                    \nin \"~/anime/\". You can change this in the config file.",
+                );
+
+                Paragraph::new([body].iter())
+                    .alignment(Alignment::Center)
+                    .render(frame, info_layout[1]);
+            }
         }
     }
 
