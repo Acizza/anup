@@ -61,20 +61,25 @@ fn init_remote(args: &ArgMatches, log: &mut StatusLog) -> Box<dyn RemoteService>
 
     match crate::init_remote(args, true) {
         Ok(remote) => remote,
-        Err(err::Error::NeedAniListToken) => {
-            log.push(format!(
-                "No access token found. Go to {} and set your token with the 'token' command",
-                anilist::auth_url(crate::ANILIST_CLIENT_ID)
-            ));
-
-            Box::new(Offline::new())
-        }
         Err(err) => {
-            log.push(LogItem::failed("Logging in", err));
-            log.push(format!(
-                "If you need a new token, go to {} and set it with the 'token' command",
-                anilist::auth_url(crate::ANILIST_CLIENT_ID)
-            ));
+            match err {
+                err::Error::NeedAniListToken => {
+                    log.push(format!(
+                        "No access token found. Go to {} \
+                         and set your token with the 'token' command",
+                        anilist::auth_url(crate::ANILIST_CLIENT_ID)
+                    ));
+                }
+                _ => {
+                    log.push(LogItem::failed("Logging in", err));
+                    log.push(format!(
+                        "If you need a new token, go to {} \
+                         and set it with the 'token' command",
+                        anilist::auth_url(crate::ANILIST_CLIENT_ID)
+                    ));
+                }
+            }
+
             log.push("Continuing in offline mode");
 
             Box::new(Offline::new())
