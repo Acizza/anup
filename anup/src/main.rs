@@ -2,8 +2,8 @@ mod config;
 mod detect;
 mod err;
 mod file;
-mod interface;
 mod series;
+mod tui;
 mod util;
 
 use crate::config::Config;
@@ -14,7 +14,6 @@ use anime::remote::RemoteService;
 use chrono::{Duration, Utc};
 use clap::clap_app;
 use clap::ArgMatches;
-use interface::tui;
 use snafu::{ensure, ResultExt};
 
 const ANILIST_CLIENT_ID: u32 = 427;
