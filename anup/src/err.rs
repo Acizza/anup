@@ -131,6 +131,32 @@ impl From<anime::Error> for Error {
     }
 }
 
+impl From<detect::Error> for Error {
+    fn from(source: detect::Error) -> Error {
+        match source {
+            detect::Error::FileIO {
+                path,
+                source,
+                backtrace,
+            } => Error::FileIO {
+                path,
+                source,
+                backtrace,
+            },
+            detect::Error::EntryIO {
+                dir,
+                source,
+                backtrace,
+            } => Error::EntryIO {
+                dir,
+                source,
+                backtrace,
+            },
+            detect::Error::NoMatchingSeries { name } => Error::NoMatchingSeries { name },
+        }
+    }
+}
+
 pub fn display_error(err: Error) {
     eprintln!("{}", err);
 

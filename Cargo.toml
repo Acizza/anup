@@ -3,6 +3,7 @@ members = [
     "anime",
     "anisplit",
     "anup",
+    "detect",
 ]
 
 [profile.release]

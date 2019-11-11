@@ -7,6 +7,7 @@ default-run = "anup"
 
 [dependencies]
 anime = { path = "../anime" }
+detect = { path = "../detect" }
 dirs = "~2.0.0"
 lazy_static = "~1.4.0"
 termion = "~1.5.0"

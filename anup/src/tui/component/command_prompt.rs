@@ -1,5 +1,4 @@
 use crate::err::{self, Result};
-use crate::util;
 use smallvec::{smallvec, SmallVec};
 use snafu::ensure;
 use std::convert::TryFrom;
@@ -242,7 +241,7 @@ impl Command {
     fn best_matching_name(name: &str) -> Option<&'static str> {
         const MIN_CONFIDENCE: f32 = 0.7;
 
-        util::closest_str_match(
+        detect::closest_str_match(
             &Command::CMD_NAMES,
             name,
             MIN_CONFIDENCE,

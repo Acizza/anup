@@ -1,5 +1,4 @@
 mod config;
-mod detect;
 mod err;
 mod file;
 mod series;

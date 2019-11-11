@@ -1,5 +1,4 @@
 use crate::config::Config;
-use crate::detect;
 use crate::err::{self, Result};
 use crate::file::{FileType, SaveDir, SaveFile};
 use anime::local::{EpisodeMap, EpisodeMatcher};
