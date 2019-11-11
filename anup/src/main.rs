@@ -76,7 +76,7 @@ fn init_remote(args: &ArgMatches, can_use_offline: bool) -> Result<Box<dyn Remot
             },
         };
 
-        let anilist = AniList::login(token)?;
+        let anilist = AniList::authenticated(token)?;
         Ok(Box::new(anilist))
     }
 }

@@ -372,7 +372,7 @@ impl<'a> UIState<'a> {
                 log.capture_status("Setting user access token", || {
                     let token = AccessToken::encode(token);
                     token.save()?;
-                    cstate.remote = Box::new(AniList::login(token)?);
+                    cstate.remote = Box::new(AniList::authenticated(token)?);
                     Ok(())
                 });
 

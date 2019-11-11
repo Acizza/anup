@@ -78,6 +78,9 @@ pub enum Error {
 
     #[snafu(display("missing group \"{}\" in custom episode matcher", group))]
     MissingCustomMatcherGroup { group: &'static str },
+
+    #[snafu(display("must be authorized to make this request"))]
+    NeedAuthentication,
 }
 
 impl Error {

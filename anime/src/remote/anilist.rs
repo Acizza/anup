@@ -65,22 +65,45 @@ macro_rules! query {
 /// An authenticated connection that allows requests to the AniList API.
 #[derive(Debug)]
 pub struct AniList {
-    /// The authenticated user.
-    pub user: User,
-    token: AccessToken,
+    /// The currently authenticated user.
+    pub auth: Option<Auth>,
 }
 
 impl AniList {
-    pub fn login(token: AccessToken) -> Result<AniList> {
-        let user = query!(&token, "user", {}, "data" => "Viewer")?;
-        Ok(AniList { token, user })
+    /// Create a new unauthenticated `AniList` instance.
+    ///
+    /// When unauthenticated, you can only search for series info by name and by ID.
+    /// Trying to make any other request will return a `NeedAuthentication` error.
+    #[inline]
+    pub fn unauthenticated() -> AniList {
+        AniList { auth: None }
+    }
+
+    /// Create a new authenticated `AniList` instance with the specified user `token`.
+    ///
+    /// This will allow you to update the specified user's list.
+    /// To get a user's token, they will need to visit the URL provided by
+    /// the `auth_url` function and provide it to you. The token should then be
+    /// stored as it is only visible once.
+    pub fn authenticated(token: AccessToken) -> Result<AniList> {
+        let user = query!(Some(&token), "user", {}, "data" => "Viewer")?;
+        let auth = Auth::new(user, token);
+
+        Ok(AniList { auth: Some(auth) })
+    }
+
+    fn get_score_format(&self) -> ScoreFormat {
+        match &self.auth {
+            Some(auth) => auth.user.options.score_format,
+            None => ScoreFormat::default(),
+        }
     }
 }
 
 impl RemoteService for AniList {
     fn search_info_by_name(&self, name: &str) -> Result<Vec<SeriesInfo>> {
         let entries: Vec<Media> = query!(
-            &self.token,
+            None,
             "info_by_name",
             { "name": name },
             "data" => "Page" => "media"
@@ -91,15 +114,20 @@ impl RemoteService for AniList {
     }
 
     fn search_info_by_id(&self, id: SeriesID) -> Result<SeriesInfo> {
-        let info: Media = query!(&self.token, "info_by_id", { "id": id }, "data" => "Media")?;
+        let info: Media = query!(None, "info_by_id", { "id": id }, "data" => "Media")?;
         Ok(info.into())
     }
 
     fn get_list_entry(&self, id: SeriesID) -> Result<Option<SeriesEntry>> {
+        let auth = match &self.auth {
+            Some(auth) => auth,
+            None => return Err(err::Error::NeedAuthentication),
+        };
+
         let query: Result<MediaEntry> = query!(
-            &self.token,
+            Some(&auth.token),
             "get_list_entry",
-            { "id": id, "userID": self.user.id },
+            { "id": id, "userID": auth.user.id },
             "data" => "MediaList"
         );
 
@@ -111,8 +139,13 @@ impl RemoteService for AniList {
     }
 
     fn update_list_entry(&self, entry: &SeriesEntry) -> Result<()> {
+        let token = match &self.auth {
+            Some(auth) => &auth.token,
+            None => return Err(err::Error::NeedAuthentication),
+        };
+
         send!(
-            &self.token,
+            Some(token),
             "update_list_entry",
             {
                 "mediaId": entry.id,
@@ -131,7 +164,7 @@ impl RemoteService for AniList {
 
 impl ScoreParser for AniList {
     fn parse_score(&self, score: &str) -> Option<u8> {
-        let raw_score = match self.user.options.score_format {
+        let raw_score = match self.get_score_format() {
             ScoreFormat::Point100 => score.parse().ok()?,
             ScoreFormat::Point10Decimal => {
                 let score = score.parse::<f32>().ok()?;
@@ -157,7 +190,7 @@ impl ScoreParser for AniList {
     }
 
     fn score_to_str(&self, score: u8) -> Cow<str> {
-        match self.user.options.score_format {
+        match self.get_score_format() {
             ScoreFormat::Point100 => score.to_string().into(),
             ScoreFormat::Point10 => (score / 10).to_string().into(),
             ScoreFormat::Point10Decimal => format!("{:.1}", f32::from(score) / 10.0).into(),
@@ -175,6 +208,20 @@ impl ScoreParser for AniList {
                 }
             }
         }
+    }
+}
+
+/// An authenticated user.
+#[derive(Debug)]
+pub struct Auth {
+    /// The AniList user's account information.
+    pub user: User,
+    token: AccessToken,
+}
+
+impl Auth {
+    fn new(user: User, token: AccessToken) -> Auth {
+        Auth { user, token }
     }
 }
 
@@ -197,7 +244,7 @@ pub struct ListOptions {
 }
 
 /// AniList score formats.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize)]
 pub enum ScoreFormat {
     /// Range between 0 - 100.
     #[serde(rename = "POINT_100")]
@@ -224,7 +271,17 @@ pub enum ScoreFormat {
     Point3,
 }
 
-fn send_gql_request<S>(query: S, vars: &json::Value, token: &AccessToken) -> Result<json::Value>
+impl Default for ScoreFormat {
+    fn default() -> ScoreFormat {
+        ScoreFormat::Point100
+    }
+}
+
+fn send_gql_request<S>(
+    query: S,
+    vars: &json::Value,
+    token: Option<&AccessToken>,
+) -> Result<json::Value>
 where
     S: Into<String>,
 {
@@ -240,11 +297,16 @@ where
     })
     .to_string();
 
-    let json: json::Value = CLIENT
+    let mut request = CLIENT
         .post(API_URL)
         .header("Content-Type", "application/json")
-        .header("Accept", "application/json")
-        .bearer_auth(&token.decode()?)
+        .header("Accept", "application/json");
+
+    if let Some(token) = token {
+        request = request.bearer_auth(&token.decode()?);
+    }
+
+    let json: json::Value = request
         .body(body)
         .send()
         .context(err::Reqwest)?
