@@ -281,11 +281,11 @@ impl<'a> UIState<'a> {
         cstate: &mut CommonState,
         log: &mut StatusLog,
     ) -> Result<()> {
-        let series = &mut cur_series_mut!(self).inner;
-        let remote = cstate.remote.as_ref();
-
         match command {
             Command::SyncFromRemote => {
+                let series = &mut cur_series_mut!(self).inner;
+                let remote = cstate.remote.as_ref();
+
                 log.capture_status("Syncing entry from remote", || {
                     series.force_sync_changes_from_remote(remote)
                 });
@@ -293,6 +293,9 @@ impl<'a> UIState<'a> {
                 Ok(())
             }
             Command::SyncToRemote => {
+                let series = &mut cur_series_mut!(self).inner;
+                let remote = cstate.remote.as_ref();
+
                 log.capture_status("Syncing entry to remote", || {
                     series.force_sync_changes_to_remote(remote)
                 });
@@ -300,6 +303,9 @@ impl<'a> UIState<'a> {
                 Ok(())
             }
             Command::Status(status) => {
+                let series = &mut cur_series_mut!(self).inner;
+                let remote = cstate.remote.as_ref();
+
                 series.entry.set_status(status, &cstate.config);
 
                 log.capture_status(format!("Setting series status to \"{}\"", status), || {
@@ -310,6 +316,9 @@ impl<'a> UIState<'a> {
             }
             Command::Progress(direction) => {
                 use component::command_prompt::ProgressDirection;
+
+                let series = &mut cur_series_mut!(self).inner;
+                let remote = cstate.remote.as_ref();
 
                 match direction {
                     ProgressDirection::Forwards => {
@@ -327,6 +336,9 @@ impl<'a> UIState<'a> {
                 Ok(())
             }
             Command::Score(raw_score) => {
+                let series = &mut cur_series_mut!(self).inner;
+                let remote = cstate.remote.as_ref();
+
                 let score = match cstate.remote.parse_score(&raw_score) {
                     Some(score) if score == 0 => None,
                     Some(score) => Some(score),
@@ -336,15 +348,16 @@ impl<'a> UIState<'a> {
                     }
                 };
 
-                series.entry.set_score(score);
-
                 log.capture_status("Setting score", || {
-                    series.sync_changes_to_remote(cstate.remote.as_ref())
+                    series.entry.set_score(score);
+                    series.sync_changes_to_remote(remote)
                 });
 
                 Ok(())
             }
             Command::PlayerArgs(args) => {
+                let series = &mut cur_series_mut!(self).inner;
+
                 log.capture_status("Saving player args for series", || {
                     series.player_args = args;
                     series.save()
