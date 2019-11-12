@@ -19,7 +19,7 @@ fn main() {
         (about: "This is a tool to split up an anime series that has multiple \
                  seasons merged together.")
         (@arg path: +takes_value +required "The path pointing to the series to split")
-        (@arg out_dir: -o --out +takes_value "The path to crate the split seasons in. If this is not specified, the parent directory of the series path will be used")
+        (@arg out_dir: -o --out +takes_value "The path to create the split seasons in. If this is not specified, the parent directory of the series path will be used")
         (@arg series_id: -i --id +takes_value "The anime series ID. Use if the program doesn't detect the right series automatically")
         (@arg name_format: -f --format +takes_value "The format to rename the files as. Must contain \"{title}\" and \"{episode}\"")
         (@arg matcher: -m --matcher +takes_value "The custom pattern to match episode files with")
