@@ -152,11 +152,12 @@ impl Series {
             return Ok(());
         }
 
-        match remote.get_list_entry(self.entry.id())? {
-            Some(entry) => self.entry = SeriesEntry::from(entry),
-            None => self.entry.needs_sync = false,
+        self.entry = match remote.get_list_entry(self.entry.id())? {
+            Some(entry) => SeriesEntry::from(entry),
+            None => SeriesEntry::from(self.info.id),
         };
 
+        self.entry.needs_sync = false;
         self.save()
     }
 
