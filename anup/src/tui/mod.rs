@@ -105,12 +105,11 @@ fn init_ui_state<'a>(cstate: &CommonState, args: &ArgMatches) -> Result<UIState<
         None => 0,
     };
 
-    let series = series.into_iter().map(SeriesState::new).collect();
-
     Ok(UIState {
         series,
         selected_series,
         saved_series,
+        watch_state: WatchState::Idle,
         status_bar_state: StatusBarState::default(),
         last_used_command: None,
     })
@@ -147,9 +146,10 @@ fn init_series_list(
 
 /// Current state of the UI.
 pub struct UIState<'a> {
-    series: Vec<SeriesState>,
+    series: Vec<Series>,
     selected_series: usize,
     saved_series: SavedSeries,
+    watch_state: WatchState,
     status_bar_state: StatusBarState<'a>,
     last_used_command: Option<Command>,
 }
@@ -173,11 +173,11 @@ macro_rules! cur_series_mut {
 }
 
 impl<'a> UIState<'a> {
-    fn cur_series(&self) -> Option<&SeriesState> {
+    fn cur_series(&self) -> Option<&Series> {
         self.series.get(self.selected_series)
     }
 
-    fn cur_series_mut(&mut self) -> Option<&mut SeriesState> {
+    fn cur_series_mut(&mut self) -> Option<&mut Series> {
         self.series.get_mut(self.selected_series)
     }
 
@@ -199,7 +199,7 @@ impl<'a> UIState<'a> {
             // Play next episode
             Key::Char(ch) if ch == state.config.tui.keys.play_next_episode => {
                 let last_watched_changed = {
-                    let id = cur_series!(self).inner.info.id;
+                    let id = cur_series!(self).info.id;
                     self.saved_series.set_last_watched(id)
                 };
 
@@ -210,7 +210,7 @@ impl<'a> UIState<'a> {
                 }
 
                 log.capture_status("Playing next episode", || {
-                    cur_series_mut!(self).play_next_episode_async(&state)
+                    self.start_next_series_episode(&state)
                 });
             }
             // Command prompt
@@ -283,7 +283,7 @@ impl<'a> UIState<'a> {
     ) -> Result<()> {
         match command {
             Command::SyncFromRemote => {
-                let series = &mut cur_series_mut!(self).inner;
+                let series = cur_series_mut!(self);
                 let remote = cstate.remote.as_ref();
 
                 log.capture_status("Syncing entry from remote", || {
@@ -293,7 +293,7 @@ impl<'a> UIState<'a> {
                 Ok(())
             }
             Command::SyncToRemote => {
-                let series = &mut cur_series_mut!(self).inner;
+                let series = cur_series_mut!(self);
                 let remote = cstate.remote.as_ref();
 
                 log.capture_status("Syncing entry to remote", || {
@@ -303,7 +303,7 @@ impl<'a> UIState<'a> {
                 Ok(())
             }
             Command::Status(status) => {
-                let series = &mut cur_series_mut!(self).inner;
+                let series = cur_series_mut!(self);
                 let remote = cstate.remote.as_ref();
 
                 series.entry.set_status(status, &cstate.config);
@@ -317,7 +317,7 @@ impl<'a> UIState<'a> {
             Command::Progress(direction) => {
                 use component::command_prompt::ProgressDirection;
 
-                let series = &mut cur_series_mut!(self).inner;
+                let series = cur_series_mut!(self);
                 let remote = cstate.remote.as_ref();
 
                 match direction {
@@ -336,7 +336,7 @@ impl<'a> UIState<'a> {
                 Ok(())
             }
             Command::Score(raw_score) => {
-                let series = &mut cur_series_mut!(self).inner;
+                let series = cur_series_mut!(self);
                 let remote = cstate.remote.as_ref();
 
                 let score = match cstate.remote.parse_score(&raw_score) {
@@ -356,7 +356,7 @@ impl<'a> UIState<'a> {
                 Ok(())
             }
             Command::PlayerArgs(args) => {
-                let series = &mut cur_series_mut!(self).inner;
+                let series = cur_series_mut!(self);
 
                 log.capture_status("Saving player args for series", || {
                     series.player_args = args;
@@ -382,14 +382,66 @@ impl<'a> UIState<'a> {
     }
 
     fn process_tick(&mut self, state: &CommonState, log: &mut StatusLog) -> Result<()> {
-        cur_series_mut!(self).process_tick(state, log)
+        match &mut self.watch_state {
+            WatchState::Idle => (),
+            WatchState::Watching(_, child) => {
+                let status = match child.try_wait().context(err::IO)? {
+                    Some(status) => status,
+                    None => return Ok(()),
+                };
+
+                // The watch state should be set to idle immediately to avoid a potential infinite loop.
+                let progress_time = match mem::replace(&mut self.watch_state, WatchState::Idle) {
+                    WatchState::Watching(progress_time, _) => progress_time,
+                    WatchState::Idle => unreachable!(),
+                };
+
+                let series = cur_series_mut!(self);
+
+                if !status.success() {
+                    log.push("Player did not exit properly");
+                    return Ok(());
+                }
+
+                if Utc::now() >= progress_time {
+                    log.capture_status("Marking episode as completed", || {
+                        series.episode_completed(state.remote.as_ref(), &state.config)
+                    });
+                } else {
+                    log.push("Not marking episode as completed");
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn start_next_series_episode(&mut self, state: &CommonState) -> Result<()> {
+        let series = cur_series_mut!(self);
+
+        series.begin_watching(state.remote.as_ref(), &state.config)?;
+
+        let next_ep = series.entry.watched_eps() + 1;
+
+        let child = series
+            .play_episode_cmd(next_ep, &state.config)?
+            .spawn()
+            .context(err::FailedToPlayEpisode { episode: next_ep })?;
+
+        let progress_time = {
+            let secs_must_watch =
+                (series.info.episode_length as f32 * state.config.episode.pcnt_must_watch) * 60.0;
+            let time_must_watch = Duration::seconds(secs_must_watch as i64);
+
+            Utc::now() + time_must_watch
+        };
+
+        self.watch_state = WatchState::Watching(progress_time, child);
+        Ok(())
     }
 
     fn is_idle(&self) -> bool {
-        match self.cur_series() {
-            Some(cur_series) => cur_series.watch_state == WatchState::Idle,
-            None => true,
-        }
+        self.watch_state == WatchState::Idle
     }
 }
 
@@ -418,81 +470,6 @@ impl<'a> StatusBarState<'a> {
 impl<'a> Default for StatusBarState<'a> {
     fn default() -> StatusBarState<'a> {
         StatusBarState::Log
-    }
-}
-
-#[derive(Debug)]
-struct SeriesState {
-    inner: Series,
-    watch_state: WatchState,
-}
-
-impl SeriesState {
-    fn new(inner: Series) -> SeriesState {
-        SeriesState {
-            inner,
-            watch_state: WatchState::Idle,
-        }
-    }
-
-    fn play_next_episode_async(&mut self, state: &CommonState) -> Result<()> {
-        let remote = state.remote.as_ref();
-        let config = &state.config;
-
-        self.inner.begin_watching(remote, config)?;
-        let next_ep = self.inner.entry.watched_eps() + 1;
-
-        let child = self
-            .inner
-            .play_episode_cmd(next_ep, &state.config)?
-            .spawn()
-            .context(err::FailedToPlayEpisode { episode: next_ep })?;
-
-        let progress_time = {
-            let secs_must_watch =
-                (self.inner.info.episode_length as f32 * config.episode.pcnt_must_watch) * 60.0;
-            let time_must_watch = Duration::seconds(secs_must_watch as i64);
-
-            Utc::now() + time_must_watch
-        };
-
-        self.watch_state = WatchState::Watching(progress_time, child);
-
-        Ok(())
-    }
-
-    fn process_tick(&mut self, state: &CommonState, log: &mut StatusLog) -> Result<()> {
-        match &mut self.watch_state {
-            WatchState::Idle => (),
-            WatchState::Watching(_, child) => {
-                let status = match child.try_wait().context(err::IO)? {
-                    Some(status) => status,
-                    None => return Ok(()),
-                };
-
-                // The watch state should be set to idle immediately to avoid a potential infinite loop.
-                let progress_time = match mem::replace(&mut self.watch_state, WatchState::Idle) {
-                    WatchState::Watching(progress_time, _) => progress_time,
-                    WatchState::Idle => unreachable!(),
-                };
-
-                if !status.success() {
-                    log.push("Player did not exit properly");
-                    return Ok(());
-                }
-
-                if Utc::now() >= progress_time {
-                    log.capture_status("Marking episode as completed", || {
-                        self.inner
-                            .episode_completed(state.remote.as_ref(), &state.config)
-                    });
-                } else {
-                    log.push("Not marking episode as completed");
-                }
-            }
-        }
-
-        Ok(())
     }
 }
 

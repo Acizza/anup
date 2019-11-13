@@ -1,5 +1,5 @@
 use super::component::log::StatusLog;
-use super::{SeriesState, UIState, WatchState};
+use super::{Series, UIState, WatchState};
 use crate::err::{self, Result};
 use crate::util;
 use anime::remote::ScoreParser;
@@ -84,7 +84,7 @@ where
         let series_names = state
             .series
             .iter()
-            .map(|series| &series.inner.nickname)
+            .map(|series| &series.nickname)
             .collect::<SmallVec<[_; 8]>>();
 
         let mut series_list = SelectableList::default()
@@ -121,7 +121,7 @@ where
             .split(layout[0]);
 
         match state.cur_series() {
-            Some(series) => UI::draw_series_info(series, score_parser, &info_layout, frame),
+            Some(series) => UI::draw_series_info(state, series, score_parser, &info_layout, frame),
             None => {
                 let header =
                     Text::styled("No Series Found", Style::default().modifier(Modifier::BOLD));
@@ -153,15 +153,16 @@ where
     }
 
     fn draw_series_info<S>(
-        series: &SeriesState,
+        state: &UIState,
+        series: &Series,
         score_parser: &S,
         info_layout: &[Rect],
         frame: &mut Frame<B>,
     ) where
         S: ScoreParser + ?Sized,
     {
-        let info = &series.inner.info;
-        let entry = &series.inner.entry;
+        let info = &series.info;
+        let entry = &series.entry;
 
         // Series title
         {
@@ -255,7 +256,7 @@ where
         }
 
         // Watch time needed indicator at bottom
-        match series.watch_state {
+        match state.watch_state {
             WatchState::Idle => (),
             WatchState::Watching(progress_time, _) => {
                 let watch_time = progress_time - Utc::now();
