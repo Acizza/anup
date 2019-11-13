@@ -27,6 +27,18 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display(
+        "link creation failed\n\tfrom: {:?}\n\tto: {:?}\nreason: {}",
+        from,
+        to,
+        source
+    ))]
+    LinkIO {
+        from: path::PathBuf,
+        to: path::PathBuf,
+        source: io::Error,
+    },
+
     #[snafu(display("path must be a directory"))]
     NotADirectory,
 

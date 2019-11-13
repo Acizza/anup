@@ -23,6 +23,11 @@ fn main() {
         (@arg series_id: -i --id +takes_value "The anime series ID. Use if the program doesn't detect the right series automatically")
         (@arg name_format: -f --format +takes_value "The format to rename the files as. Must contain \"{title}\" and \"{episode}\"")
         (@arg matcher: -m --matcher +takes_value "The custom pattern to match episode files with")
+        (@group method =>
+            (@arg symlink: --symlink "Create symbolic links that point to the original episode files. This is the default method")
+            (@arg hardlink: --hardlink "Create hard links that point to the original episode files")
+            (@arg move: --move "Move the original episode files and rename them")
+        )
     )
     .get_matches();
 
@@ -62,6 +67,7 @@ fn run(args: &ArgMatches) -> Result<()> {
     let data = SeriesData {
         episodes: EpisodeMap::parse(&path, &matcher)?,
         name_format,
+        link_method: LinkMethod::from_args(args),
         path,
         out_dir,
     };
@@ -77,6 +83,7 @@ fn run(args: &ArgMatches) -> Result<()> {
 struct SeriesData {
     episodes: EpisodeMap,
     name_format: NameFormat,
+    link_method: LinkMethod,
     path: PathBuf,
     out_dir: PathBuf,
 }
@@ -110,6 +117,48 @@ impl NameFormat {
         self.0
             .replace("{title}", name.as_ref())
             .replace("{episode}", &format!("{:02}", episode))
+    }
+}
+
+enum LinkMethod {
+    Symlink,
+    Hardlink,
+    Move,
+}
+
+impl LinkMethod {
+    fn from_args(args: &ArgMatches) -> LinkMethod {
+        if args.is_present("symlink") {
+            LinkMethod::Symlink
+        } else if args.is_present("hardlink") {
+            LinkMethod::Hardlink
+        } else if args.is_present("move") {
+            LinkMethod::Move
+        } else {
+            LinkMethod::default()
+        }
+    }
+
+    fn execute<P>(&self, from: P, to: P) -> Result<()>
+    where
+        P: AsRef<Path>,
+    {
+        let from = from.as_ref();
+        let to = to.as_ref();
+
+        let result = match self {
+            LinkMethod::Symlink => symlink(from, to),
+            LinkMethod::Hardlink => fs::hard_link(from, to),
+            LinkMethod::Move => fs::rename(from, to),
+        };
+
+        result.context(err::LinkIO { from, to })
+    }
+}
+
+impl Default for LinkMethod {
+    fn default() -> LinkMethod {
+        LinkMethod::Symlink
     }
 }
 
@@ -160,10 +209,9 @@ fn format_series(data: &SeriesData, info: &SeriesInfo, episode_offset: u32) -> R
 
         let link_path = out_dir.join(new_filename);
 
-        if let Err(err) = symlink(&episode_path, &link_path) {
-            eprintln!("failed to create symlink {:?}: {}", link_path, err);
-        } else {
-            num_links_created += 1;
+        match data.link_method.execute(&episode_path, &link_path) {
+            Ok(()) => num_links_created += 1,
+            Err(err) => eprintln!("{}", err),
         }
     }
 
