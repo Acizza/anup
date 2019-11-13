@@ -27,6 +27,7 @@ fn main() {
             (@arg symlink: --symlink "Create symbolic links that point to the original episode files. This is the default method")
             (@arg hardlink: --hardlink "Create hard links that point to the original episode files")
             (@arg move: --move "Move the original episode files and rename them")
+            (@arg preview: --preview "Show the changes to files that will be made")
         )
     )
     .get_matches();
@@ -124,6 +125,7 @@ enum LinkMethod {
     Symlink,
     Hardlink,
     Move,
+    Preview,
 }
 
 impl LinkMethod {
@@ -134,6 +136,8 @@ impl LinkMethod {
             LinkMethod::Hardlink
         } else if args.is_present("move") {
             LinkMethod::Move
+        } else if args.is_present("preview") {
+            LinkMethod::Preview
         } else {
             LinkMethod::default()
         }
@@ -150,6 +154,14 @@ impl LinkMethod {
             LinkMethod::Symlink => symlink(from, to),
             LinkMethod::Hardlink => fs::hard_link(from, to),
             LinkMethod::Move => fs::rename(from, to),
+            LinkMethod::Preview => {
+                println!(
+                    "preview: {} -> {}\n",
+                    from.to_string_lossy(),
+                    to.to_string_lossy()
+                );
+                Ok(())
+            }
         };
 
         result.context(err::LinkIO { from, to })
