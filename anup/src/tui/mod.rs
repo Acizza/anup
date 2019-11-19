@@ -5,6 +5,7 @@ use crate::config::Config;
 use crate::err::{self, Result};
 use crate::file::SaveFile;
 use crate::series::{SavedSeries, Series};
+use crate::try_opt_r;
 use anime::remote::RemoteService;
 use chrono::{DateTime, Duration, Utc};
 use clap::ArgMatches;
@@ -100,7 +101,7 @@ fn init_ui_state<'a>(cstate: &CommonState, args: &ArgMatches) -> Result<UIState<
     let selected_series = match saved_series.last_watched_id {
         Some(id) => series
             .iter()
-            .position(|series| series.info.id == id)
+            .position(|series| series.get_valid().map(|s| s.info.id == id).unwrap_or(false))
             .unwrap_or(0),
         None => 0,
     };
@@ -119,8 +120,31 @@ fn init_series_list(
     cstate: &CommonState,
     args: &ArgMatches,
     saved_series: &mut SavedSeries,
-) -> Result<Vec<Series>> {
-    let mut series = saved_series.load_all_series_and_validate()?;
+) -> Result<Vec<SeriesStatus>> {
+    let push_series = |series, name, list: &mut Vec<SeriesStatus>| {
+        let status = match series {
+            Ok(series) => SeriesStatus::Valid(Box::new(series)),
+            // We want to use the most concise error message possible here, so
+            // we should strip wrappers for external error types down
+            Err(err::Error::Anime { source, .. }) => {
+                SeriesStatus::Invalid(name, format!("{}", source))
+            }
+            Err(err) => SeriesStatus::Invalid(name, format!("{}", err)),
+        };
+
+        list.push(status);
+    };
+
+    let mut series = {
+        let mut results = Vec::with_capacity(saved_series.name_id_map.len());
+
+        for (name, &id) in &saved_series.name_id_map {
+            let series = Series::load(id, name);
+            push_series(series, name.into(), &mut results);
+        }
+
+        results
+    };
 
     // If the user specified a series, we'll need to check to see if we
     // already have it or fetch & save it otherwise.
@@ -138,15 +162,15 @@ fn init_series_list(
         desired_series,
         &cstate.config,
         cstate.remote.as_ref(),
-    )?;
+    );
 
-    series.push(new_series);
+    push_series(new_series, desired_series.into(), &mut series);
     Ok(series)
 }
 
 /// Current state of the UI.
 pub struct UIState<'a> {
-    series: Vec<Series>,
+    series: Vec<SeriesStatus>,
     selected_series: usize,
     saved_series: SavedSeries,
     watch_state: WatchState,
@@ -154,31 +178,23 @@ pub struct UIState<'a> {
     last_used_command: Option<Command>,
 }
 
-macro_rules! cur_series {
-    ($struct:ident) => {
-        match $struct.cur_series() {
-            Some(value) => value,
-            None => return Ok(()),
-        }
-    };
-}
-
-macro_rules! cur_series_mut {
-    ($struct:ident) => {
-        match $struct.cur_series_mut() {
-            Some(value) => value,
-            None => return Ok(()),
-        }
-    };
-}
-
 impl<'a> UIState<'a> {
-    fn cur_series(&self) -> Option<&Series> {
+    fn cur_series_status(&self) -> Option<&SeriesStatus> {
         self.series.get(self.selected_series)
     }
 
-    fn cur_series_mut(&mut self) -> Option<&mut Series> {
+    fn cur_valid_series(&self) -> Option<&Series> {
+        self.cur_series_status()
+            .and_then(|status| status.get_valid())
+    }
+
+    fn cur_series_status_mut(&mut self) -> Option<&mut SeriesStatus> {
         self.series.get_mut(self.selected_series)
+    }
+
+    fn cur_valid_series_mut(&mut self) -> Option<&mut Series> {
+        self.cur_series_status_mut()
+            .and_then(|status| status.get_valid_mut())
     }
 
     fn process_key(
@@ -199,7 +215,7 @@ impl<'a> UIState<'a> {
             // Play next episode
             Key::Char(ch) if ch == state.config.tui.keys.play_next_episode => {
                 let last_watched_changed = {
-                    let id = cur_series!(self).info.id;
+                    let id = try_opt_r!(self.cur_valid_series()).info.id;
                     self.saved_series.set_last_watched(id)
                 };
 
@@ -283,33 +299,29 @@ impl<'a> UIState<'a> {
     ) -> Result<()> {
         match command {
             Command::SyncFromRemote => {
-                let series = cur_series_mut!(self);
-                let remote = cstate.remote.as_ref();
+                let series = try_opt_r!(self.cur_valid_series_mut());
 
                 log.capture_status("Syncing entry from remote", || {
-                    series.force_sync_changes_from_remote(remote)
+                    series.force_sync_changes_from_remote(cstate.remote.as_ref())
                 });
 
                 Ok(())
             }
             Command::SyncToRemote => {
-                let series = cur_series_mut!(self);
-                let remote = cstate.remote.as_ref();
+                let series = try_opt_r!(self.cur_valid_series_mut());
 
                 log.capture_status("Syncing entry to remote", || {
-                    series.force_sync_changes_to_remote(remote)
+                    series.force_sync_changes_to_remote(cstate.remote.as_ref())
                 });
 
                 Ok(())
             }
             Command::Status(status) => {
-                let series = cur_series_mut!(self);
-                let remote = cstate.remote.as_ref();
-
-                series.entry.set_status(status, &cstate.config);
+                let series = try_opt_r!(self.cur_valid_series_mut());
 
                 log.capture_status(format!("Setting series status to \"{}\"", status), || {
-                    series.sync_changes_to_remote(remote)
+                    series.entry.set_status(status, &cstate.config);
+                    series.sync_changes_to_remote(cstate.remote.as_ref())
                 });
 
                 Ok(())
@@ -317,7 +329,7 @@ impl<'a> UIState<'a> {
             Command::Progress(direction) => {
                 use component::command_prompt::ProgressDirection;
 
-                let series = cur_series_mut!(self);
+                let series = try_opt_r!(self.cur_valid_series_mut());
                 let remote = cstate.remote.as_ref();
 
                 match direction {
@@ -336,8 +348,7 @@ impl<'a> UIState<'a> {
                 Ok(())
             }
             Command::Score(raw_score) => {
-                let series = cur_series_mut!(self);
-                let remote = cstate.remote.as_ref();
+                let series = try_opt_r!(self.cur_valid_series_mut());
 
                 let score = match cstate.remote.parse_score(&raw_score) {
                     Some(score) if score == 0 => None,
@@ -350,13 +361,13 @@ impl<'a> UIState<'a> {
 
                 log.capture_status("Setting score", || {
                     series.entry.set_score(score);
-                    series.sync_changes_to_remote(remote)
+                    series.sync_changes_to_remote(cstate.remote.as_ref())
                 });
 
                 Ok(())
             }
             Command::PlayerArgs(args) => {
-                let series = cur_series_mut!(self);
+                let series = try_opt_r!(self.cur_valid_series_mut());
 
                 log.capture_status("Saving player args for series", || {
                     series.player_args = args;
@@ -396,7 +407,7 @@ impl<'a> UIState<'a> {
                     WatchState::Idle => unreachable!(),
                 };
 
-                let series = cur_series_mut!(self);
+                let series = try_opt_r!(self.cur_valid_series_mut());
 
                 if !status.success() {
                     log.push("Player did not exit properly");
@@ -417,7 +428,7 @@ impl<'a> UIState<'a> {
     }
 
     fn start_next_series_episode(&mut self, state: &CommonState) -> Result<()> {
-        let series = cur_series_mut!(self);
+        let series = try_opt_r!(self.cur_valid_series_mut());
 
         series.begin_watching(state.remote.as_ref(), &state.config)?;
 
@@ -442,6 +453,37 @@ impl<'a> UIState<'a> {
 
     fn is_idle(&self) -> bool {
         self.watch_state == WatchState::Idle
+    }
+}
+
+type Nickname = String;
+type Reason = String;
+
+enum SeriesStatus {
+    Valid(Box<Series>),
+    Invalid(Nickname, Reason),
+}
+
+impl SeriesStatus {
+    fn get_valid(&self) -> Option<&Series> {
+        match self {
+            SeriesStatus::Valid(series) => Some(&series),
+            SeriesStatus::Invalid(_, _) => None,
+        }
+    }
+
+    fn get_valid_mut(&mut self) -> Option<&mut Series> {
+        match self {
+            SeriesStatus::Valid(series) => Some(series),
+            SeriesStatus::Invalid(_, _) => None,
+        }
+    }
+
+    fn nickname(&self) -> &str {
+        match self {
+            SeriesStatus::Valid(series) => series.nickname.as_ref(),
+            SeriesStatus::Invalid(nickname, _) => nickname.as_ref(),
+        }
     }
 }
 

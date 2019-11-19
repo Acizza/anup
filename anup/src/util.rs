@@ -1,3 +1,13 @@
+#[macro_export]
+macro_rules! try_opt_r {
+    ($x:expr) => {
+        match $x {
+            Some(value) => value,
+            None => return Ok(()),
+        }
+    };
+}
+
 pub fn ms_from_mins<F>(mins: F) -> String
 where
     F: Into<f32>,

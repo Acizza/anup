@@ -1,5 +1,5 @@
 use super::component::log::StatusLog;
-use super::{Series, UIState, WatchState};
+use super::{Series, SeriesStatus, UIState, WatchState};
 use crate::err::{self, Result};
 use crate::util;
 use anime::remote::ScoreParser;
@@ -84,7 +84,7 @@ where
         let series_names = state
             .series
             .iter()
-            .map(|series| &series.nickname)
+            .map(|series| series.nickname())
             .collect::<SmallVec<[_; 8]>>();
 
         let mut series_list = SelectableList::default()
@@ -120,8 +120,13 @@ where
             .margin(2)
             .split(layout[0]);
 
-        match state.cur_series() {
-            Some(series) => UI::draw_series_info(state, series, score_parser, &info_layout, frame),
+        match state.cur_series_status() {
+            Some(SeriesStatus::Valid(series)) => {
+                UI::draw_series_info(state, series, score_parser, &info_layout, frame)
+            }
+            Some(SeriesStatus::Invalid(_, reason)) => {
+                UI::draw_invalid_series(reason, &info_layout, frame)
+            }
             None => {
                 let header =
                     Text::styled("No Series Found", Style::default().modifier(Modifier::BOLD));
@@ -278,6 +283,24 @@ where
                 }
             }
         }
+    }
+
+    fn draw_invalid_series(reason: &str, layout: &[Rect], frame: &mut Frame<B>) {
+        let header = Text::styled(
+            "Error Processing Series",
+            Style::default().modifier(Modifier::BOLD),
+        );
+
+        Paragraph::new([header].iter())
+            .alignment(Alignment::Center)
+            .render(frame, layout[0]);
+
+        let body = Text::styled(reason, Style::default().fg(Color::Red));
+
+        Paragraph::new([body].iter())
+            .alignment(Alignment::Center)
+            .wrap(true)
+            .render(frame, layout[1]);
     }
 
     fn draw_status_bar(state: &UIState, log: &mut StatusLog, layout: Rect, frame: &mut Frame<B>) {
