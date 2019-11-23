@@ -10,7 +10,7 @@ pub type Result<T> = result::Result<T, Error>;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
-    #[snafu(display("backend lib error: {}", source))]
+    #[snafu(display("anime lib error: {}", source))]
     Anime {
         source: anime::Error,
         backtrace: Backtrace,
