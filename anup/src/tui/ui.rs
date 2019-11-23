@@ -153,6 +153,7 @@ where
 
                 Paragraph::new([body].iter())
                     .alignment(Alignment::Center)
+                    .wrap(true)
                     .render(frame, info_layout[1]);
             }
         }
