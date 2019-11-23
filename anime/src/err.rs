@@ -60,7 +60,7 @@ pub enum Error {
     #[snafu(display("expected episode number for file: {}", name))]
     ExpectedEpNumber { name: String },
 
-    #[snafu(display("failed to parse episode: {}", name))]
+    #[snafu(display("no title or episode found while parsing episode: {}", name))]
     NoEpMatches { name: String },
 
     #[snafu(display(
