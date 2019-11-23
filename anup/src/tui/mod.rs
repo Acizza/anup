@@ -101,19 +101,27 @@ fn init_ui_state<'a>(cstate: &CommonState, args: &ArgMatches) -> Result<UIState<
     let selected_series = match saved_series.last_watched_id {
         Some(id) => series
             .iter()
-            .position(|series| series.get_valid().map(|s| s.info.id == id).unwrap_or(false))
+            .position(|series| {
+                series
+                    .id()
+                    .map(|series_id| series_id == id)
+                    .unwrap_or(false)
+            })
             .unwrap_or(0),
         None => 0,
     };
 
-    Ok(UIState {
+    let mut ui_state = UIState {
         series,
         selected_series,
         saved_series,
         watch_state: WatchState::Idle,
         status_bar_state: StatusBarState::default(),
         last_used_command: None,
-    })
+    };
+
+    ui_state.ensure_cur_series_initialized();
+    Ok(ui_state)
 }
 
 fn init_series_list(
@@ -121,30 +129,11 @@ fn init_series_list(
     args: &ArgMatches,
     saved_series: &mut SavedSeries,
 ) -> Result<Vec<SeriesStatus>> {
-    let push_series = |series, name, list: &mut Vec<SeriesStatus>| {
-        let status = match series {
-            Ok(series) => SeriesStatus::Valid(Box::new(series)),
-            // We want to use the most concise error message possible here, so
-            // we should strip wrappers for external error types down
-            Err(err::Error::Anime { source, .. }) => {
-                SeriesStatus::Invalid(name, format!("{}", source))
-            }
-            Err(err) => SeriesStatus::Invalid(name, format!("{}", err)),
-        };
-
-        list.push(status);
-    };
-
-    let mut series = {
-        let mut results = Vec::with_capacity(saved_series.name_id_map.len());
-
-        for (name, &id) in &saved_series.name_id_map {
-            let series = Series::load(id, name);
-            push_series(series, name.into(), &mut results);
-        }
-
-        results
-    };
+    let mut series = saved_series
+        .name_id_map
+        .iter()
+        .map(|(name, &id)| SeriesStatus::Unloaded(name.into(), id))
+        .collect();
 
     // If the user specified a series, we'll need to check to see if we
     // already have it or fetch & save it otherwise.
@@ -164,7 +153,7 @@ fn init_series_list(
         cstate.remote.as_ref(),
     );
 
-    push_series(new_series, desired_series.into(), &mut series);
+    series.push(SeriesStatus::from_series(new_series, desired_series));
     Ok(series)
 }
 
@@ -195,6 +184,21 @@ impl<'a> UIState<'a> {
     fn cur_valid_series_mut(&mut self) -> Option<&mut Series> {
         self.cur_series_status_mut()
             .and_then(|status| status.get_valid_mut())
+    }
+
+    fn ensure_cur_series_initialized(&mut self) {
+        let series = match self.cur_series_status_mut() {
+            Some(series) => series,
+            None => return,
+        };
+
+        match series {
+            SeriesStatus::Valid(_) | SeriesStatus::Invalid(_, _) => (),
+            SeriesStatus::Unloaded(ref nickname, id) => {
+                let new_series = Series::load(*id, nickname);
+                *series = SeriesStatus::from_series(new_series, nickname);
+            }
+        }
     }
 
     fn process_key(
@@ -251,6 +255,8 @@ impl<'a> UIState<'a> {
                     }
                     _ => self.selected_series,
                 };
+
+                self.ensure_cur_series_initialized();
             }
             _ => (),
         }
@@ -462,13 +468,30 @@ type Reason = String;
 enum SeriesStatus {
     Valid(Box<Series>),
     Invalid(Nickname, Reason),
+    Unloaded(Nickname, anime::remote::SeriesID),
 }
 
 impl SeriesStatus {
+    fn from_series<S>(series: Result<Series>, nickname: S) -> SeriesStatus
+    where
+        S: Into<String>,
+    {
+        match series {
+            Ok(series) => SeriesStatus::Valid(Box::new(series)),
+            // We want to use a somewhat concise error message here, so
+            // we should strip error wrappers that don't provide much context
+            Err(err::Error::Anime { source, .. }) => {
+                SeriesStatus::Invalid(nickname.into(), format!("{}", source))
+            }
+            Err(err) => SeriesStatus::Invalid(nickname.into(), format!("{}", err)),
+        }
+    }
+
     fn get_valid(&self) -> Option<&Series> {
         match self {
             SeriesStatus::Valid(series) => Some(&series),
             SeriesStatus::Invalid(_, _) => None,
+            SeriesStatus::Unloaded(_, _) => None,
         }
     }
 
@@ -476,6 +499,7 @@ impl SeriesStatus {
         match self {
             SeriesStatus::Valid(series) => Some(series),
             SeriesStatus::Invalid(_, _) => None,
+            SeriesStatus::Unloaded(_, _) => None,
         }
     }
 
@@ -483,6 +507,15 @@ impl SeriesStatus {
         match self {
             SeriesStatus::Valid(series) => series.nickname.as_ref(),
             SeriesStatus::Invalid(nickname, _) => nickname.as_ref(),
+            SeriesStatus::Unloaded(nickname, _) => nickname.as_ref(),
+        }
+    }
+
+    fn id(&self) -> Option<anime::remote::SeriesID> {
+        match self {
+            SeriesStatus::Valid(series) => Some(series.info.id),
+            SeriesStatus::Invalid(_, _) => None,
+            SeriesStatus::Unloaded(_, id) => Some(*id),
         }
     }
 }
