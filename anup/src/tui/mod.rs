@@ -98,17 +98,19 @@ fn init_ui_state<'a>(cstate: &CommonState, args: &ArgMatches) -> Result<UIState<
     let mut saved_series = SavedSeries::load_or_default()?;
     let series = init_series_list(&cstate, args, &mut saved_series)?;
 
-    let selected_series = match saved_series.last_watched_id {
-        Some(id) => series
-            .iter()
-            .position(|series| {
-                series
-                    .id()
-                    .map(|series_id| series_id == id)
-                    .unwrap_or(false)
-            })
-            .unwrap_or(0),
-        None => 0,
+    let selected_series = {
+        let desired_series = args
+            .value_of("series")
+            .map(|s| s.into())
+            .or_else(|| saved_series.last_watched.clone());
+
+        match desired_series {
+            Some(desired) => series
+                .iter()
+                .position(|series| series.nickname() == desired)
+                .unwrap_or(0),
+            None => 0,
+        }
     };
 
     let mut ui_state = UIState {
@@ -131,8 +133,8 @@ fn init_series_list(
 ) -> Result<Vec<SeriesStatus>> {
     let mut series = saved_series
         .name_id_map
-        .iter()
-        .map(|(name, &id)| SeriesStatus::Unloaded(name.into(), id))
+        .keys()
+        .map(|name| SeriesStatus::Unloaded(name.into()))
         .collect();
 
     // If the user specified a series, we'll need to check to see if we
@@ -187,16 +189,22 @@ impl<'a> UIState<'a> {
     }
 
     fn ensure_cur_series_initialized(&mut self) {
-        let series = match self.cur_series_status_mut() {
-            Some(series) => series,
+        let status = match self.cur_series_status() {
+            Some(status) => status,
             None => return,
         };
 
-        match series {
+        match status {
             SeriesStatus::Valid(_) | SeriesStatus::Invalid(_, _) => (),
-            SeriesStatus::Unloaded(ref nickname, id) => {
-                let new_series = Series::load(*id, nickname);
-                *series = SeriesStatus::from_series(new_series, nickname);
+            SeriesStatus::Unloaded(ref nickname) => {
+                let new_status = {
+                    let series = self.saved_series.load_series(nickname);
+                    SeriesStatus::from_series(series, nickname)
+                };
+
+                // Unwrapping here is safe as we return early if the status is None earlier
+                let status = self.cur_series_status_mut().unwrap();
+                *status = new_status;
             }
         }
     }
@@ -219,8 +227,8 @@ impl<'a> UIState<'a> {
             // Play next episode
             Key::Char(ch) if ch == state.config.tui.keys.play_next_episode => {
                 let last_watched_changed = {
-                    let id = try_opt_r!(self.cur_valid_series()).info.id;
-                    self.saved_series.set_last_watched(id)
+                    let nickname = try_opt_r!(self.cur_valid_series()).nickname.clone();
+                    self.saved_series.set_last_watched(nickname)
                 };
 
                 if last_watched_changed {
@@ -468,7 +476,7 @@ type Reason = String;
 enum SeriesStatus {
     Valid(Box<Series>),
     Invalid(Nickname, Reason),
-    Unloaded(Nickname, anime::remote::SeriesID),
+    Unloaded(Nickname),
 }
 
 impl SeriesStatus {
@@ -491,7 +499,7 @@ impl SeriesStatus {
         match self {
             SeriesStatus::Valid(series) => Some(&series),
             SeriesStatus::Invalid(_, _) => None,
-            SeriesStatus::Unloaded(_, _) => None,
+            SeriesStatus::Unloaded(_) => None,
         }
     }
 
@@ -499,7 +507,7 @@ impl SeriesStatus {
         match self {
             SeriesStatus::Valid(series) => Some(series),
             SeriesStatus::Invalid(_, _) => None,
-            SeriesStatus::Unloaded(_, _) => None,
+            SeriesStatus::Unloaded(_) => None,
         }
     }
 
@@ -507,15 +515,7 @@ impl SeriesStatus {
         match self {
             SeriesStatus::Valid(series) => series.nickname.as_ref(),
             SeriesStatus::Invalid(nickname, _) => nickname.as_ref(),
-            SeriesStatus::Unloaded(nickname, _) => nickname.as_ref(),
-        }
-    }
-
-    fn id(&self) -> Option<anime::remote::SeriesID> {
-        match self {
-            SeriesStatus::Valid(series) => Some(series.info.id),
-            SeriesStatus::Invalid(_, _) => None,
-            SeriesStatus::Unloaded(_, id) => Some(*id),
+            SeriesStatus::Unloaded(nickname) => nickname.as_ref(),
         }
     }
 }

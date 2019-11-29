@@ -8,7 +8,7 @@ mod util;
 use crate::config::Config;
 use crate::err::Result;
 use crate::file::SaveFile;
-use crate::series::{SavedSeries, Series};
+use crate::series::SavedSeries;
 use anime::remote::RemoteService;
 use chrono::{Duration, Utc};
 use clap::clap_app;
@@ -136,8 +136,12 @@ fn play_episode(args: &ArgMatches) -> Result<()> {
     let config = Config::load_or_create()?;
     let remote = crate::init_remote(args, true)?;
 
-    // TODO: refactor
-    let mut series = match args.value_of("series") {
+    let desired_name = args
+        .value_of("series")
+        .map(|s| s.into())
+        .or_else(|| saved_series.last_watched.clone());
+
+    let mut series = match desired_name {
         Some(existing_series) if saved_series.contains(&existing_series) => {
             saved_series.load_series(existing_series)?
         }
@@ -147,17 +151,10 @@ fn play_episode(args: &ArgMatches) -> Result<()> {
             &config,
             remote.as_ref(),
         )?,
-        None => match saved_series.last_watched_id {
-            Some(last_id) => {
-                // TODO: fetch from remote if this fails
-                // We won't be saving this, so we don't need to set the nickname
-                Series::load(last_id, "")?
-            }
-            None => return Err(err::Error::MustSpecifySeriesName),
-        },
+        None => return Err(err::Error::MustSpecifySeriesName),
     };
 
-    if saved_series.set_last_watched(series.info.id) {
+    if saved_series.set_last_watched(&series.nickname) {
         saved_series.save()?;
     }
 

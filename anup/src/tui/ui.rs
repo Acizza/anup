@@ -127,7 +127,7 @@ where
             Some(SeriesStatus::Invalid(_, reason)) => {
                 UI::draw_invalid_series(reason, &info_layout, frame)
             }
-            Some(SeriesStatus::Unloaded(_, _)) => (),
+            Some(SeriesStatus::Unloaded(_)) => (),
             None => {
                 let header =
                     Text::styled("No Series Found", Style::default().modifier(Modifier::BOLD));

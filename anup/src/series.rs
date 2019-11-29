@@ -424,7 +424,7 @@ impl From<u32> for SeriesEntry {
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct SavedSeries {
-    pub last_watched_id: Option<anime::remote::SeriesID>,
+    pub last_watched: Option<String>,
     pub name_id_map: HashMap<String, anime::remote::SeriesID>,
 }
 
@@ -489,13 +489,18 @@ impl SavedSeries {
             .insert(series.nickname.clone(), series.info.id);
     }
 
-    pub fn set_last_watched(&mut self, id: anime::remote::SeriesID) -> bool {
-        let is_different = match self.last_watched_id {
-            Some(old_id) => old_id != id,
+    pub fn set_last_watched<S>(&mut self, nickname: S) -> bool
+    where
+        S: Into<String>,
+    {
+        let nickname = nickname.into();
+
+        let is_different = match self.last_watched {
+            Some(ref old_name) => *old_name != nickname,
             None => true,
         };
 
-        self.last_watched_id = Some(id);
+        self.last_watched = Some(nickname);
         is_different
     }
 
