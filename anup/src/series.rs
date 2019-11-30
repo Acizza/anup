@@ -5,7 +5,7 @@ use anime::local::{EpisodeMap, EpisodeMatcher};
 use anime::remote::{RemoteService, SeriesInfo, Status};
 use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
-use snafu::OptionExt;
+use snafu::{ensure, OptionExt};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -43,8 +43,17 @@ impl Series {
         // the remote service to avoid potentially putting unnecessary load on the service should
         // any errors crop up.
         let path = match args.value_of("path") {
-            Some(path) => PathBuf::from(path),
+            Some(path) => {
+                let path = PathBuf::from(path);
+                ensure!(path.is_dir(), err::NotADirectory);
+                path
+            }
             None => detect::best_matching_folder(&nickname, &config.series_dir)?,
+        };
+
+        let title = {
+            let path_str = path.file_name().context(err::NoDirName)?.to_string_lossy();
+            detect::parse_folder_title(path_str).ok_or(err::Error::FolderTitleParse)?
         };
 
         let matcher = match args.value_of("matcher") {
@@ -55,7 +64,7 @@ impl Series {
         let episodes = EpisodeMap::parse(&path, &matcher)?;
 
         // Now we can request all of that juicy data from the remote service.
-        let info = best_matching_series_info(remote, &nickname)?;
+        let info = best_matching_series_info(remote, title)?;
         let entry = SeriesEntry::from_remote(remote, &info)?;
 
         let series = Series {

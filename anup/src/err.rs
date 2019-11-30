@@ -73,6 +73,15 @@ pub enum Error {
     #[snafu(display("no series found with name: {}", name))]
     NoMatchingSeries { name: String },
 
+    #[snafu(display("unable to extract series title from folder"))]
+    FolderTitleParse,
+
+    #[snafu(display("path must be a directory"))]
+    NotADirectory,
+
+    #[snafu(display("directory has no name"))]
+    NoDirName,
+
     #[snafu(display("need existing series info to run in offline mode\nrun the program with --prefetch first when an internet connection is available"))]
     RunWithPrefetch,
 
