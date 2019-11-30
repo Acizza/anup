@@ -39,6 +39,9 @@ pub enum Error {
         source: io::Error,
     },
 
+    #[snafu(display("unable to extract series title from folder"))]
+    FolderTitleParse,
+
     #[snafu(display("path must be a directory"))]
     NotADirectory,
 
@@ -53,9 +56,6 @@ pub enum Error {
 
     #[snafu(display("specified path has no parent directory"))]
     NoDirParent,
-
-    #[snafu(display("failed to parse title from specified path: {}", path))]
-    TitleParseFailed { path: String },
 
     #[snafu(display(
         "unable to find matching series with name: {}\nconsider supplying the ID instead with -i",

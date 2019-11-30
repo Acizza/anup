@@ -243,11 +243,8 @@ where
 
     ensure!(path.is_dir(), err::NotADirectory);
 
-    let title = path
-        .file_name()
-        .context(err::NoDirName)?
-        .to_string_lossy()
-        .into_owned();
+    let fname = path.file_name().context(err::NoDirName)?.to_string_lossy();
+    let title = detect::parse_folder_title(fname).context(err::FolderTitleParse)?;
 
     Ok(title)
 }
