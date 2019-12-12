@@ -1,5 +1,6 @@
 # anup
 
+[![Build Status](https://travis-ci.org/Acizza/anup.svg?branch=rewrite)](https://travis-ci.org/Acizza/anup)
 [![dependency status](https://deps.rs/repo/github/acizza/anup/status.svg)](https://deps.rs/repo/github/acizza/anup)
 
 This is a TUI / CLI application to play and manage anime with [AniList](https://anilist.co) for Linux systems.
