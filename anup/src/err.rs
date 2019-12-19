@@ -1,6 +1,7 @@
 use anime::remote::anilist;
 use snafu::{Backtrace, ErrorCompat, GenerateBacktrace, Snafu};
 use std::io;
+use std::num;
 use std::path;
 use std::result;
 use std::sync::mpsc;
@@ -50,23 +51,21 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("message pack encode error [{:?}]: {}", path, source))]
-    RMPEncode {
-        path: path::PathBuf,
-        source: rmp_serde::encode::Error,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display("message pack decode error [{:?}]: {}", path, source))]
-    RMPDecode {
-        path: path::PathBuf,
-        source: rmp_serde::decode::Error,
-        backtrace: Backtrace,
-    },
-
     #[snafu(display("mpsc channel receive error: {}", source))]
     MPSCRecv {
         source: mpsc::RecvError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("SQLite error: {}", source))]
+    Rusqlite {
+        source: rusqlite::Error,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("error parsing int: {}", source))]
+    ParseNum {
+        source: num::ParseIntError,
         backtrace: Backtrace,
     },
 
@@ -162,6 +161,24 @@ impl From<detect::Error> for Error {
                 backtrace,
             },
             detect::Error::NoMatchingSeries { name } => Error::NoMatchingSeries { name },
+        }
+    }
+}
+
+impl From<rusqlite::Error> for Error {
+    fn from(source: rusqlite::Error) -> Self {
+        Self::Rusqlite {
+            source,
+            backtrace: Backtrace::generate(),
+        }
+    }
+}
+
+impl From<num::ParseIntError> for Error {
+    fn from(source: num::ParseIntError) -> Self {
+        Self::ParseNum {
+            source,
+            backtrace: Backtrace::generate(),
         }
     }
 }

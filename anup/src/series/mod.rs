@@ -1,32 +1,28 @@
+pub mod database;
+
 use crate::config::Config;
 use crate::err::{self, Result};
-use crate::file::{FileType, SaveDir, SaveFile};
+use crate::file::SaveDir;
 use anime::local::{EpisodeMap, EpisodeMatcher};
 use anime::remote::{RemoteService, SeriesInfo, Status};
 use chrono::{Local, NaiveDate};
+use database::{Database, Insertable, Selectable};
 use serde::{Deserialize, Serialize};
-use snafu::{ensure, OptionExt};
-use std::collections::HashMap;
+use snafu::{ensure, OptionExt, ResultExt};
+use std::borrow::Cow;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug)]
 pub struct Series {
-    #[serde(skip)]
-    pub nickname: String,
-    #[serde(skip)]
-    pub episodes: EpisodeMap,
-    pub path: PathBuf,
-    pub episode_matcher: EpisodeMatcher,
     pub info: SeriesInfo,
     pub entry: SeriesEntry,
-    pub player_args: Vec<String>,
+    pub config: SeriesConfig,
+    pub episodes: EpisodeMap,
 }
 
 impl Series {
-    const FILE_TYPE: FileType = FileType::MessagePack;
-
     pub fn from_args_and_remote<S, R>(
         args: &clap::ArgMatches,
         nickname: S,
@@ -67,22 +63,61 @@ impl Series {
         let info = best_matching_series_info(remote, title)?;
         let entry = SeriesEntry::from_remote(remote, &info)?;
 
-        let series = Series {
+        let config = SeriesConfig {
+            id: info.id,
             nickname,
-            episodes,
             path,
             episode_matcher: matcher,
+            player_args: Vec::new(),
+        };
+
+        let series = Self {
             info,
             entry,
-            player_args: Vec::new(),
+            config,
+            episodes,
         };
 
         Ok(series)
     }
 
+    pub fn save(&self, db: &Database) -> Result<()> {
+        db.conn()
+            .prepare_cached("BEGIN")
+            .and_then(|mut query| query.execute(rusqlite::NO_PARAMS))?;
+
+        self.config.insert_into_db(db, self.info.id)?;
+        self.info.insert_into_db(db, ())?;
+        self.entry.insert_into_db(db, ())?;
+
+        db.conn()
+            .prepare_cached("END")
+            .and_then(|mut query| query.execute(rusqlite::NO_PARAMS))?;
+
+        Ok(())
+    }
+
+    pub fn load<S>(db: &Database, nickname: S) -> Result<Series>
+    where
+        S: AsRef<str>,
+    {
+        let config = SeriesConfig::select_from_db(db, nickname.as_ref())?;
+        let info = SeriesInfo::select_from_db(db, config.id)?;
+        let entry = SeriesEntry::select_from_db(db, config.id)?;
+
+        let episodes = EpisodeMap::parse(&config.path, &config.episode_matcher)?;
+
+        Ok(Self {
+            info,
+            entry,
+            config,
+            episodes,
+        })
+    }
+
     pub fn episode_path(&self, episode: u32) -> Option<PathBuf> {
         let episode_filename = self.episodes.get(&episode)?;
-        let mut path = self.path.clone();
+        let mut path = self.config.path.clone();
         path.push(episode_filename);
         path.canonicalize().ok()
     }
@@ -95,7 +130,7 @@ impl Series {
         let mut cmd = Command::new(&config.episode.player);
         cmd.arg(episode_path);
         cmd.args(&config.episode.player_args);
-        cmd.args(&self.player_args);
+        cmd.args(&self.config.player_args);
         cmd.stdout(Stdio::null());
         cmd.stderr(Stdio::null());
         cmd.stdin(Stdio::null());
@@ -103,89 +138,11 @@ impl Series {
         Ok(cmd)
     }
 
-    pub fn save_path(id: anime::remote::SeriesID) -> PathBuf {
-        let mut path = PathBuf::from(SaveDir::LocalData.path());
-        path.push(id.to_string());
-        path.set_extension(Series::FILE_TYPE.extension());
-        path
-    }
-
-    pub fn save(&self) -> Result<()> {
-        let path = Series::save_path(self.info.id);
-        Series::FILE_TYPE.serialize_to_file(path, self)
-    }
-
-    pub fn load<S>(id: anime::remote::SeriesID, nickname: S) -> Result<Series>
-    where
-        S: Into<String>,
-    {
-        let path = Series::save_path(id);
-
-        let mut series: Series = Series::FILE_TYPE.deserialize_from_file(path)?;
-        series.nickname = nickname.into();
-        series.episodes = EpisodeMap::parse(&series.path, &series.episode_matcher)?;
-
-        Ok(series)
-    }
-
-    pub fn force_sync_changes_to_remote<R>(&mut self, remote: &R) -> Result<()>
+    pub fn begin_watching<R>(&mut self, remote: &R, config: &Config, db: &Database) -> Result<()>
     where
         R: RemoteService + ?Sized,
     {
-        if remote.is_offline() {
-            return self.save();
-        }
-
-        remote.update_list_entry(self.entry.inner())?;
-
-        self.entry.needs_sync = false;
-        self.save()
-    }
-
-    pub fn sync_changes_to_remote<R>(&mut self, remote: &R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
-        if !self.entry.needs_sync {
-            return Ok(());
-        }
-
-        self.force_sync_changes_to_remote(remote)
-    }
-
-    pub fn force_sync_changes_from_remote<R>(&mut self, remote: &R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
-        if remote.is_offline() {
-            return Ok(());
-        }
-
-        self.entry = match remote.get_list_entry(self.entry.id())? {
-            Some(entry) => SeriesEntry::from(entry),
-            None => SeriesEntry::from(self.info.id),
-        };
-
-        self.entry.needs_sync = false;
-        self.save()
-    }
-
-    pub fn sync_changes_from_remote<R>(&mut self, remote: &R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
-        if self.entry.needs_sync {
-            return Ok(());
-        }
-
-        self.force_sync_changes_from_remote(remote)
-    }
-
-    pub fn begin_watching<R>(&mut self, remote: &R, config: &Config) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
-        self.sync_changes_from_remote(remote)?;
+        self.entry.sync_from_remote(remote)?;
 
         let entry = &mut self.entry;
         let last_status = entry.status();
@@ -214,31 +171,32 @@ impl Series {
             }
         }
 
-        self.sync_changes_to_remote(remote)
+        self.entry.sync_to_remote(remote)?;
+        self.save(db)
     }
 
-    pub fn episode_completed<R>(&mut self, remote: &R, config: &Config) -> Result<()>
+    pub fn episode_completed<R>(&mut self, remote: &R, config: &Config, db: &Database) -> Result<()>
     where
         R: RemoteService + ?Sized,
     {
-        let entry = &mut self.entry;
-        let new_progress = entry.watched_eps() + 1;
+        let new_progress = self.entry.watched_eps() + 1;
 
         if new_progress >= self.info.episodes {
             // The watched episode range is inclusive, so it's fine to bump the watched count
             // if we're at exactly at the last episode
             if new_progress == self.info.episodes {
-                entry.set_watched_eps(new_progress);
+                self.entry.set_watched_eps(new_progress);
             }
 
-            return self.series_complete(remote, config);
+            return self.series_complete(remote, config, db);
         }
 
-        entry.set_watched_eps(new_progress);
-        self.sync_changes_to_remote(remote)
+        self.entry.set_watched_eps(new_progress);
+        self.entry.sync_to_remote(remote)?;
+        self.save(db)
     }
 
-    pub fn episode_regressed<R>(&mut self, remote: &R, config: &Config) -> Result<()>
+    pub fn episode_regressed<R>(&mut self, remote: &R, config: &Config, db: &Database) -> Result<()>
     where
         R: RemoteService + ?Sized,
     {
@@ -252,10 +210,11 @@ impl Series {
         };
 
         entry.set_status(new_status, config);
-        self.sync_changes_to_remote(remote)
+        entry.sync_to_remote(remote)?;
+        self.save(db)
     }
 
-    pub fn series_complete<R>(&mut self, remote: &R, config: &Config) -> Result<()>
+    pub fn series_complete<R>(&mut self, remote: &R, config: &Config, db: &Database) -> Result<()>
     where
         R: RemoteService + ?Sized,
     {
@@ -267,42 +226,8 @@ impl Series {
         }
 
         entry.set_status(Status::Completed, config);
-        self.sync_changes_to_remote(remote)
-    }
-}
-
-pub fn best_matching_series_info<R, S>(remote: &R, name: S) -> Result<SeriesInfo>
-where
-    R: RemoteService + ?Sized,
-    S: AsRef<str>,
-{
-    let name = name.as_ref();
-
-    let mut results = remote.search_info_by_name(name)?;
-    let index = detect::best_matching_info(name, results.as_slice())
-        .context(err::NoMatchingSeries { name })?;
-
-    let info = results.swap_remove(index);
-    Ok(info)
-}
-
-pub fn episode_matcher_with_pattern<S>(pattern: S) -> Result<EpisodeMatcher>
-where
-    S: AsRef<str>,
-{
-    let pattern = pattern
-        .as_ref()
-        .replace("{title}", "(?P<title>.+)")
-        .replace("{episode}", r"(?P<episode>\d+)");
-
-    match EpisodeMatcher::from_pattern(pattern) {
-        Ok(matcher) => Ok(matcher),
-        // We want to use a more specific error message than the one the anime library
-        // provides
-        Err(anime::Error::MissingCustomMatcherGroup { group }) => {
-            Err(err::Error::MissingEpisodeMatcherGroup { group })
-        }
-        Err(err) => Err(err.into()),
+        entry.sync_to_remote(remote)?;
+        self.save(db)
     }
 }
 
@@ -321,6 +246,57 @@ impl SeriesEntry {
             Some(entry) => Ok(SeriesEntry::from(entry)),
             None => Ok(SeriesEntry::from(info.id)),
         }
+    }
+
+    pub fn force_sync_to_remote<R>(&mut self, remote: &R) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+    {
+        if remote.is_offline() {
+            return Ok(());
+        }
+
+        remote.update_list_entry(self.inner())?;
+        self.needs_sync = false;
+        Ok(())
+    }
+
+    pub fn sync_to_remote<R>(&mut self, remote: &R) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+    {
+        if !self.needs_sync {
+            return Ok(());
+        }
+
+        self.force_sync_to_remote(remote)
+    }
+
+    pub fn force_sync_from_remote<R>(&mut self, remote: &R) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+    {
+        if remote.is_offline() {
+            return Ok(());
+        }
+
+        *self = match remote.get_list_entry(self.id())? {
+            Some(entry) => SeriesEntry::from(entry),
+            None => SeriesEntry::from(self.id()),
+        };
+
+        Ok(())
+    }
+
+    pub fn sync_from_remote<R>(&mut self, remote: &R) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+    {
+        if self.needs_sync {
+            return Ok(());
+        }
+
+        self.force_sync_from_remote(remote)
     }
 
     #[inline(always)]
@@ -431,122 +407,101 @@ impl From<u32> for SeriesEntry {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
-pub struct SavedSeries {
-    pub last_watched: Option<String>,
-    pub name_id_map: HashMap<String, anime::remote::SeriesID>,
+#[derive(Debug)]
+pub struct SeriesConfig {
+    pub id: u32,
+    pub nickname: String,
+    pub path: PathBuf,
+    pub episode_matcher: EpisodeMatcher,
+    pub player_args: Vec<String>,
 }
 
-impl SavedSeries {
-    pub fn load_or_default() -> Result<SavedSeries> {
-        match SavedSeries::load() {
-            Ok(saved_series) => Ok(saved_series),
-            Err(ref err) if err.is_file_nonexistant() => Ok(SavedSeries::default()),
-            Err(err) => Err(err),
+pub struct LastWatched(Option<String>);
+
+impl LastWatched {
+    pub fn load() -> Result<Self> {
+        let path = Self::validated_path()?;
+
+        if !path.exists() {
+            return Ok(Self(None));
         }
+
+        let last_watched = fs::read_to_string(&path).context(err::FileIO { path })?;
+        Ok(Self(Some(last_watched)))
     }
 
-    pub fn load_series<S>(&self, nickname: S) -> Result<Series>
+    #[inline(always)]
+    pub fn get(&self) -> &Option<String> {
+        &self.0
+    }
+
+    pub fn set<'a, S>(&mut self, nickname: S) -> bool
     where
-        S: AsRef<str> + Into<String>,
-    {
-        let id = match self.name_id_map.get(nickname.as_ref()) {
-            Some(&id) => id,
-            None => {
-                return Err(err::Error::NoMatchingSeries {
-                    name: nickname.into(),
-                })
-            }
-        };
-
-        Series::load(id, nickname)
-    }
-
-    pub fn load_all_series_and_validate(&mut self) -> Result<Vec<Series>> {
-        let mut results = Vec::with_capacity(self.name_id_map.len());
-
-        self.name_id_map
-            .retain(|name, &mut id| match Series::load(id, name) {
-                Ok(series) => {
-                    if !series.path.exists() {
-                        return false;
-                    }
-
-                    results.push(series);
-                    true
-                }
-                Err(_) => {
-                    let data_path = Series::save_path(id);
-                    fs::remove_file(data_path).ok();
-                    false
-                }
-            });
-
-        results.shrink_to_fit();
-        Ok(results)
-    }
-
-    pub fn contains<S>(&self, nickname: S) -> bool
-    where
-        S: AsRef<str>,
-    {
-        self.name_id_map.contains_key(nickname.as_ref())
-    }
-
-    pub fn insert(&mut self, series: &Series) {
-        self.name_id_map
-            .insert(series.nickname.clone(), series.info.id);
-    }
-
-    pub fn set_last_watched<S>(&mut self, nickname: S) -> bool
-    where
-        S: Into<String>,
+        S: Into<Cow<'a, str>>,
     {
         let nickname = nickname.into();
 
-        let is_different = match self.last_watched {
-            Some(ref old_name) => *old_name != nickname,
-            None => true,
-        };
+        let is_different = self
+            .0
+            .as_ref()
+            .map(|existing| existing != nickname.as_ref())
+            .unwrap_or(true);
 
-        self.last_watched = Some(nickname);
+        if is_different {
+            self.0 = Some(nickname.into_owned());
+        }
+
         is_different
     }
 
-    pub fn insert_and_save_from_args_and_remote<S, R>(
-        &mut self,
-        args: &clap::ArgMatches,
-        nickname: S,
-        config: &Config,
-        remote: &R,
-    ) -> Result<Series>
-    where
-        S: Into<String>,
-        R: RemoteService + ?Sized,
-    {
-        let series = Series::from_args_and_remote(args, nickname, config, remote)?;
+    pub fn save(&self) -> Result<()> {
+        let contents = match &self.0 {
+            Some(contents) => contents,
+            None => return Ok(()),
+        };
 
-        // We should save the new series to disk before the saved series list, so we don't
-        // potentially end up with dangling mapping should the new series fail to save.
-        series.save()?;
+        let path = Self::validated_path()?;
+        fs::write(&path, contents).context(err::FileIO { path })
+    }
 
-        self.insert(&series);
-        self.save()?;
-
-        Ok(series)
+    pub fn validated_path() -> Result<PathBuf> {
+        let mut path = SaveDir::LocalData.validated_path()?.to_path_buf();
+        path.push("last_watched");
+        Ok(path)
     }
 }
 
-impl SaveFile for SavedSeries {
-    fn filename() -> &'static str {
-        "series_list"
-    }
+pub fn best_matching_series_info<R, S>(remote: &R, name: S) -> Result<SeriesInfo>
+where
+    R: RemoteService + ?Sized,
+    S: AsRef<str>,
+{
+    let name = name.as_ref();
 
-    fn file_type() -> FileType {
-        FileType::Toml
-    }
+    let mut results = remote.search_info_by_name(name)?;
+    let index = detect::best_matching_info(name, results.as_slice())
+        .context(err::NoMatchingSeries { name })?;
 
-    fn save_dir() -> SaveDir {
-        SaveDir::LocalData
+    let info = results.swap_remove(index);
+    Ok(info)
+}
+
+pub fn episode_matcher_with_pattern<S>(pattern: S) -> Result<EpisodeMatcher>
+where
+    S: AsRef<str>,
+{
+    let pattern = pattern
+        .as_ref()
+        .replace("{title}", "(?P<title>.+)")
+        .replace("{episode}", r"(?P<episode>\d+)");
+
+    match EpisodeMatcher::from_pattern(pattern) {
+        Ok(matcher) => Ok(matcher),
+        // We want to use a more specific error message than the one the anime library
+        // provides
+        Err(anime::Error::MissingCustomMatcherGroup { group }) => {
+            Err(err::Error::MissingEpisodeMatcherGroup { group })
+        }
+        Err(err) => Err(err.into()),
     }
 }

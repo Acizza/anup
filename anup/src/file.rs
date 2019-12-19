@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use snafu::ResultExt;
-use std::fs::{self, File};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 pub trait SaveFile
@@ -14,34 +14,32 @@ where
     fn file_type() -> FileType;
     fn save_dir() -> SaveDir;
 
-    fn save_path() -> PathBuf {
-        let mut path = PathBuf::from(Self::save_dir().path());
+    fn save_path() -> Result<PathBuf> {
+        let mut path = Self::save_dir().validated_path()?.to_path_buf();
         path.push(Self::filename());
         path.set_extension(Self::file_type().extension());
-        path
+        Ok(path)
     }
 
     fn load() -> Result<Self> {
-        let path = Self::save_path();
+        let path = Self::save_path()?;
         Self::file_type().deserialize_from_file(path)
     }
 
     fn save(&self) -> Result<()> {
-        let path = Self::save_path();
+        let path = Self::save_path()?;
         Self::file_type().serialize_to_file(path, self)
     }
 }
 
 pub enum FileType {
     Toml,
-    MessagePack,
 }
 
 impl FileType {
     pub fn extension(&self) -> &'static str {
         match self {
             FileType::Toml => "toml",
-            FileType::MessagePack => "mpack",
         }
     }
 
@@ -52,19 +50,9 @@ impl FileType {
     {
         let path = path.as_ref();
 
-        if let Some(dir) = path.parent() {
-            if !dir.exists() {
-                fs::create_dir_all(dir).context(err::FileIO { path })?;
-            }
-        }
-
         match self {
             FileType::Toml => {
                 let serialized = toml::to_string_pretty(item).context(err::TomlEncode { path })?;
-                fs::write(path, serialized).context(err::FileIO { path })
-            }
-            FileType::MessagePack => {
-                let serialized = rmp_serde::to_vec(item).context(err::RMPEncode { path })?;
                 fs::write(path, serialized).context(err::FileIO { path })
             }
         }
@@ -81,10 +69,6 @@ impl FileType {
             FileType::Toml => {
                 let contents = fs::read_to_string(path).context(err::FileIO { path })?;
                 toml::from_str(&contents).context(err::TomlDecode { path })
-            }
-            FileType::MessagePack => {
-                let file = File::open(path).context(err::FileIO { path })?;
-                rmp_serde::from_read(file).context(err::RMPDecode { path })
             }
         }
     }
@@ -115,6 +99,18 @@ impl SaveDir {
             SaveDir::Config => CONFIG_PATH.as_ref(),
             SaveDir::LocalData => LOCALDATA_PATH.as_ref(),
         }
+    }
+
+    pub fn validated_path(&self) -> Result<&Path> {
+        let path = self.path();
+
+        if let Some(dir) = path.parent() {
+            if !dir.exists() {
+                fs::create_dir_all(dir).context(err::FileIO { path })?;
+            }
+        }
+
+        Ok(path)
     }
 }
 

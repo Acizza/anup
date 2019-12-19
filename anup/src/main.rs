@@ -8,8 +8,9 @@ mod util;
 use crate::config::Config;
 use crate::err::Result;
 use crate::file::SaveFile;
-use crate::series::SavedSeries;
-use anime::remote::RemoteService;
+use crate::series::database::{Database as SeriesDatabase, Insertable, Selectable};
+use crate::series::{LastWatched, Series};
+use anime::remote::{RemoteService, SeriesInfo};
 use chrono::{Duration, Utc};
 use clap::clap_app;
 use clap::ArgMatches;
@@ -81,22 +82,17 @@ fn init_remote(args: &ArgMatches, can_use_offline: bool) -> Result<Box<dyn Remot
 }
 
 fn prefetch(args: &ArgMatches) -> Result<()> {
-    let mut saved_series = SavedSeries::load_or_default()?;
-
     let desired_series = match args.value_of("series") {
         Some(desired_series) => desired_series,
         None => return Err(err::Error::MustSpecifySeriesName),
     };
 
     let config = Config::load_or_create()?;
-    let remote = crate::init_remote(args, false)?;
+    let db = SeriesDatabase::open()?;
+    let remote = init_remote(args, false)?;
 
-    let series = saved_series.insert_and_save_from_args_and_remote(
-        args,
-        desired_series,
-        &config,
-        remote.as_ref(),
-    )?;
+    let series = Series::from_args_and_remote(args, desired_series, &config, remote.as_ref())?;
+    series.save(&db)?;
 
     println!(
         "{} was fetched\nyou can now watch this series offline",
@@ -107,22 +103,27 @@ fn prefetch(args: &ArgMatches) -> Result<()> {
 }
 
 fn sync(args: &ArgMatches) -> Result<()> {
-    let mut saved_series = SavedSeries::load_or_default()?;
-    let mut series_list = saved_series.load_all_series_and_validate()?;
+    let db = SeriesDatabase::open()?;
+    let mut list_entries = series::database::get_series_entries_need_sync(&db)?;
 
-    let remote = crate::init_remote(args, false)?;
+    if list_entries.is_empty() {
+        return Ok(());
+    }
 
-    for series in &mut series_list {
-        if !series.entry.needs_sync() {
-            continue;
+    let remote = init_remote(args, false)?;
+
+    for entry in &mut list_entries {
+        match SeriesInfo::select_from_db(&db, entry.id()) {
+            Ok(info) => println!("{} is being synced..", info.title.preferred),
+            Err(err) => eprintln!(
+                "warning: failed to get info for anime with ID {}: {}",
+                entry.id(),
+                err
+            ),
         }
 
-        println!("{} is being synced..", series.info.title.preferred);
-
-        match series.force_sync_changes_to_remote(remote.as_ref()) {
-            Ok(()) => series.save()?,
-            Err(err) => eprintln!("{} failed to sync:\n", err),
-        }
+        entry.sync_to_remote(remote.as_ref())?;
+        entry.insert_into_db(&db, ())?;
     }
 
     Ok(())
@@ -131,34 +132,35 @@ fn sync(args: &ArgMatches) -> Result<()> {
 fn play_episode(args: &ArgMatches) -> Result<()> {
     use anime::remote::Status;
 
-    let mut saved_series = SavedSeries::load_or_default()?;
-
     let config = Config::load_or_create()?;
-    let remote = crate::init_remote(args, true)?;
+    let db = SeriesDatabase::open()?;
+    let mut last_watched = LastWatched::load()?;
 
-    let desired_name = args
+    let remote = init_remote(args, true)?;
+    let remote = remote.as_ref();
+
+    let desired_series = args
         .value_of("series")
-        .map(|s| s.into())
-        .or_else(|| saved_series.last_watched.clone());
+        .map(str::to_string)
+        .or_else(|| last_watched.get().clone());
 
-    let mut series = match desired_name {
-        Some(existing_series) if saved_series.contains(&existing_series) => {
-            saved_series.load_series(existing_series)?
+    let series_names = series::database::get_series_names(&db)?;
+
+    let mut series = match desired_series {
+        Some(desired) if series_names.contains(&desired) => Series::load(&db, desired)?,
+        Some(desired) => {
+            let series = Series::from_args_and_remote(args, desired, &config, remote)?;
+            series.save(&db)?;
+            series
         }
-        Some(new_series) => saved_series.insert_and_save_from_args_and_remote(
-            args,
-            new_series,
-            &config,
-            remote.as_ref(),
-        )?,
         None => return Err(err::Error::MustSpecifySeriesName),
     };
 
-    if saved_series.set_last_watched(&series.nickname) {
-        saved_series.save()?;
+    if last_watched.set(&series.config.nickname) {
+        last_watched.save()?;
     }
 
-    series.begin_watching(remote.as_ref(), &config)?;
+    series.begin_watching(remote, &config, &db)?;
 
     let progress_time = {
         let secs_must_watch =
@@ -180,7 +182,7 @@ fn play_episode(args: &ArgMatches) -> Result<()> {
     ensure!(status.success(), err::AbnormalPlayerExit);
 
     if Utc::now() >= progress_time {
-        series.episode_completed(remote.as_ref(), &config)?;
+        series.episode_completed(remote, &config, &db)?;
 
         if series.entry.status() == Status::Completed {
             println!("{} completed!", series.info.title.preferred);

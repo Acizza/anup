@@ -4,7 +4,8 @@ mod ui;
 use crate::config::Config;
 use crate::err::{self, Result};
 use crate::file::SaveFile;
-use crate::series::{SavedSeries, Series};
+use crate::series::database::Database as SeriesDatabase;
+use crate::series::{self, LastWatched, Series};
 use crate::try_opt_r;
 use anime::remote::RemoteService;
 use chrono::{DateTime, Duration, Utc};
@@ -23,8 +24,9 @@ pub fn run(args: &ArgMatches) -> Result<()> {
     let mut cstate = {
         let config = Config::load_or_create()?;
         let remote = init_remote(args, &mut ui.status_log);
+        let db = SeriesDatabase::open()?;
 
-        CommonState { config, remote }
+        CommonState { config, remote, db }
     };
 
     let mut ui_state = init_ui_state(&cstate, args)?;
@@ -92,17 +94,18 @@ fn init_remote(args: &ArgMatches, log: &mut StatusLog) -> Box<dyn RemoteService>
 struct CommonState {
     config: Config,
     remote: Box<dyn RemoteService>,
+    db: SeriesDatabase,
 }
 
 fn init_ui_state<'a>(cstate: &CommonState, args: &ArgMatches) -> Result<UIState<'a>> {
-    let mut saved_series = SavedSeries::load_or_default()?;
-    let series = init_series_list(&cstate, args, &mut saved_series)?;
+    let series = init_series_list(&cstate, args)?;
+    let last_watched = LastWatched::load()?;
 
     let selected_series = {
         let desired_series = args
             .value_of("series")
             .map(|s| s.into())
-            .or_else(|| saved_series.last_watched.clone());
+            .or_else(|| last_watched.get().clone());
 
         match desired_series {
             Some(desired) => series
@@ -116,44 +119,46 @@ fn init_ui_state<'a>(cstate: &CommonState, args: &ArgMatches) -> Result<UIState<
     let mut ui_state = UIState {
         series,
         selected_series,
-        saved_series,
+        last_watched,
         watch_state: WatchState::Idle,
         status_bar_state: StatusBarState::default(),
         last_used_command: None,
     };
 
-    ui_state.ensure_cur_series_initialized();
+    ui_state.ensure_cur_series_initialized(&cstate.db);
     Ok(ui_state)
 }
 
-fn init_series_list(
-    cstate: &CommonState,
-    args: &ArgMatches,
-    saved_series: &mut SavedSeries,
-) -> Result<Vec<SeriesStatus>> {
-    let mut series = saved_series
-        .name_id_map
-        .keys()
-        .map(|name| SeriesStatus::Unloaded(name.into()))
+fn init_series_list(cstate: &CommonState, args: &ArgMatches) -> Result<Vec<SeriesStatus>> {
+    let series_names = series::database::get_series_names(&cstate.db)?;
+
+    // Did the user specify a series that we don't have?
+    let new_desired_series = args.value_of("series").and_then(|desired| {
+        if series_names.contains(&desired.to_string()) {
+            None
+        } else {
+            Some(desired)
+        }
+    });
+
+    let mut series = series_names
+        .into_iter()
+        .map(SeriesStatus::Unloaded)
         .collect();
 
-    // If the user specified a series, we'll need to check to see if we
-    // already have it or fetch & save it otherwise.
-    let desired_series = match args.value_of("series") {
+    // If we have the series, there's nothing left to do
+    let desired_series = match new_desired_series {
         Some(desired_series) => desired_series,
         None => return Ok(series),
     };
 
-    if saved_series.contains(desired_series) {
-        return Ok(series);
-    }
-
-    let new_series = saved_series.insert_and_save_from_args_and_remote(
-        args,
-        desired_series,
-        &cstate.config,
-        cstate.remote.as_ref(),
-    );
+    // Otherwise, we'll need to fetch & save it
+    let new_series =
+        Series::from_args_and_remote(args, desired_series, &cstate.config, cstate.remote.as_ref())
+            .and_then(|series| {
+                series.save(&cstate.db)?;
+                Ok(series)
+            });
 
     series.push(SeriesStatus::from_series(new_series, desired_series));
     Ok(series)
@@ -163,7 +168,7 @@ fn init_series_list(
 pub struct UIState<'a> {
     series: Vec<SeriesStatus>,
     selected_series: usize,
-    saved_series: SavedSeries,
+    last_watched: LastWatched,
     watch_state: WatchState,
     status_bar_state: StatusBarState<'a>,
     last_used_command: Option<Command>,
@@ -188,7 +193,7 @@ impl<'a> UIState<'a> {
             .and_then(|status| status.get_valid_mut())
     }
 
-    fn ensure_cur_series_initialized(&mut self) {
+    fn ensure_cur_series_initialized(&mut self, db: &SeriesDatabase) {
         let status = match self.cur_series_status() {
             Some(status) => status,
             None => return,
@@ -198,7 +203,7 @@ impl<'a> UIState<'a> {
             SeriesStatus::Valid(_) | SeriesStatus::Invalid(_, _) => (),
             SeriesStatus::Unloaded(ref nickname) => {
                 let new_status = {
-                    let series = self.saved_series.load_series(nickname);
+                    let series = Series::load(db, nickname);
                     SeriesStatus::from_series(series, nickname)
                 };
 
@@ -226,14 +231,13 @@ impl<'a> UIState<'a> {
         match key {
             // Play next episode
             Key::Char(ch) if ch == state.config.tui.keys.play_next_episode => {
-                let last_watched_changed = {
-                    let nickname = try_opt_r!(self.cur_valid_series()).nickname.clone();
-                    self.saved_series.set_last_watched(nickname)
-                };
+                let series = try_opt_r!(self.cur_valid_series());
+                let nickname = series.config.nickname.clone();
+                let is_diff_series = self.last_watched.set(nickname);
 
-                if last_watched_changed {
-                    log.capture_status("Marking series as the last watched one", || {
-                        self.saved_series.save()
+                if is_diff_series {
+                    log.capture_status("Setting series as last watched", || {
+                        self.last_watched.save()
                     });
                 }
 
@@ -264,7 +268,7 @@ impl<'a> UIState<'a> {
                     _ => self.selected_series,
                 };
 
-                self.ensure_cur_series_initialized();
+                self.ensure_cur_series_initialized(&state.db);
             }
             _ => (),
         }
@@ -314,28 +318,34 @@ impl<'a> UIState<'a> {
         match command {
             Command::SyncFromRemote => {
                 let series = try_opt_r!(self.cur_valid_series_mut());
+                let remote = cstate.remote.as_ref();
 
                 log.capture_status("Syncing entry from remote", || {
-                    series.force_sync_changes_from_remote(cstate.remote.as_ref())
+                    series.entry.force_sync_from_remote(remote)?;
+                    series.save(&cstate.db)
                 });
 
                 Ok(())
             }
             Command::SyncToRemote => {
                 let series = try_opt_r!(self.cur_valid_series_mut());
+                let remote = cstate.remote.as_ref();
 
                 log.capture_status("Syncing entry to remote", || {
-                    series.force_sync_changes_to_remote(cstate.remote.as_ref())
+                    series.entry.force_sync_to_remote(remote)?;
+                    series.save(&cstate.db)
                 });
 
                 Ok(())
             }
             Command::Status(status) => {
                 let series = try_opt_r!(self.cur_valid_series_mut());
+                let remote = cstate.remote.as_ref();
 
                 log.capture_status(format!("Setting series status to \"{}\"", status), || {
                     series.entry.set_status(status, &cstate.config);
-                    series.sync_changes_to_remote(cstate.remote.as_ref())
+                    series.entry.sync_to_remote(remote)?;
+                    series.save(&cstate.db)
                 });
 
                 Ok(())
@@ -349,12 +359,12 @@ impl<'a> UIState<'a> {
                 match direction {
                     ProgressDirection::Forwards => {
                         log.capture_status("Forcing forward watch progress", || {
-                            series.episode_completed(remote, &cstate.config)
+                            series.episode_completed(remote, &cstate.config, &cstate.db)
                         });
                     }
                     ProgressDirection::Backwards => {
                         log.capture_status("Forcing backwards watch progress", || {
-                            series.episode_regressed(remote, &cstate.config)
+                            series.episode_regressed(remote, &cstate.config, &cstate.db)
                         });
                     }
                 }
@@ -373,9 +383,12 @@ impl<'a> UIState<'a> {
                     }
                 };
 
+                let remote = cstate.remote.as_ref();
+
                 log.capture_status("Setting score", || {
                     series.entry.set_score(score);
-                    series.sync_changes_to_remote(cstate.remote.as_ref())
+                    series.entry.sync_to_remote(remote)?;
+                    series.save(&cstate.db)
                 });
 
                 Ok(())
@@ -384,8 +397,8 @@ impl<'a> UIState<'a> {
                 let series = try_opt_r!(self.cur_valid_series_mut());
 
                 log.capture_status("Saving player args for series", || {
-                    series.player_args = args;
-                    series.save()
+                    series.config.player_args = args;
+                    series.save(&cstate.db)
                 });
 
                 Ok(())
@@ -430,7 +443,7 @@ impl<'a> UIState<'a> {
 
                 if Utc::now() >= progress_time {
                     log.capture_status("Marking episode as completed", || {
-                        series.episode_completed(state.remote.as_ref(), &state.config)
+                        series.episode_completed(state.remote.as_ref(), &state.config, &state.db)
                     });
                 } else {
                     log.push("Not marking episode as completed");
@@ -444,7 +457,7 @@ impl<'a> UIState<'a> {
     fn start_next_series_episode(&mut self, state: &CommonState) -> Result<()> {
         let series = try_opt_r!(self.cur_valid_series_mut());
 
-        series.begin_watching(state.remote.as_ref(), &state.config)?;
+        series.begin_watching(state.remote.as_ref(), &state.config, &state.db)?;
 
         let next_ep = series.entry.watched_eps() + 1;
 
@@ -513,7 +526,7 @@ impl SeriesStatus {
 
     fn nickname(&self) -> &str {
         match self {
-            SeriesStatus::Valid(series) => series.nickname.as_ref(),
+            SeriesStatus::Valid(series) => series.config.nickname.as_ref(),
             SeriesStatus::Invalid(nickname, _) => nickname.as_ref(),
             SeriesStatus::Unloaded(nickname) => nickname.as_ref(),
         }
