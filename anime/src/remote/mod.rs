@@ -7,6 +7,9 @@ use snafu::ResultExt;
 use std::borrow::Cow;
 use std::fmt;
 
+#[cfg(feature = "rusqlite-support")]
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
+
 /// Type representing the ID of an anime series.
 pub type SeriesID = u32;
 
@@ -158,6 +161,37 @@ impl fmt::Display for Status {
         };
 
         write!(f, "{}", value)
+    }
+}
+
+#[cfg(feature = "rusqlite-support")]
+impl FromSql for Status {
+    fn column_result(value: ValueRef) -> FromSqlResult<Self> {
+        match value.as_i64()? {
+            1 => Ok(Status::Watching),
+            2 => Ok(Status::Completed),
+            3 => Ok(Status::OnHold),
+            4 => Ok(Status::Dropped),
+            5 => Ok(Status::PlanToWatch),
+            6 => Ok(Status::Rewatching),
+            _ => Err(FromSqlError::InvalidType),
+        }
+    }
+}
+
+#[cfg(feature = "rusqlite-support")]
+impl ToSql for Status {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput> {
+        let value = match self {
+            Status::Watching => 1,
+            Status::Completed => 2,
+            Status::OnHold => 3,
+            Status::Dropped => 4,
+            Status::PlanToWatch => 5,
+            Status::Rewatching => 6,
+        };
+
+        Ok(value.into())
     }
 }
 

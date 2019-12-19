@@ -8,6 +8,9 @@ use std::fs;
 use std::ops::Deref;
 use std::path::Path;
 
+#[cfg(feature = "rusqlite-support")]
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, Value, ValueRef};
+
 /// A regex pattern to parse episode files.
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct EpisodeMatcher(#[serde(with = "optional_regex_parser")] Option<Regex>);
@@ -92,6 +95,39 @@ impl EpisodeMatcher {
             Some(matcher) => matcher,
             None => &DEFAULT_MATCHER,
         }
+    }
+}
+
+#[cfg(feature = "rusqlite-support")]
+impl FromSql for EpisodeMatcher {
+    fn column_result(value: ValueRef) -> FromSqlResult<Self> {
+        use std::str;
+
+        match value {
+            ValueRef::Null => Ok(EpisodeMatcher::new()),
+            ValueRef::Text(bytes) => {
+                let pattern =
+                    str::from_utf8(bytes).map_err(|err| FromSqlError::Other(Box::new(err)))?;
+
+                let matcher = EpisodeMatcher::from_pattern(pattern)
+                    .map_err(|err| FromSqlError::Other(Box::new(err)))?;
+
+                Ok(matcher)
+            }
+            _ => Err(FromSqlError::InvalidType),
+        }
+    }
+}
+
+#[cfg(feature = "rusqlite-support")]
+impl ToSql for EpisodeMatcher {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput> {
+        let result = match &self.0 {
+            Some(matcher) => matcher.as_str().as_bytes().into(),
+            None => ToSqlOutput::Owned(Value::Null),
+        };
+
+        Ok(result)
     }
 }
 
