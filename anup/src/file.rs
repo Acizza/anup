@@ -1,5 +1,5 @@
 use crate::err::{self, Result};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use snafu::ResultExt;
@@ -81,23 +81,22 @@ pub enum SaveDir {
 
 impl SaveDir {
     pub fn path(&self) -> &Path {
-        lazy_static! {
-            static ref CONFIG_PATH: PathBuf = {
-                let mut dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("~/.config/"));
-                dir.push(env!("CARGO_PKG_NAME"));
-                dir
-            };
-            static ref LOCALDATA_PATH: PathBuf = {
-                let mut dir =
-                    dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("~/.local/share/"));
-                dir.push(env!("CARGO_PKG_NAME"));
-                dir
-            };
-        }
+        static CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
+            let mut dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("~/.config/"));
+            dir.push(env!("CARGO_PKG_NAME"));
+            dir
+        });
+
+        static LOCAL_DATA_PATH: Lazy<PathBuf> = Lazy::new(|| {
+            let mut dir =
+                dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("~/.local/share/"));
+            dir.push(env!("CARGO_PKG_NAME"));
+            dir
+        });
 
         match self {
             SaveDir::Config => CONFIG_PATH.as_ref(),
-            SaveDir::LocalData => LOCALDATA_PATH.as_ref(),
+            SaveDir::LocalData => LOCAL_DATA_PATH.as_ref(),
         }
     }
 
