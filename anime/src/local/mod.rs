@@ -1,7 +1,6 @@
 use crate::err::{self, Result};
 use once_cell::sync::Lazy;
 use regex::Regex;
-use serde_derive::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
 use std::collections::HashMap;
 use std::fs;
@@ -12,8 +11,8 @@ use std::path::Path;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, Value, ValueRef};
 
 /// A regex pattern to parse episode files.
-#[derive(Debug, Default, Deserialize, Serialize)]
-pub struct EpisodeMatcher(#[serde(with = "optional_regex_parser")] Option<Regex>);
+#[derive(Debug, Default)]
+pub struct EpisodeMatcher(Option<Regex>);
 
 impl EpisodeMatcher {
     /// The default regex pattern to match episodes in several common formats, such as:
@@ -126,75 +125,6 @@ impl ToSql for EpisodeMatcher {
         };
 
         Ok(result)
-    }
-}
-
-mod optional_regex_parser {
-    use regex::Regex;
-    use serde::de::{self, Visitor};
-    use serde::{Deserializer, Serializer};
-    use std::fmt;
-
-    pub fn serialize<S>(regex: &Option<Regex>, ser: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match regex {
-            Some(regex) => ser.serialize_some(regex.as_str()),
-            None => ser.serialize_none(),
-        }
-    }
-
-    pub fn deserialize<'de, D>(de: D) -> Result<Option<Regex>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct OptionalRegexVisitor;
-
-        impl<'de> Visitor<'de> for OptionalRegexVisitor {
-            type Value = Option<Regex>;
-
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                f.write_str("an optional regex pattern")
-            }
-
-            fn visit_none<E>(self) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(None)
-            }
-
-            fn visit_some<D>(self, de: D) -> Result<Self::Value, D::Error>
-            where
-                D: Deserializer<'de>,
-            {
-                let value = de.deserialize_str(RegexVisitor)?;
-                Ok(Some(value))
-            }
-        }
-
-        struct RegexVisitor;
-
-        impl<'de> Visitor<'de> for RegexVisitor {
-            type Value = Regex;
-
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                f.write_str("a regex pattern")
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                let regex = Regex::new(value)
-                    .map_err(|err| de::Error::custom(format!("invalid regex pattern: {}", err)))?;
-
-                Ok(regex)
-            }
-        }
-
-        de.deserialize_option(OptionalRegexVisitor)
     }
 }
 

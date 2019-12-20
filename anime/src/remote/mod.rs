@@ -62,7 +62,7 @@ pub trait ScoreParser {
 }
 
 /// General information for an anime series.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct SeriesInfo {
     /// The ID of the series.
     pub id: SeriesID,
@@ -89,7 +89,7 @@ impl<'a> Into<Cow<'a, SeriesInfo>> for &'a SeriesInfo {
 }
 
 /// Various title formats for an anime series.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct SeriesTitle {
     /// The title in romaji.
     pub romaji: String,
@@ -98,7 +98,7 @@ pub struct SeriesTitle {
 }
 
 /// A list entry for an anime series.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug)]
 pub struct SeriesEntry {
     /// The ID of the anime.
     pub id: u32,
@@ -133,7 +133,7 @@ impl SeriesEntry {
 }
 
 /// The watch status of an anime series.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Status {
     Watching,
     Completed,

@@ -7,7 +7,6 @@ use anime::local::{EpisodeMap, EpisodeMatcher};
 use anime::remote::{RemoteService, SeriesInfo, Status};
 use chrono::{Local, NaiveDate};
 use database::{Database, Insertable, Selectable};
-use serde::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
 use std::borrow::Cow;
 use std::fs;
@@ -231,7 +230,7 @@ impl Series {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug)]
 pub struct SeriesEntry {
     entry: anime::remote::SeriesEntry,
     needs_sync: bool,
