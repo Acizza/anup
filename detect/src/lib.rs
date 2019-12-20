@@ -3,7 +3,7 @@ pub mod err;
 pub use err::{Error, Result};
 
 use anime::remote::SeriesInfo;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use snafu::{OptionExt, ResultExt};
 use std::borrow::Cow;
@@ -61,12 +61,10 @@ pub fn parse_folder_title<S>(item: S) -> Option<String>
 where
     S: AsRef<str>,
 {
-    lazy_static! {
-        // This pattern parses titles out of strings like this:
-        // [GroupName] Series Title (01-13) [1080p]
-        static ref EXTRACT_SERIES_TITLE: Regex =
-            Regex::new(r"(?:\[.+?\]\s*)?(?P<title>.+?)(?:\(|\[|$)").unwrap();
-    }
+    // This pattern parses titles out of strings like this:
+    // [GroupName] Series Title (01-13) [1080p]
+    static EXTRACT_SERIES_TITLE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?:\[.+?\]\s*)?(?P<title>.+?)(?:\(|\[|$)").unwrap());
 
     let caps = EXTRACT_SERIES_TITLE.captures(item.as_ref())?;
     let title = caps["title"].to_string();
