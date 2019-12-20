@@ -1,5 +1,5 @@
 use super::component::log::StatusLog;
-use super::{Series, SeriesStatus, UIState, WatchState};
+use super::{Series, SeriesStatus, StatusBarState, UIState, WatchState};
 use crate::err::{self, Result};
 use crate::util;
 use anime::remote::ScoreParser;
@@ -25,6 +25,8 @@ where
 {
     terminal: Terminal<B>,
     pub status_log: StatusLog<'a>,
+    status_log_rect: Rect,
+    cursor_visible: bool,
 }
 
 macro_rules! create_stat_list {
@@ -57,6 +59,7 @@ where
         S: ScoreParser + ?Sized,
     {
         let status_log = &mut self.status_log;
+        let status_log_rect = &mut self.status_log_rect;
 
         self.terminal
             .draw(|mut frame| {
@@ -75,9 +78,49 @@ where
                     .split(horiz_splitter[1]);
 
                 UI::draw_info_panel(state, score_parser, &info_panel_splitter, &mut frame);
-                UI::draw_status_bar(state, status_log, info_panel_splitter[1], &mut frame);
+
+                *status_log_rect = info_panel_splitter[1];
+                UI::draw_status_bar(state, status_log, *status_log_rect, &mut frame);
             })
             .context(err::IO)
+    }
+
+    pub fn adjust_cursor(&mut self, state: &UIState) -> Result<()> {
+        use std::io::Write;
+
+        match &state.status_bar_state {
+            StatusBarState::CommandPrompt(prompt)
+                if self.status_log_rect.height > 2 && self.status_log_rect.width > 2 =>
+            {
+                if !self.cursor_visible {
+                    self.terminal.show_cursor().context(err::IO)?;
+                    self.cursor_visible = true;
+                }
+
+                let input_width = prompt.width() as u16;
+                let prompt_width = self.status_log_rect.width.max(2) - 2;
+
+                let (len, line_num) = if prompt_width > 0 {
+                    (input_width % prompt_width, input_width / prompt_width)
+                } else {
+                    (input_width, 0)
+                };
+
+                let x = 1 + self.status_log_rect.left() + len;
+                let y = 1 + self.status_log_rect.top() + line_num;
+
+                self.terminal.set_cursor(x, y).context(err::IO)?;
+                io::stdout().flush().ok();
+            }
+            StatusBarState::CommandPrompt(_) | StatusBarState::Log if self.cursor_visible => {
+                self.terminal.hide_cursor().context(err::IO)?;
+                self.cursor_visible = false;
+            }
+            StatusBarState::CommandPrompt(_) => (),
+            StatusBarState::Log => (),
+        }
+
+        Ok(())
     }
 
     fn draw_top_panels(state: &UIState, layout: &[Rect], frame: &mut Frame<B>) {
@@ -306,8 +349,6 @@ where
     }
 
     fn draw_status_bar(state: &UIState, log: &mut StatusLog, layout: Rect, frame: &mut Frame<B>) {
-        use super::StatusBarState;
-
         match &state.status_bar_state {
             StatusBarState::Log => {
                 log.adjust_to_size(layout, true);
@@ -348,7 +389,9 @@ impl<'a> UI<'a, TermionBackend> {
 
         Ok(UI {
             terminal,
+            status_log_rect: Rect::default(),
             status_log: StatusLog::new(),
+            cursor_visible: false,
         })
     }
 }

@@ -34,6 +34,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
 
     loop {
         ui.draw(&ui_state, cstate.remote.as_ref())?;
+        ui.adjust_cursor(&ui_state)?;
 
         match events.next()? {
             Event::Input(key) => match key {

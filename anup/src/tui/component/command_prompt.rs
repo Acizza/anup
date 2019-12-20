@@ -6,19 +6,22 @@ use std::result;
 use termion::event::Key;
 use tui::style::{Color, Style};
 use tui::widgets::Text;
+use unicode_width::UnicodeWidthChar;
 
 /// A prompt to enter commands in that provides suggestions.
 pub struct CommandPrompt<'a> {
     buffer: String,
     hint_text: Option<&'a str>,
+    width: usize,
 }
 
 impl<'a> CommandPrompt<'a> {
     /// Create a new `CommandPrompt`.
-    pub fn new() -> CommandPrompt<'a> {
+    pub fn new() -> Self {
         CommandPrompt {
             buffer: String::new(),
             hint_text: None,
+            width: 0,
         }
     }
 
@@ -37,17 +40,21 @@ impl<'a> CommandPrompt<'a> {
             Key::Char('\n') => {
                 let command = Command::try_from(self.buffer.as_ref())?;
                 self.buffer.clear();
+                self.width = 0;
                 return Ok(PromptResult::Command(command));
             }
             Key::Char('\t') => {
                 if let Some(hint_text) = self.hint_text {
                     self.buffer.push_str(hint_text);
                     self.buffer.push(' ');
+                    // Our hint text should always be ASCII, so we can skip getting the unicode length in this case
+                    self.width += hint_text.len() + 1;
                     self.hint_text = None;
                 }
             }
             Key::Char(ch) => {
                 self.buffer.push(ch);
+                self.width += UnicodeWidthChar::width(ch).unwrap_or(0);
 
                 if let Some(matching_cmd) = Command::best_matching_name(&self.buffer) {
                     if self.buffer.len() <= matching_cmd.len() {
@@ -59,17 +66,26 @@ impl<'a> CommandPrompt<'a> {
                 }
             }
             Key::Backspace => {
-                self.buffer.pop();
+                if let Some(popped) = self.buffer.pop() {
+                    self.width -= UnicodeWidthChar::width(popped).unwrap_or(0);
+                }
+
                 self.hint_text = None;
             }
             Key::Esc => {
                 self.buffer.clear();
+                self.width = 0;
                 return Ok(PromptResult::Done);
             }
             _ => (),
         }
 
         Ok(PromptResult::NotDone)
+    }
+
+    #[inline(always)]
+    pub fn width(&self) -> usize {
+        self.width
     }
 
     /// The items of the `CommandPrompt` in a form ready for drawing.
