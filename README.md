@@ -20,14 +20,16 @@ For more information about this tool, please go [here](anisplit/).
 
 # Building
 
-The only dependencies this project has is a relatively recent stable version of Rust, pkg-config, and OpenSSL (the latter two most likely already being present).
-If your distribution does not provide a recent version of Rust, you can obtain the latest version [here](https://rustup.rs/).
+This project requires the following dependencies:
 
-1. Navigate to the project directory
-2. Run `cargo build --release`
-3. Wait for compilation to complete
+* A recent stable version of Rust
+* SQLite
+* pkg-config
+* OpenSSL
 
-You will find the `anup` and `anisplit` binaries in the `target/release/` folder. None of the other files there need to be kept.
+Note that pkg-config and OpenSSL are most likely already installed. If your distribution does not provide a recent version of Rust, you can obtain the latest version [here](https://rustup.rs/).
+
+Once the dependencies are installed, you can build the project simply by running `cargo build --release` in the project's directory. Once compilation is complete, you will find the `anup` and `anisplit` binaries in the `target/release/` folder. None of the other files in that directory need to be kept.
 
 # Usage
 
