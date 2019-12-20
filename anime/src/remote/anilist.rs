@@ -3,7 +3,7 @@ use super::{
 };
 use crate::err::{self, Result};
 use chrono::{Datelike, NaiveDate};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde_derive::{Deserialize, Serialize};
 use serde_json as json;
@@ -285,9 +285,7 @@ fn send_gql_request<S>(
 where
     S: Into<String>,
 {
-    lazy_static! {
-        static ref CLIENT: Client = Client::new();
-    }
+    static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 
     let query = minimize_query(query);
 

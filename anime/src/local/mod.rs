@@ -1,5 +1,5 @@
 use crate::err::{self, Result};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
@@ -86,10 +86,8 @@ impl EpisodeMatcher {
     /// ```
     #[inline]
     pub fn get(&self) -> &Regex {
-        lazy_static! {
-            static ref DEFAULT_MATCHER: Regex =
-                Regex::new(EpisodeMatcher::DEFAULT_PATTERN).unwrap();
-        }
+        static DEFAULT_MATCHER: Lazy<Regex> =
+            Lazy::new(|| Regex::new(EpisodeMatcher::DEFAULT_PATTERN).unwrap());
 
         match &self.0 {
             Some(matcher) => matcher,
