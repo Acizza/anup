@@ -3,7 +3,7 @@ mod ui;
 
 use crate::config::Config;
 use crate::err::{self, Result};
-use crate::file::SaveFile;
+use crate::file::TomlFile;
 use crate::series::database::Database as SeriesDatabase;
 use crate::series::{self, LastWatched, Series};
 use crate::try_opt_r;

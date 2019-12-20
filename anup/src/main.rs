@@ -7,7 +7,7 @@ mod util;
 
 use crate::config::Config;
 use crate::err::Result;
-use crate::file::SaveFile;
+use crate::file::TomlFile;
 use crate::series::database::{Database as SeriesDatabase, Insertable, Selectable};
 use crate::series::{LastWatched, Series};
 use anime::remote::{RemoteService, SeriesInfo};

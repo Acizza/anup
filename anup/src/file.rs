@@ -6,71 +6,27 @@ use snafu::ResultExt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub trait SaveFile
-where
-    Self: DeserializeOwned + Serialize,
-{
+pub trait TomlFile: DeserializeOwned + Serialize {
     fn filename() -> &'static str;
-    fn file_type() -> FileType;
     fn save_dir() -> SaveDir;
 
-    fn save_path() -> Result<PathBuf> {
+    fn validated_save_path() -> Result<PathBuf> {
         let mut path = Self::save_dir().validated_path()?.to_path_buf();
         path.push(Self::filename());
-        path.set_extension(Self::file_type().extension());
+        path.set_extension("toml");
         Ok(path)
     }
 
     fn load() -> Result<Self> {
-        let path = Self::save_path()?;
-        Self::file_type().deserialize_from_file(path)
+        let path = Self::validated_save_path()?;
+        let contents = fs::read_to_string(&path).context(err::FileIO { path: &path })?;
+        toml::from_str(&contents).context(err::TomlDecode { path })
     }
 
     fn save(&self) -> Result<()> {
-        let path = Self::save_path()?;
-        Self::file_type().serialize_to_file(path, self)
-    }
-}
-
-pub enum FileType {
-    Toml,
-}
-
-impl FileType {
-    pub fn extension(&self) -> &'static str {
-        match self {
-            FileType::Toml => "toml",
-        }
-    }
-
-    pub fn serialize_to_file<P, T>(&self, path: P, item: &T) -> Result<()>
-    where
-        P: AsRef<Path>,
-        T: Serialize,
-    {
-        let path = path.as_ref();
-
-        match self {
-            FileType::Toml => {
-                let serialized = toml::to_string_pretty(item).context(err::TomlEncode { path })?;
-                fs::write(path, serialized).context(err::FileIO { path })
-            }
-        }
-    }
-
-    pub fn deserialize_from_file<P, T>(&self, path: P) -> Result<T>
-    where
-        P: AsRef<Path>,
-        T: DeserializeOwned,
-    {
-        let path = path.as_ref();
-
-        match self {
-            FileType::Toml => {
-                let contents = fs::read_to_string(path).context(err::FileIO { path })?;
-                toml::from_str(&contents).context(err::TomlDecode { path })
-            }
-        }
+        let path = Self::validated_save_path()?;
+        let serialized = toml::to_string_pretty(self).context(err::TomlEncode { path: &path })?;
+        fs::write(&path, serialized).context(err::FileIO { path })
     }
 }
 
@@ -113,13 +69,9 @@ impl SaveDir {
     }
 }
 
-impl SaveFile for anime::remote::AccessToken {
+impl TomlFile for anime::remote::AccessToken {
     fn filename() -> &'static str {
         "token"
-    }
-
-    fn file_type() -> FileType {
-        FileType::Toml
     }
 
     fn save_dir() -> SaveDir {
