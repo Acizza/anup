@@ -33,15 +33,15 @@ macro_rules! create_stat_list {
     ($($header:expr => $value:expr),+) => {
         [$(
             create_stat_list!(h $header),
-            create_stat_list!(v $header.len(), $value),
+            create_stat_list!(v $value, $header.len()),
         )+]
     };
 
     (h $header:expr) => {
-        Text::styled(format!("{}\n", $header), Style::default().modifier(Modifier::BOLD))
+        Text::styled(concat!($header, "\n"), Style::default().modifier(Modifier::BOLD))
     };
 
-    (v $len:expr, $value:expr) => {
+    (v $value:expr, $len:expr) => {
         Text::styled(format!("{:^width$}\n\n", $value, width = $len), Style::default().modifier(Modifier::ITALIC))
     };
 }
