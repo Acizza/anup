@@ -88,9 +88,13 @@ where
     pub fn adjust_cursor(&mut self, state: &UIState) -> Result<()> {
         use std::io::Write;
 
+        const BORDER_SIZE: u16 = 2;
+
         match &state.status_bar_state {
+            // We want to position the cursor inside of the command prompt, but only if we can fit it
             StatusBarState::CommandPrompt(prompt)
-                if self.status_log_rect.height > 2 && self.status_log_rect.width > 2 =>
+                if self.status_log_rect.height > BORDER_SIZE
+                    && self.status_log_rect.width > BORDER_SIZE =>
             {
                 if !self.cursor_visible {
                     self.terminal.show_cursor().context(err::IO)?;
@@ -98,10 +102,18 @@ where
                 }
 
                 let input_width = prompt.width() as u16;
-                let prompt_width = self.status_log_rect.width.max(2) - 2;
+                let prompt_width = self.status_log_rect.width.saturating_sub(BORDER_SIZE);
 
                 let (len, line_num) = if prompt_width > 0 {
-                    (input_width % prompt_width, input_width / prompt_width)
+                    let line_num = input_width / prompt_width;
+                    let max_line = self.status_log_rect.height - BORDER_SIZE - 1;
+
+                    // We want to cap the position of the cursor to the last character of the last line
+                    if line_num > max_line {
+                        (prompt_width - 1, max_line)
+                    } else {
+                        (input_width % prompt_width, line_num)
+                    }
                 } else {
                     (input_width, 0)
                 };
@@ -110,6 +122,8 @@ where
                 let y = 1 + self.status_log_rect.top() + line_num;
 
                 self.terminal.set_cursor(x, y).context(err::IO)?;
+
+                // Since stdout is buffered, we want to flush it immediately so the cursor follows certain inputs like spaces
                 io::stdout().flush().ok();
             }
             StatusBarState::CommandPrompt(_) | StatusBarState::Log if self.cursor_visible => {
