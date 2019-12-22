@@ -316,39 +316,6 @@ impl SeriesEntry {
         self.needs_sync
     }
 
-    #[inline(always)]
-    pub fn id(&self) -> u32 {
-        self.entry.id
-    }
-
-    #[inline(always)]
-    pub fn watched_eps(&self) -> u32 {
-        self.entry.watched_eps
-    }
-
-    #[inline(always)]
-    pub fn set_watched_eps(&mut self, watched_eps: u32) {
-        self.entry.watched_eps = watched_eps;
-        self.needs_sync = true;
-    }
-
-    #[inline(always)]
-    pub fn score(&self) -> Option<u8> {
-        self.entry.score
-    }
-
-    #[inline(always)]
-    pub fn set_score(&mut self, score: Option<u8>) {
-        self.entry.score = score;
-        self.needs_sync = true;
-    }
-
-    #[inline(always)]
-    pub fn status(&self) -> Status {
-        self.entry.status
-    }
-
-    #[inline(always)]
     pub fn set_status(&mut self, status: Status, config: &Config) {
         match status {
             Status::Watching if self.start_date().is_none() => {
@@ -366,7 +333,7 @@ impl SeriesEntry {
             {
                 self.entry.end_date = Some(Local::today().naive_local());
             }
-            Status::Dropped if self.end_date().is_none() => {
+            Status::Dropped if self.entry.end_date.is_none() => {
                 self.entry.end_date = Some(Local::today().naive_local());
             }
             _ => (),
@@ -375,28 +342,42 @@ impl SeriesEntry {
         self.entry.status = status;
         self.needs_sync = true;
     }
+}
 
-    #[inline(always)]
-    pub fn times_rewatched(&self) -> u32 {
-        self.entry.times_rewatched
-    }
+macro_rules! impl_series_entry_getters_setters {
+    ($($field:ident: $field_ty:ty => $setter:tt,)+) => {
+        impl SeriesEntry {
+            $(
+            #[inline(always)]
+            pub fn $field(&self) -> $field_ty {
+                self.entry.$field
+            }
 
-    #[inline(always)]
-    pub fn set_times_rewatched(&mut self, times_rewatched: u32) {
-        self.entry.times_rewatched = times_rewatched;
-        self.needs_sync = true;
-    }
+            impl_series_entry_getters_setters!(setter $field, $field_ty, $setter);
+            )+
+        }
+    };
 
-    #[inline(always)]
-    pub fn start_date(&self) -> Option<NaiveDate> {
-        self.entry.start_date
-    }
+    (setter $field:ident, $field_ty:ty, !) => {};
 
-    #[inline(always)]
-    pub fn end_date(&self) -> Option<NaiveDate> {
-        self.entry.end_date
+    (setter $field:ident, $field_ty:ty, $setter:ident) => {
+        #[inline(always)]
+        pub fn $setter(&mut self, value: $field_ty) {
+            self.entry.$field = value;
+            self.needs_sync = true;
+        }
     }
 }
+
+impl_series_entry_getters_setters!(
+    id: u32 => !,
+    status: Status => !,
+    watched_eps: u32 => set_watched_eps,
+    score: Option<u8> => set_score,
+    times_rewatched: u32 => set_times_rewatched,
+    start_date: Option<NaiveDate> => !,
+    end_date: Option<NaiveDate> => !,
+);
 
 impl From<anime::remote::SeriesEntry> for SeriesEntry {
     fn from(entry: anime::remote::SeriesEntry) -> SeriesEntry {
