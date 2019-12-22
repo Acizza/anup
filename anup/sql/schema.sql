@@ -2,6 +2,8 @@ PRAGMA journal_mode = WAL;
 
 PRAGMA synchronous = NORMAL;
 
+PRAGMA foreign_keys = ON;
+
 CREATE TABLE IF NOT EXISTS SeriesConfig (
     id INTEGER NOT NULL PRIMARY KEY,
     nickname TEXT NOT NULL UNIQUE,
