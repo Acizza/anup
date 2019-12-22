@@ -334,13 +334,12 @@ mod tests {
             };
         }
 
-        test_command!("synctoremote\n", Command::SyncToRemote);
-        test_command!("syncfromremote\n", Command::SyncFromRemote);
-        test_command!("status watching\n", Command::Status(Status::Watching));
-        test_command!(
-            "progress forward\n",
-            Command::Progress(ProgressDirection::Forwards)
-        );
+        test_command!("delete\n", Command::Delete);
+
+        match enter_command("token inserttokenhere\n") {
+            Command::LoginToken(token) if token == "inserttokenhere" => (),
+            other => expected!(other, Command::LoginToken(String::from("inserttokenhere"))),
+        }
 
         let expected_args: Vec<String> = vec!["arg1".into(), "arg2".into()];
 
@@ -365,9 +364,11 @@ mod tests {
             other => expected!(other, Command::PlayerArgs(expected_args)),
         }
 
-        match enter_command("token inserttokenhere\n") {
-            Command::LoginToken(token) if token == "inserttokenhere" => (),
-            other => expected!(other, Command::LoginToken(String::from("inserttokenhere"))),
-        }
+        test_command!(
+            "progress forward\n",
+            Command::Progress(ProgressDirection::Forwards)
+        );
+
+        test_command!("status watching\n", Command::Status(Status::Watching));
     }
 }
