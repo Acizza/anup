@@ -27,15 +27,27 @@ impl Database {
     }
 }
 
+macro_rules! query {
+    ($type:expr, $name:expr) => {
+        include_str!(concat!("../../sql/", $type, "/", $name, ".sql"))
+    };
+}
+
 macro_rules! select {
     ($name:expr) => {
-        include_str!(concat!("../../sql/select/", $name, ".sql"))
+        query!("select", $name)
     };
 }
 
 macro_rules! insert {
     ($name:expr) => {
-        include_str!(concat!("../../sql/insert/", $name, ".sql"))
+        query!("insert", $name)
+    };
+}
+
+macro_rules! delete {
+    ($name:expr) => {
+        query!("delete", $name)
     };
 }
 
@@ -206,5 +218,17 @@ impl Selectable<anime::remote::SeriesID> for SeriesEntry {
         let mut query = db.conn().prepare_cached(select!("anime_entry"))?;
         let entry = query.query_row(params![id], Self::from_db_row)?;
         Ok(entry)
+    }
+}
+
+pub trait Deletable<Fil> {
+    fn delete_from_db(db: &Database, filter: Fil) -> Result<()>;
+}
+
+impl<'a> Deletable<&'a str> for SeriesConfig {
+    fn delete_from_db(db: &Database, nickname: &'a str) -> Result<()> {
+        let mut query = db.conn().prepare_cached(delete!("series_config"))?;
+        query.execute(params![nickname])?;
+        Ok(())
     }
 }

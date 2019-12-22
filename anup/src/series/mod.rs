@@ -6,7 +6,7 @@ use crate::file::SaveDir;
 use anime::local::{EpisodeMap, EpisodeMatcher};
 use anime::remote::{RemoteService, SeriesInfo, Status};
 use chrono::{Local, NaiveDate};
-use database::{Database, Insertable, Selectable};
+use database::{Database, Deletable, Insertable, Selectable};
 use snafu::{ensure, OptionExt, ResultExt};
 use std::borrow::Cow;
 use std::fs;
@@ -112,6 +112,14 @@ impl Series {
             config,
             episodes,
         })
+    }
+
+    pub fn delete<S>(db: &Database, nickname: S) -> Result<()>
+    where
+        S: AsRef<str>,
+    {
+        // The database is set up to remove all associated series data when we remove its configuration
+        SeriesConfig::delete_from_db(db, nickname.as_ref())
     }
 
     pub fn episode_path(&self, episode: u32) -> Option<PathBuf> {

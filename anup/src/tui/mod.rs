@@ -417,6 +417,23 @@ impl<'a> UIState<'a> {
 
                 Ok(())
             }
+            Command::Delete => {
+                if self.selected_series >= self.series.len() {
+                    return Ok(());
+                }
+
+                let series = self.series.remove(self.selected_series);
+                let nickname = series.nickname();
+
+                if self.selected_series == self.series.len() {
+                    self.selected_series = self.selected_series.saturating_sub(1);
+                }
+
+                log.capture_status("Deleting series", || Series::delete(&cstate.db, nickname));
+
+                self.ensure_cur_series_initialized(&cstate.db);
+                Ok(())
+            }
         }
     }
 

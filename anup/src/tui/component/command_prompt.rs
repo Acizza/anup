@@ -177,9 +177,11 @@ pub enum Command {
     PlayerArgs(Vec<String>),
     /// Set the user's login token for a remote service.
     LoginToken(String),
+    /// Remove the selected series from the program.
+    Delete,
 }
 
-impl_command_matching!(Command, 7,
+impl_command_matching!(Command, 8,
     SyncFromRemote => {
         name: "syncfromremote",
         min_args: 0,
@@ -246,6 +248,11 @@ impl_command_matching!(Command, 7,
         fn: |args: &[&str]| {
             Ok(Command::LoginToken(args.join(" ")))
         },
+    },
+    Delete => {
+        name: "delete",
+        min_args: 0,
+        fn: |_| Ok(Command::Delete),
     },
 );
 
