@@ -163,25 +163,56 @@ macro_rules! impl_command_matching {
 /// A parsed command with its arguments.
 #[derive(Debug, Clone)]
 pub enum Command {
+    /// Remove the selected series from the program.
+    Delete,
+    /// Set the user's login token for a remote service.
+    LoginToken(String),
+    /// Specify the video player arguments for the selected season.
+    PlayerArgs(Vec<String>),
+    /// Increment / decrement the watched episodes of the selected season.
+    Progress(ProgressDirection),
     /// Syncronize the selected season to the remote service.
     SyncFromRemote,
     /// Syncronize the selected season from the remote service.
     SyncToRemote,
-    /// Set the watch status of the selected season.
-    Status(anime::remote::Status),
-    /// Increment / decrement the watched episodes of the selected season.
-    Progress(ProgressDirection),
     /// Rate the selected season.
     Score(String),
-    /// Specify the video player arguments for the selected season.
-    PlayerArgs(Vec<String>),
-    /// Set the user's login token for a remote service.
-    LoginToken(String),
-    /// Remove the selected series from the program.
-    Delete,
+    /// Set the watch status of the selected season.
+    Status(anime::remote::Status),
 }
 
 impl_command_matching!(Command, 8,
+    Delete => {
+        name: "delete",
+        min_args: 0,
+        fn: |_| Ok(Command::Delete),
+    },
+    LoginToken(_) => {
+        name: "token",
+        min_args: 1,
+        fn: |args: &[&str]| {
+            Ok(Command::LoginToken(args.join(" ")))
+        },
+    },
+    PlayerArgs(_) => {
+        name: "args",
+        min_args: 0,
+        fn: |args: &[&str]| {
+            let args = args.iter()
+                .map(|frag| frag.to_string())
+                .collect();
+
+            Ok(Command::PlayerArgs(args))
+        },
+    },
+    Progress(_) => {
+        name: "progress",
+        min_args: 1,
+        fn: |args: &[&str]| {
+            let dir = ProgressDirection::try_from(args[0])?;
+            Ok(Command::Progress(dir))
+        },
+    },
     SyncFromRemote => {
         name: "syncfromremote",
         min_args: 0,
@@ -191,6 +222,14 @@ impl_command_matching!(Command, 8,
         name: "synctoremote",
         min_args: 0,
         fn: |_| Ok(Command::SyncToRemote),
+    },
+    Score(_) => {
+        name: "rate",
+        min_args: 1,
+        fn: |args: &[&str]| {
+            let score = args[0].into();
+            Ok(Command::Score(score))
+        },
     },
     Status(_) => {
         name: "status",
@@ -214,45 +253,6 @@ impl_command_matching!(Command, 8,
 
             Ok(Command::Status(status))
         },
-    },
-    Progress(_) => {
-        name: "progress",
-        min_args: 1,
-        fn: |args: &[&str]| {
-            let dir = ProgressDirection::try_from(args[0])?;
-            Ok(Command::Progress(dir))
-        },
-    },
-    Score(_) => {
-        name: "rate",
-        min_args: 1,
-        fn: |args: &[&str]| {
-            let score = args[0].into();
-            Ok(Command::Score(score))
-        },
-    },
-    PlayerArgs(_) => {
-        name: "args",
-        min_args: 0,
-        fn: |args: &[&str]| {
-            let args = args.iter()
-                .map(|frag| frag.to_string())
-                .collect();
-
-            Ok(Command::PlayerArgs(args))
-        },
-    },
-    LoginToken(_) => {
-        name: "token",
-        min_args: 1,
-        fn: |args: &[&str]| {
-            Ok(Command::LoginToken(args.join(" ")))
-        },
-    },
-    Delete => {
-        name: "delete",
-        min_args: 0,
-        fn: |_| Ok(Command::Delete),
     },
 );
 
