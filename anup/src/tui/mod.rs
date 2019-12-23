@@ -361,35 +361,41 @@ impl<'a> UIState<'a> {
 
                 Ok(())
             }
-            Command::SyncFromRemote => {
-                let series = try_opt_r!(self.cur_valid_series_mut());
-                let remote = cstate.remote.as_ref();
+            Command::Delete => {
+                if self.selected_series >= self.series.len() {
+                    return Ok(());
+                }
 
-                log.capture_status("Syncing entry from remote", || {
-                    series.entry.force_sync_from_remote(remote)?;
-                    series.save(&cstate.db)
+                let series = self.series.remove(self.selected_series);
+                let nickname = series.nickname();
+
+                if self.selected_series == self.series.len() {
+                    self.selected_series = self.selected_series.saturating_sub(1);
+                }
+
+                log.capture_status("Deleting series", || Series::delete(&cstate.db, nickname));
+
+                self.ensure_cur_series_initialized(&cstate.db);
+                Ok(())
+            }
+            Command::LoginToken(token) => {
+                use anime::remote::anilist::AniList;
+                use anime::remote::AccessToken;
+
+                log.capture_status("Setting user access token", || {
+                    let token = AccessToken::encode(token);
+                    token.save()?;
+                    cstate.remote = Box::new(AniList::authenticated(token)?);
+                    Ok(())
                 });
 
                 Ok(())
             }
-            Command::SyncToRemote => {
+            Command::PlayerArgs(args) => {
                 let series = try_opt_r!(self.cur_valid_series_mut());
-                let remote = cstate.remote.as_ref();
 
-                log.capture_status("Syncing entry to remote", || {
-                    series.entry.force_sync_to_remote(remote)?;
-                    series.save(&cstate.db)
-                });
-
-                Ok(())
-            }
-            Command::Status(status) => {
-                let series = try_opt_r!(self.cur_valid_series_mut());
-                let remote = cstate.remote.as_ref();
-
-                log.capture_status(format!("Setting series status to \"{}\"", status), || {
-                    series.entry.set_status(status, &cstate.config);
-                    series.entry.sync_to_remote(remote)?;
+                log.capture_status("Saving player args for series", || {
+                    series.config.player_args = args;
                     series.save(&cstate.db)
                 });
 
@@ -416,6 +422,28 @@ impl<'a> UIState<'a> {
 
                 Ok(())
             }
+            Command::SyncFromRemote => {
+                let series = try_opt_r!(self.cur_valid_series_mut());
+                let remote = cstate.remote.as_ref();
+
+                log.capture_status("Syncing entry from remote", || {
+                    series.entry.force_sync_from_remote(remote)?;
+                    series.save(&cstate.db)
+                });
+
+                Ok(())
+            }
+            Command::SyncToRemote => {
+                let series = try_opt_r!(self.cur_valid_series_mut());
+                let remote = cstate.remote.as_ref();
+
+                log.capture_status("Syncing entry to remote", || {
+                    series.entry.force_sync_to_remote(remote)?;
+                    series.save(&cstate.db)
+                });
+
+                Ok(())
+            }
             Command::Score(raw_score) => {
                 let series = try_opt_r!(self.cur_valid_series_mut());
 
@@ -438,44 +466,16 @@ impl<'a> UIState<'a> {
 
                 Ok(())
             }
-            Command::PlayerArgs(args) => {
+            Command::Status(status) => {
                 let series = try_opt_r!(self.cur_valid_series_mut());
+                let remote = cstate.remote.as_ref();
 
-                log.capture_status("Saving player args for series", || {
-                    series.config.player_args = args;
+                log.capture_status(format!("Setting series status to \"{}\"", status), || {
+                    series.entry.set_status(status, &cstate.config);
+                    series.entry.sync_to_remote(remote)?;
                     series.save(&cstate.db)
                 });
 
-                Ok(())
-            }
-            Command::LoginToken(token) => {
-                use anime::remote::anilist::AniList;
-                use anime::remote::AccessToken;
-
-                log.capture_status("Setting user access token", || {
-                    let token = AccessToken::encode(token);
-                    token.save()?;
-                    cstate.remote = Box::new(AniList::authenticated(token)?);
-                    Ok(())
-                });
-
-                Ok(())
-            }
-            Command::Delete => {
-                if self.selected_series >= self.series.len() {
-                    return Ok(());
-                }
-
-                let series = self.series.remove(self.selected_series);
-                let nickname = series.nickname();
-
-                if self.selected_series == self.series.len() {
-                    self.selected_series = self.selected_series.saturating_sub(1);
-                }
-
-                log.capture_status("Deleting series", || Series::delete(&cstate.db, nickname));
-
-                self.ensure_cur_series_initialized(&cstate.db);
                 Ok(())
             }
         }
