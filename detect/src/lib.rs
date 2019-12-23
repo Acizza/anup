@@ -135,33 +135,3 @@ where
 
     best_match
 }
-
-/// Find and return the most similar string to `value` in `items`. Note that this
-/// function attemps to move the found item out of the `items` slice. If that is
-/// not desired, consider using `closest_str_match_idx` instead.
-///
-/// `min_confidence` should be a value between 0 and 1 representing the minimum similarity
-/// needed in order to have a match.
-///
-/// `algo` is meant to take functions from the `strsim` crate. However, if implementing
-/// manually, then it should return a value between 0 and 1, representing the similarity
-/// of two strings.
-pub fn closest_str_match<'a, S, F>(
-    items: &[&'a str],
-    value: S,
-    min_confidence: f32,
-    algo: F,
-) -> Option<&'a str>
-where
-    S: AsRef<str>,
-    F: Fn(&str, &str) -> f64,
-{
-    let idx = closest_str_match_idx(
-        items.iter().map(|&x| Cow::Borrowed(x)),
-        value,
-        min_confidence,
-        algo,
-    )?;
-
-    Some(items[idx])
-}
