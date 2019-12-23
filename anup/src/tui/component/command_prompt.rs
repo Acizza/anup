@@ -19,7 +19,7 @@ impl CommandPrompt {
     /// Create a new `CommandPrompt`.
     pub fn new() -> Self {
         CommandPrompt {
-            buffer: String::new(),
+            buffer: String::with_capacity(32),
             hint_cmd: None,
             width: 0,
         }
