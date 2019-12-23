@@ -27,28 +27,18 @@ impl Series {
         nickname: S,
         config: &Config,
         remote: &R,
-    ) -> Result<Series>
+    ) -> Result<Self>
     where
         S: Into<String>,
         R: RemoteService + ?Sized,
     {
-        let nickname = nickname.into();
-
-        // We should process as much local information as possible before sending requests to
-        // the remote service to avoid potentially putting unnecessary load on the service should
-        // any errors crop up.
         let path = match args.value_of("path") {
             Some(path) => {
                 let path = PathBuf::from(path);
                 ensure!(path.is_dir(), err::NotADirectory);
-                path
+                Some(path)
             }
-            None => detect::best_matching_folder(&nickname, &config.series_dir)?,
-        };
-
-        let title = {
-            let path_str = path.file_name().context(err::NoDirName)?.to_string_lossy();
-            detect::parse_folder_title(path_str).ok_or(err::Error::FolderTitleParse)?
+            None => None,
         };
 
         let matcher = match args.value_of("matcher") {
@@ -56,15 +46,64 @@ impl Series {
             None => EpisodeMatcher::new(),
         };
 
+        Self::from_remote(nickname, None, path, matcher, config, remote)
+    }
+
+    pub fn from_remote<S, R>(
+        nickname: S,
+        id: Option<anime::remote::SeriesID>,
+        path: Option<PathBuf>,
+        matcher: EpisodeMatcher,
+        config: &Config,
+        remote: &R,
+    ) -> Result<Self>
+    where
+        S: Into<String>,
+        R: RemoteService + ?Sized,
+    {
+        let nickname = nickname.into();
+
+        let path = match path {
+            Some(path) => path,
+            None => detect::best_matching_folder(&nickname, &config.series_dir)?,
+        };
+
         let episodes = EpisodeMap::parse(&path, &matcher)?;
 
-        // Now we can request all of that juicy data from the remote service.
-        let info = best_matching_series_info(remote, title)?;
+        let info = {
+            let selector = match id {
+                Some(id) => SeriesInfoSelector::ID(id),
+                None => {
+                    let path_str = path.file_name().context(err::NoDirName)?.to_string_lossy();
+                    let title =
+                        detect::parse_folder_title(path_str).ok_or(err::Error::FolderTitleParse)?;
+
+                    SeriesInfoSelector::Name(title)
+                }
+            };
+
+            best_matching_series_info(selector, remote)?
+        };
+
         let entry = SeriesEntry::from_remote(remote, &info)?;
 
+        Self::with_remote_info(nickname, path, episodes, matcher, info, entry)
+    }
+
+    pub fn with_remote_info<S>(
+        nickname: S,
+        path: PathBuf,
+        episodes: EpisodeMap,
+        matcher: EpisodeMatcher,
+        info: SeriesInfo,
+        entry: SeriesEntry,
+    ) -> Result<Self>
+    where
+        S: Into<String>,
+    {
         let config = SeriesConfig {
             id: info.id,
-            nickname,
+            nickname: nickname.into(),
             path,
             episode_matcher: matcher,
             player_args: Vec::new(),
@@ -459,19 +498,29 @@ impl LastWatched {
     }
 }
 
-pub fn best_matching_series_info<R, S>(remote: &R, name: S) -> Result<SeriesInfo>
+pub enum SeriesInfoSelector {
+    Name(String),
+    ID(anime::remote::SeriesID),
+}
+
+pub fn best_matching_series_info<R>(selector: SeriesInfoSelector, remote: &R) -> Result<SeriesInfo>
 where
     R: RemoteService + ?Sized,
-    S: AsRef<str>,
 {
-    let name = name.as_ref();
+    match selector {
+        SeriesInfoSelector::Name(name) => {
+            let mut results = remote.search_info_by_name(&name)?;
+            let index = detect::best_matching_info(&name, results.as_slice())
+                .context(err::NoMatchingSeries { name })?;
 
-    let mut results = remote.search_info_by_name(name)?;
-    let index = detect::best_matching_info(name, results.as_slice())
-        .context(err::NoMatchingSeries { name })?;
-
-    let info = results.swap_remove(index);
-    Ok(info)
+            let info = results.swap_remove(index);
+            Ok(info)
+        }
+        SeriesInfoSelector::ID(id) => {
+            let info = remote.search_info_by_id(id)?;
+            Ok(info)
+        }
+    }
 }
 
 pub fn episode_matcher_with_pattern<S>(pattern: S) -> Result<EpisodeMatcher>

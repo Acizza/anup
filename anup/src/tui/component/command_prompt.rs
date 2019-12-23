@@ -163,6 +163,8 @@ macro_rules! impl_command_matching {
 /// A parsed command with its arguments.
 #[derive(Debug, Clone)]
 pub enum Command {
+    /// Add a new series with the specified nickname and optional series ID.
+    Add(String, Option<anime::remote::SeriesID>),
     /// Remove the selected series from the program.
     Delete,
     /// Set the user's login token for a remote service.
@@ -181,7 +183,20 @@ pub enum Command {
     Status(anime::remote::Status),
 }
 
-impl_command_matching!(Command, 8,
+impl_command_matching!(Command, 9,
+    Add(_) => {
+        name: "add",
+        min_args: 1,
+        fn: |args: &[&str]| {
+            let id = if args.len() > 1 {
+                args[1].parse().ok()
+            } else {
+                None
+            };
+
+            Ok(Command::Add(args[0].into(), id))
+        },
+    },
     Delete => {
         name: "delete",
         min_args: 0,

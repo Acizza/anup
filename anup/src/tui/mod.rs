@@ -317,6 +317,50 @@ impl<'a> UIState<'a> {
         log: &mut StatusLog,
     ) -> Result<()> {
         match command {
+            Command::Add(nickname, id) => {
+                use anime::local::EpisodeMatcher;
+
+                if self.series.iter().any(|s| s.nickname() == nickname) {
+                    log.push("Series with the specified nickname already exists");
+                    return Ok(());
+                }
+
+                if cstate.remote.is_offline() {
+                    log.push("This command cannot be ran in offline mode");
+                    return Ok(());
+                }
+
+                log.capture_status("Adding series", || {
+                    let series = Series::from_remote(
+                        &nickname,
+                        id,
+                        None,
+                        EpisodeMatcher::new(),
+                        &cstate.config,
+                        cstate.remote.as_ref(),
+                    );
+
+                    if let Ok(series) = &series {
+                        series.save(&cstate.db)?;
+                    }
+
+                    let status = SeriesStatus::from_series(series, &nickname);
+
+                    self.series.push(status);
+                    self.series
+                        .sort_unstable_by(|x, y| x.nickname().cmp(y.nickname()));
+
+                    self.selected_series = self
+                        .series
+                        .iter()
+                        .position(|series| series.nickname() == nickname)
+                        .unwrap_or(0);
+
+                    Ok(())
+                });
+
+                Ok(())
+            }
             Command::SyncFromRemote => {
                 let series = try_opt_r!(self.cur_valid_series_mut());
                 let remote = cstate.remote.as_ref();
