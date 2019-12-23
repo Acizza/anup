@@ -9,18 +9,18 @@ use tui::widgets::Text;
 use unicode_width::UnicodeWidthChar;
 
 /// A prompt to enter commands in that provides suggestions.
-pub struct CommandPrompt<'a> {
+pub struct CommandPrompt {
     buffer: String,
-    hint_text: Option<&'a str>,
+    hint_cmd: Option<HintCommand<'static>>,
     width: usize,
 }
 
-impl<'a> CommandPrompt<'a> {
+impl CommandPrompt {
     /// Create a new `CommandPrompt`.
     pub fn new() -> Self {
         CommandPrompt {
             buffer: String::new(),
-            hint_text: None,
+            hint_cmd: None,
             width: 0,
         }
     }
@@ -44,33 +44,36 @@ impl<'a> CommandPrompt<'a> {
                 return Ok(PromptResult::Command(command));
             }
             Key::Char('\t') => {
-                if let Some(hint_text) = self.hint_text {
-                    self.buffer.push_str(hint_text);
+                if let Some(hint_cmd) = &self.hint_cmd {
+                    let remaining_name = hint_cmd.remaining_name();
+
+                    self.buffer.push_str(remaining_name);
                     self.buffer.push(' ');
-                    // Our hint text should always be ASCII, so we can skip getting the unicode length in this case
-                    self.width += hint_text.len() + 1;
-                    self.hint_text = None;
+                    // Our hint text should always be ASCII, so we can skip getting the unicode width in this case
+                    self.width += remaining_name.len() + 1;
+
+                    self.hint_cmd = None;
                 }
             }
             Key::Char(ch) => {
                 self.buffer.push(ch);
                 self.width += UnicodeWidthChar::width(ch).unwrap_or(0);
 
-                if let Some(matching_cmd) = Command::best_matching_name(&self.buffer) {
-                    if self.buffer.len() <= matching_cmd.len() {
-                        let visible_slice = &matching_cmd[self.buffer.len()..];
-                        self.hint_text = Some(visible_slice);
+                self.hint_cmd = match Command::best_matching_cmd_info(&self.buffer) {
+                    // Once again, our hint text should always be ASCII, so we don't care about the unicode width here as well
+                    Some(matching_cmd) if self.buffer.len() <= matching_cmd.name.len() => {
+                        let cmd = HintCommand::new(matching_cmd, self.buffer.len());
+                        Some(cmd)
                     }
-                } else {
-                    self.hint_text = None;
-                }
+                    _ => None,
+                };
             }
             Key::Backspace => {
                 if let Some(popped) = self.buffer.pop() {
                     self.width -= UnicodeWidthChar::width(popped).unwrap_or(0);
                 }
 
-                self.hint_text = None;
+                self.hint_cmd = None;
             }
             Key::Esc => {
                 self.buffer.clear();
@@ -92,15 +95,46 @@ impl<'a> CommandPrompt<'a> {
     pub fn draw_items<'b>(&'b self) -> SmallVec<[Text<'b>; 2]> {
         let mut text = smallvec![Text::raw(&self.buffer)];
 
-        if let Some(hint_text) = self.hint_text {
+        if let Some(hint_cmd) = &self.hint_cmd {
             text.push(Text::styled(
-                hint_text,
+                hint_cmd.remaining_name_and_usage(),
                 Style::default().fg(Color::DarkGray),
             ));
         }
 
         text
     }
+}
+
+struct HintCommand<'a> {
+    info: &'a CommandInfo,
+    /// Represents the number of characters that have been "eaten" by user input.
+    ///
+    /// This is used so we can return a slice of the command's name and/or usage only
+    /// containing the part that hasn't already been entered by the user.
+    eaten: usize,
+}
+
+impl<'a> HintCommand<'a> {
+    #[inline(always)]
+    fn new(info: &'static CommandInfo, eaten: usize) -> Self {
+        Self { info, eaten }
+    }
+
+    #[inline(always)]
+    fn remaining_name(&self) -> &'a str {
+        &self.info.name[self.eaten..]
+    }
+
+    #[inline(always)]
+    fn remaining_name_and_usage(&self) -> &'a str {
+        &self.info.name_and_usage[self.eaten..]
+    }
+}
+
+struct CommandInfo {
+    name: &'static str,
+    name_and_usage: &'static str,
 }
 
 /// The result of processing a key in a `CommandPrompt`.
@@ -114,10 +148,13 @@ pub enum PromptResult {
 }
 
 macro_rules! impl_command_matching {
-    ($enum_name:ident, $num_cmds:expr, $($field:pat => { name: $name:expr, min_args: $min_args:expr, fn: $parse_fn:expr, },)+) => {
+    ($enum_name:ident, $num_cmds:expr, $($field:pat => { name: $name:expr, usage: $usage:expr, min_args: $min_args:expr, fn: $parse_fn:expr, },)+) => {
         impl $enum_name {
-            const CMD_NAMES: [&'static str; $num_cmds] = [
-                $($name,)+
+            const COMMANDS: [CommandInfo; $num_cmds] = [
+                $(CommandInfo {
+                    name: $name,
+                    name_and_usage: concat!($name, " ", $usage),
+                },)+
             ];
         }
 
@@ -186,6 +223,7 @@ pub enum Command {
 impl_command_matching!(Command, 9,
     Add(_) => {
         name: "add",
+        usage: "<nickname> [id]",
         min_args: 1,
         fn: |args: &[&str]| {
             let id = if args.len() > 1 {
@@ -199,11 +237,13 @@ impl_command_matching!(Command, 9,
     },
     Delete => {
         name: "delete",
+        usage: "",
         min_args: 0,
         fn: |_| Ok(Command::Delete),
     },
     LoginToken(_) => {
         name: "token",
+        usage: "<token>",
         min_args: 1,
         fn: |args: &[&str]| {
             Ok(Command::LoginToken(args.join(" ")))
@@ -211,6 +251,7 @@ impl_command_matching!(Command, 9,
     },
     PlayerArgs(_) => {
         name: "args",
+        usage: "<player args>",
         min_args: 0,
         fn: |args: &[&str]| {
             let args = args.iter()
@@ -222,6 +263,7 @@ impl_command_matching!(Command, 9,
     },
     Progress(_) => {
         name: "progress",
+        usage: "<f, forward | b, backward>",
         min_args: 1,
         fn: |args: &[&str]| {
             let dir = ProgressDirection::try_from(args[0])?;
@@ -230,16 +272,19 @@ impl_command_matching!(Command, 9,
     },
     SyncFromRemote => {
         name: "syncfromremote",
+        usage: "",
         min_args: 0,
         fn: |_| Ok(Command::SyncFromRemote),
     },
     SyncToRemote => {
         name: "synctoremote",
+        usage: "",
         min_args: 0,
         fn: |_| Ok(Command::SyncToRemote),
     },
     Score(_) => {
         name: "rate",
+        usage: "<0-100>",
         min_args: 1,
         fn: |args: &[&str]| {
             let score = args[0].into();
@@ -248,6 +293,7 @@ impl_command_matching!(Command, 9,
     },
     Status(_) => {
         name: "status",
+        usage: "<w, watching | c, completed | h, hold | d, drop | p, plan | r, rewatch>",
         min_args: 1,
         fn: |args: &[&str]| {
             use anime::remote::Status;
@@ -272,19 +318,19 @@ impl_command_matching!(Command, 9,
 );
 
 impl Command {
-    /// Returns the command most similar to `name`.
+    /// Returns the `CommandInfo` that has a name most similar to `name`.
     ///
-    /// `None` will be returned if `name` does not match a command with
+    /// `None` will be returned if `name` does not match a command name with
     /// at least 70% similarity.
-    fn best_matching_name(name: &str) -> Option<&'static str> {
+    fn best_matching_cmd_info(name: &str) -> Option<&'static CommandInfo> {
+        use std::borrow::Cow;
+
         const MIN_CONFIDENCE: f32 = 0.7;
 
-        detect::closest_str_match(
-            &Command::CMD_NAMES,
-            name,
-            MIN_CONFIDENCE,
-            strsim::jaro_winkler,
-        )
+        let names = Command::COMMANDS.iter().map(|cmd| Cow::Borrowed(cmd.name));
+        let idx = detect::closest_str_match_idx(names, name, MIN_CONFIDENCE, strsim::jaro_winkler)?;
+
+        Some(&Command::COMMANDS[idx])
     }
 }
 

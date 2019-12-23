@@ -98,7 +98,7 @@ struct CommonState {
     db: SeriesDatabase,
 }
 
-fn init_ui_state<'a>(cstate: &CommonState, args: &ArgMatches) -> Result<UIState<'a>> {
+fn init_ui_state(cstate: &CommonState, args: &ArgMatches) -> Result<UIState> {
     let series = init_series_list(&cstate, args)?;
     let last_watched = LastWatched::load()?;
 
@@ -166,16 +166,16 @@ fn init_series_list(cstate: &CommonState, args: &ArgMatches) -> Result<Vec<Serie
 }
 
 /// Current state of the UI.
-pub struct UIState<'a> {
+pub struct UIState {
     series: Vec<SeriesStatus>,
     selected_series: usize,
     last_watched: LastWatched,
     watch_state: WatchState,
-    status_bar_state: StatusBarState<'a>,
+    status_bar_state: StatusBarState,
     last_used_command: Option<Command>,
 }
 
-impl<'a> UIState<'a> {
+impl UIState {
     fn cur_series_status(&self) -> Option<&SeriesStatus> {
         self.series.get(self.selected_series)
     }
@@ -595,12 +595,12 @@ impl SeriesStatus {
     }
 }
 
-enum StatusBarState<'a> {
+enum StatusBarState {
     Log,
-    CommandPrompt(CommandPrompt<'a>),
+    CommandPrompt(CommandPrompt),
 }
 
-impl<'a> StatusBarState<'a> {
+impl StatusBarState {
     fn set_to_command_prompt(&mut self) {
         *self = StatusBarState::CommandPrompt(CommandPrompt::new());
     }
@@ -617,8 +617,8 @@ impl<'a> StatusBarState<'a> {
     }
 }
 
-impl<'a> Default for StatusBarState<'a> {
-    fn default() -> StatusBarState<'a> {
+impl<'a> Default for StatusBarState {
+    fn default() -> Self {
         StatusBarState::Log
     }
 }
