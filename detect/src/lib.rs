@@ -96,7 +96,7 @@ where
 /// This value represents the "confidence" (or similarity) between the item and some other value.
 ///
 /// If `matcher` returns a confidence greater than 0.99, that item will be immediately returned.
-pub fn closest_match<'a, I, T, F>(items: I, min_confidence: f32, matcher: F) -> Option<T>
+pub fn closest_match<I, T, F>(items: I, min_confidence: f32, matcher: F) -> Option<T>
 where
     I: IntoIterator<Item = T>,
     F: Fn(&T) -> Option<f32>,
