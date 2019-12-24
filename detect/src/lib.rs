@@ -11,20 +11,51 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[inline]
-pub fn best_matching_title<'a, I, S>(titles: I, name: S) -> Option<usize>
+pub fn best_matching_title<'a, S>(
+    name: S,
+    titles: impl Iterator<Item = Cow<'a, str>>,
+) -> Option<Cow<'a, str>>
 where
-    I: Iterator<Item = Cow<'a, str>>,
-    S: AsRef<str>,
+    S: Into<String>,
 {
     const MIN_CONFIDENCE: f32 = 0.6;
-    closest_str_match_idx(titles, name, MIN_CONFIDENCE, strsim::jaro)
+
+    let name = {
+        let mut name = name.into();
+        name.make_ascii_lowercase();
+        name
+    };
+
+    closest_match(titles, MIN_CONFIDENCE, |title| {
+        let title = title.to_ascii_lowercase();
+        Some(strsim::jaro(&title, &name) as f32)
+    })
+}
+
+#[inline]
+pub fn best_matching_info<S>(name: S, items: impl Iterator<Item = SeriesInfo>) -> Option<SeriesInfo>
+where
+    S: Into<String>,
+{
+    let name = {
+        let mut name = name.into();
+        name.make_ascii_lowercase();
+        name
+    };
+
+    closest_match(items, 0.6, |info| {
+        let title = info.title.romaji.to_ascii_lowercase();
+        Some(strsim::jaro_winkler(&title, &name) as f32)
+    })
 }
 
 pub fn best_matching_folder<S, P>(name: S, dir: P) -> Result<PathBuf>
 where
-    S: AsRef<str>,
+    S: Into<String>,
     P: AsRef<Path>,
 {
+    const MIN_CONFIDENCE: f32 = 0.6;
+
     let dir = dir.as_ref();
     let entries = fs::read_dir(dir).context(err::FileIO { path: dir })?;
 
@@ -41,20 +72,59 @@ where
         dirs.push(entry);
     }
 
-    let dir = {
-        let dir_names = dirs
-            .iter()
-            .filter_map(|name| parse_folder_title(name.file_name().to_string_lossy()))
-            .map(Cow::Owned);
-
-        let dir_idx = best_matching_title(dir_names, &name).context(err::NoMatchingSeries {
-            name: name.as_ref(),
-        })?;
-
-        dirs.swap_remove(dir_idx)
+    let name = {
+        let mut name = name.into();
+        name.make_ascii_lowercase();
+        name
     };
 
+    let dir = closest_match(dirs, MIN_CONFIDENCE, |dir| {
+        let mut dir_name = parse_folder_title(dir.file_name().to_string_lossy())?;
+        dir_name.make_ascii_lowercase();
+        Some(strsim::jaro(&dir_name, &name) as f32)
+    })
+    .context(err::NoMatchingSeries { name })?;
+
     Ok(dir.path())
+}
+
+/// Find the best matching item in `items` via `matcher` and return it if the maximum confidence is greater than `min_confidence`.
+///
+/// `min_confidence` should be a value between 0.0 and 1.0.
+///
+/// `matcher` is used to compare each item in `items`. When returning Some, its value should be between 0.0 and 1.0.
+/// This value represents the "confidence" (or similarity) between the item and some other value.
+///
+/// If `matcher` returns a confidence greater than 0.99, that item will be immediately returned.
+pub fn closest_match<'a, I, T, F>(items: I, min_confidence: f32, matcher: F) -> Option<T>
+where
+    I: IntoIterator<Item = T>,
+    F: Fn(&T) -> Option<f32>,
+{
+    let mut max_score = 0.0;
+    let mut best_match = None;
+
+    for item in items.into_iter() {
+        let score = match matcher(&item) {
+            Some(score) => score,
+            None => continue,
+        };
+
+        if score > max_score {
+            if score > 0.99 {
+                return Some(item);
+            }
+
+            best_match = Some(item);
+            max_score = score;
+        }
+    }
+
+    if max_score < min_confidence {
+        return None;
+    }
+
+    best_match
 }
 
 pub fn parse_folder_title<S>(item: S) -> Option<String>
@@ -70,68 +140,4 @@ where
     let title = caps["title"].to_string();
 
     Some(title)
-}
-
-pub fn best_matching_info<S>(name: S, items: &[SeriesInfo]) -> Option<usize>
-where
-    S: AsRef<str>,
-{
-    let items = items
-        .iter()
-        .map(|info| Cow::Borrowed(info.title.romaji.as_ref()));
-
-    best_matching_title(items, name)
-}
-
-/// Find the most similar string to `value` in `items` and return the index of it.
-///
-/// `min_confidence` should be a value between 0 and 1 representing the minimum similarity
-/// needed in order to have a match.
-///
-/// `algo` is meant to take functions from the `strsim` crate. However, if implementing
-/// manually, then it should return a value between 0 and 1, representing the similarity
-/// of two strings.
-pub fn closest_str_match_idx<'a, I, S, F>(
-    items: I,
-    value: S,
-    min_confidence: f32,
-    algo: F,
-) -> Option<usize>
-where
-    I: Iterator<Item = Cow<'a, str>>,
-    S: AsRef<str>,
-    F: Fn(&str, &str) -> f64,
-{
-    let mut max_score = 0.0;
-    let mut best_match = None;
-
-    // Casing can really skew the similarity score, so we should match everything
-    // in lowercase
-    let value = value.as_ref().to_ascii_lowercase();
-
-    for (i, item) in items.enumerate() {
-        let item = {
-            let mut item = item.into_owned();
-            item.make_ascii_lowercase();
-            item
-        };
-
-        let score = algo(&item, &value) as f32;
-
-        if score > max_score {
-            // We want the first item to hit a ~1.0 score rather than the last one
-            if score > 0.99 {
-                return Some(i);
-            }
-
-            best_match = Some(i);
-            max_score = score;
-        }
-    }
-
-    if max_score < min_confidence {
-        return None;
-    }
-
-    best_match
 }

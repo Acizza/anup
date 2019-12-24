@@ -71,7 +71,7 @@ impl Series {
         let episodes = EpisodeMap::parse(&path, &matcher)?;
 
         let info = {
-            let selector = match id {
+            let info_sel = match id {
                 Some(id) => SeriesInfoSelector::ID(id),
                 None => {
                     let path_str = path.file_name().context(err::NoDirName)?.to_string_lossy();
@@ -82,7 +82,7 @@ impl Series {
                 }
             };
 
-            best_matching_series_info(selector, remote)?
+            info_sel.best_match_from_remote(remote)?
         };
 
         let entry = SeriesEntry::from_remote(remote, &info)?;
@@ -498,27 +498,25 @@ impl LastWatched {
     }
 }
 
-pub enum SeriesInfoSelector {
+enum SeriesInfoSelector {
     Name(String),
     ID(anime::remote::SeriesID),
 }
 
-pub fn best_matching_series_info<R>(selector: SeriesInfoSelector, remote: &R) -> Result<SeriesInfo>
-where
-    R: RemoteService + ?Sized,
-{
-    match selector {
-        SeriesInfoSelector::Name(name) => {
-            let mut results = remote.search_info_by_name(&name)?;
-            let index = detect::best_matching_info(&name, results.as_slice())
-                .context(err::NoMatchingSeries { name })?;
-
-            let info = results.swap_remove(index);
-            Ok(info)
-        }
-        SeriesInfoSelector::ID(id) => {
-            let info = remote.search_info_by_id(id)?;
-            Ok(info)
+impl SeriesInfoSelector {
+    fn best_match_from_remote<R>(self, remote: &R) -> Result<SeriesInfo>
+    where
+        R: RemoteService + ?Sized,
+    {
+        match self {
+            SeriesInfoSelector::Name(name) => {
+                let results = remote.search_info_by_name(&name)?;
+                detect::best_matching_info(&name, results).context(err::NoMatchingSeries { name })
+            }
+            SeriesInfoSelector::ID(id) => {
+                let info = remote.search_info_by_id(id)?;
+                Ok(info)
+            }
         }
     }
 }

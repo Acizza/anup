@@ -256,17 +256,13 @@ where
     match args.value_of("series_id") {
         Some(id) => {
             let id = id.parse::<SeriesID>().context(err::InvalidSeriesID)?;
-            let series = remote.search_info_by_id(id)?;
-            Ok(series)
+            let info = remote.search_info_by_id(id)?;
+            Ok(info)
         }
         None => {
             let title = title.as_ref();
-            let mut results = remote.search_info_by_name(title)?;
-            let best_result = detect::best_matching_info(title, &results)
-                .context(err::UnableToDetectSeries { title })?;
-
-            let series = results.swap_remove(best_result);
-            Ok(series)
+            let results = remote.search_info_by_name(title)?;
+            detect::best_matching_info(title, results).context(err::UnableToDetectSeries { title })
         }
     }
 }

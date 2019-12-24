@@ -323,14 +323,11 @@ impl Command {
     /// `None` will be returned if `name` does not match a command name with
     /// at least 70% similarity.
     fn best_matching_cmd_info(name: &str) -> Option<&'static CommandInfo> {
-        use std::borrow::Cow;
-
         const MIN_CONFIDENCE: f32 = 0.7;
 
-        let names = Command::COMMANDS.iter().map(|cmd| Cow::Borrowed(cmd.name));
-        let idx = detect::closest_str_match_idx(names, name, MIN_CONFIDENCE, strsim::jaro_winkler)?;
-
-        Some(&Command::COMMANDS[idx])
+        detect::closest_match(&Command::COMMANDS, MIN_CONFIDENCE, |cmd| {
+            Some(strsim::jaro_winkler(&cmd.name, name) as f32)
+        })
     }
 }
 
