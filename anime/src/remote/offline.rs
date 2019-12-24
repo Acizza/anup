@@ -20,7 +20,7 @@ impl Offline {
 }
 
 impl RemoteService for Offline {
-    fn search_info_by_name(&self, _: &str) -> Result<Vec<SeriesInfo>> {
+    fn search_info_by_name(&self, _: &str) -> Result<Box<dyn Iterator<Item = SeriesInfo>>> {
         Err(err::Error::NeedExistingSeriesData)
     }
 
