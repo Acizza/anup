@@ -11,7 +11,7 @@ pub trait TomlFile: DeserializeOwned + Serialize {
     fn save_dir() -> SaveDir;
 
     fn validated_save_path() -> Result<PathBuf> {
-        let mut path = Self::save_dir().validated_path()?.to_path_buf();
+        let mut path = Self::save_dir().validated_dir_path()?.to_path_buf();
         path.push(Self::filename());
         path.set_extension("toml");
         Ok(path)
@@ -36,7 +36,7 @@ pub enum SaveDir {
 }
 
 impl SaveDir {
-    pub fn path(&self) -> &Path {
+    pub fn dir_path(&self) -> &Path {
         static CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
             let mut dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("~/.config/"));
             dir.push(env!("CARGO_PKG_NAME"));
@@ -56,16 +56,14 @@ impl SaveDir {
         }
     }
 
-    pub fn validated_path(&self) -> Result<&Path> {
-        let path = self.path();
+    pub fn validated_dir_path(&self) -> Result<&Path> {
+        let dir = self.dir_path();
 
-        if let Some(dir) = path.parent() {
-            if !dir.exists() {
-                fs::create_dir_all(dir).context(err::FileIO { path })?;
-            }
+        if !dir.exists() {
+            fs::create_dir_all(dir).context(err::FileIO { path: dir })?;
         }
 
-        Ok(path)
+        Ok(dir)
     }
 }
 

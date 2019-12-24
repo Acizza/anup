@@ -492,7 +492,7 @@ impl LastWatched {
     }
 
     pub fn validated_path() -> Result<PathBuf> {
-        let mut path = SaveDir::LocalData.validated_path()?.to_path_buf();
+        let mut path = SaveDir::LocalData.validated_dir_path()?.to_path_buf();
         path.push("last_watched");
         Ok(path)
     }
