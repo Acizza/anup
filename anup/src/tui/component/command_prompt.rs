@@ -206,6 +206,8 @@ pub enum Command {
     Delete,
     /// Set the user's login token for a remote service.
     LoginToken(String),
+    /// Set the episode matcher for the selected series.
+    Matcher(Option<String>),
     /// Specify the video player arguments for the selected season.
     PlayerArgs(Vec<String>),
     /// Increment / decrement the watched episodes of the selected season.
@@ -220,7 +222,7 @@ pub enum Command {
     Status(anime::remote::Status),
 }
 
-impl_command_matching!(Command, 9,
+impl_command_matching!(Command, 10,
     Add(_) => {
         name: "add",
         usage: "<nickname> [id]",
@@ -247,6 +249,18 @@ impl_command_matching!(Command, 9,
         min_args: 1,
         fn: |args: &[&str]| {
             Ok(Command::LoginToken(args.join(" ")))
+        },
+    },
+    Matcher(_) => {
+        name: "matcher",
+        usage: "[regex containing {title} and {episode}]",
+        min_args: 0,
+        fn: |args: &[&str]| {
+            if args.is_empty() {
+                Ok(Command::Matcher(None))
+            } else {
+                Ok(Command::Matcher(Some(args.join(" "))))
+            }
         },
     },
     PlayerArgs(_) => {

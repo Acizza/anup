@@ -391,6 +391,24 @@ impl UIState {
 
                 Ok(())
             }
+            Command::Matcher(pattern) => {
+                use anime::local::{EpisodeMap, EpisodeMatcher};
+
+                let series = try_opt_r!(self.cur_valid_series_mut());
+
+                log.capture_status("Setting series episode matcher", || {
+                    let matcher = match pattern {
+                        Some(pattern) => series::episode_matcher_with_pattern(pattern)?,
+                        None => EpisodeMatcher::new(),
+                    };
+
+                    series.episodes = EpisodeMap::parse(&series.config.path, &matcher)?;
+                    series.config.episode_matcher = matcher;
+                    series.save(&cstate.db)
+                });
+
+                Ok(())
+            }
             Command::PlayerArgs(args) => {
                 let series = try_opt_r!(self.cur_valid_series_mut());
 
