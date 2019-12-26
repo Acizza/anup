@@ -102,7 +102,7 @@ impl FromSql for EpisodeMatcher {
 
         match value {
             ValueRef::Null => Ok(EpisodeMatcher::new()),
-            ValueRef::Text(bytes) => {
+            ValueRef::Text(bytes) | ValueRef::Blob(bytes) => {
                 let pattern =
                     str::from_utf8(bytes).map_err(|err| FromSqlError::Other(Box::new(err)))?;
 
