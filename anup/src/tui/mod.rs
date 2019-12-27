@@ -40,7 +40,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
             Event::Input(key) => match key {
                 // Exit
                 Key::Char('q') if !ui_state.status_bar_state.in_input_dialog() => {
-                    // Prevent ruining the user's terminal
+                    cstate.db.close().ok();
                     ui.clear().ok();
                     break Ok(());
                 }

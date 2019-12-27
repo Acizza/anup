@@ -99,7 +99,7 @@ fn prefetch(args: &ArgMatches) -> Result<()> {
         series.info.title.preferred
     );
 
-    Ok(())
+    db.close()
 }
 
 fn sync(args: &ArgMatches) -> Result<()> {
@@ -126,7 +126,7 @@ fn sync(args: &ArgMatches) -> Result<()> {
         entry.insert_into_db(&db, ())?;
     }
 
-    Ok(())
+    db.close()
 }
 
 fn play_episode(args: &ArgMatches) -> Result<()> {
@@ -198,5 +198,5 @@ fn play_episode(args: &ArgMatches) -> Result<()> {
         println!("did not watch long enough to count episode as completed");
     }
 
-    Ok(())
+    db.close()
 }

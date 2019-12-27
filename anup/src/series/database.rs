@@ -15,6 +15,12 @@ impl Database {
         Ok(Self(conn))
     }
 
+    pub fn close(self) -> Result<()> {
+        self.conn()
+            .execute_batch(include_str!("../../sql/close.sql"))
+            .map_err(Into::into)
+    }
+
     pub fn validated_path() -> Result<PathBuf> {
         let mut path = SaveDir::LocalData.validated_dir_path()?.to_path_buf();
         path.push("data.sqlite");
