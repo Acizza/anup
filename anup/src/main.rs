@@ -9,12 +9,14 @@ use crate::config::Config;
 use crate::err::Result;
 use crate::file::TomlFile;
 use crate::series::database::{Database as SeriesDatabase, Insertable, Selectable};
-use crate::series::{LastWatched, Series};
+use crate::series::{LastWatched, Series, SeriesParameters};
 use anime::remote::{RemoteService, SeriesInfo};
 use chrono::{Duration, Utc};
 use clap::clap_app;
 use clap::ArgMatches;
 use snafu::{ensure, ResultExt};
+use std::path::PathBuf;
+use std::str;
 
 const ANILIST_CLIENT_ID: u32 = 427;
 
@@ -49,6 +51,14 @@ fn run(args: &ArgMatches) -> Result<()> {
         sync(args)
     } else {
         tui::run(args)
+    }
+}
+
+fn series_params_from_args(args: &ArgMatches) -> SeriesParameters {
+    SeriesParameters {
+        id: None, // TODO
+        path: args.value_of("path").map(PathBuf::from),
+        matcher: args.value_of("matcher").map(str::to_string),
     }
 }
 
@@ -90,8 +100,9 @@ fn prefetch(args: &ArgMatches) -> Result<()> {
     let config = Config::load_or_create()?;
     let db = SeriesDatabase::open()?;
     let remote = init_remote(args, false)?;
+    let params = series_params_from_args(args);
 
-    let series = Series::from_args_and_remote(args, desired_series, &config, remote.as_ref())?;
+    let series = Series::from_remote(desired_series, params, &config, remote.as_ref())?;
     series.save(&db)?;
 
     println!(
@@ -149,7 +160,8 @@ fn play_episode(args: &ArgMatches) -> Result<()> {
     let mut series = match desired_series {
         Some(desired) if series_names.contains(&desired) => Series::load(&db, desired)?,
         Some(desired) => {
-            let series = Series::from_args_and_remote(args, desired, &config, remote)?;
+            let params = series_params_from_args(args);
+            let series = Series::from_remote(desired, params, &config, remote)?;
             series.save(&db)?;
             series
         }

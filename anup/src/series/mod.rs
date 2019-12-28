@@ -22,38 +22,9 @@ pub struct Series {
 }
 
 impl Series {
-    pub fn from_args_and_remote<S, R>(
-        args: &clap::ArgMatches,
-        nickname: S,
-        config: &Config,
-        remote: &R,
-    ) -> Result<Self>
-    where
-        S: Into<String>,
-        R: RemoteService + ?Sized,
-    {
-        let path = match args.value_of("path") {
-            Some(path) => {
-                let path = PathBuf::from(path);
-                ensure!(path.is_dir(), err::NotADirectory);
-                Some(path)
-            }
-            None => None,
-        };
-
-        let matcher = match args.value_of("matcher") {
-            Some(pattern) => episode_matcher_with_pattern(pattern)?,
-            None => EpisodeMatcher::new(),
-        };
-
-        Self::from_remote(nickname, None, path, matcher, config, remote)
-    }
-
     pub fn from_remote<S, R>(
         nickname: S,
-        id: Option<anime::remote::SeriesID>,
-        path: Option<PathBuf>,
-        matcher: EpisodeMatcher,
+        params: SeriesParameters,
         config: &Config,
         remote: &R,
     ) -> Result<Self>
@@ -63,15 +34,23 @@ impl Series {
     {
         let nickname = nickname.into();
 
-        let path = match path {
-            Some(path) => path,
+        let path = match params.path {
+            Some(path) => {
+                ensure!(path.is_dir(), err::NotADirectory);
+                path
+            }
             None => detect::best_matching_folder(&nickname, &config.series_dir)?,
+        };
+
+        let matcher = match params.matcher {
+            Some(pattern) => episode_matcher_with_pattern(pattern)?,
+            None => EpisodeMatcher::new(),
         };
 
         let episodes = EpisodeMap::parse(&path, &matcher)?;
 
         let info = {
-            let info_sel = match id {
+            let info_sel = match params.id {
                 Some(id) => SeriesInfoSelector::ID(id),
                 None => {
                     let path_str = path.file_name().context(err::NoDirName)?.to_string_lossy();
@@ -274,6 +253,40 @@ impl Series {
         entry.set_status(Status::Completed, config);
         entry.sync_to_remote(remote)?;
         self.save(db)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SeriesParameters {
+    pub id: Option<anime::remote::SeriesID>,
+    pub path: Option<PathBuf>,
+    pub matcher: Option<String>,
+}
+
+impl SeriesParameters {
+    pub fn from_name_value_pairs(pairs: &[(&str, &str)]) -> Result<Self> {
+        let mut params = Self::default();
+
+        for &(name, value) in pairs {
+            match name.to_ascii_lowercase().as_ref() {
+                "id" => params.id = Some(value.parse()?),
+                "path" => params.path = Some(value.into()),
+                "matcher" => params.matcher = Some(value.to_string()),
+                _ => (),
+            }
+        }
+
+        Ok(params)
+    }
+}
+
+impl Default for SeriesParameters {
+    fn default() -> Self {
+        Self {
+            id: None,
+            path: None,
+            matcher: None,
+        }
     }
 }
 

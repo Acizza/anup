@@ -153,13 +153,19 @@ fn init_series_list(cstate: &CommonState, args: &ArgMatches) -> Result<Vec<Serie
         None => return Ok(series),
     };
 
+    let params = crate::series_params_from_args(args);
+
     // Otherwise, we'll need to fetch & save it
-    let new_series =
-        Series::from_args_and_remote(args, desired_series, &cstate.config, cstate.remote.as_ref())
-            .and_then(|series| {
-                series.save(&cstate.db)?;
-                Ok(series)
-            });
+    let new_series = Series::from_remote(
+        desired_series,
+        params,
+        &cstate.config,
+        cstate.remote.as_ref(),
+    )
+    .and_then(|series| {
+        series.save(&cstate.db)?;
+        Ok(series)
+    });
 
     series.push(SeriesStatus::from_series(new_series, desired_series));
     Ok(series)
@@ -317,9 +323,7 @@ impl UIState {
         log: &mut StatusLog,
     ) -> Result<()> {
         match command {
-            Command::Add(nickname, id) => {
-                use anime::local::EpisodeMatcher;
-
+            Command::Add(nickname, params) => {
                 if self.series.iter().any(|s| s.nickname() == nickname) {
                     log.push("Series with the specified nickname already exists");
                     return Ok(());
@@ -333,9 +337,7 @@ impl UIState {
                 log.capture_status("Adding series", || {
                     let series = Series::from_remote(
                         &nickname,
-                        id,
-                        None,
-                        EpisodeMatcher::new(),
+                        params,
                         &cstate.config,
                         cstate.remote.as_ref(),
                     );

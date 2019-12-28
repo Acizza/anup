@@ -1,4 +1,5 @@
 use crate::err::{self, Result};
+use crate::series::SeriesParameters;
 use smallvec::{smallvec, SmallVec};
 use snafu::ensure;
 use std::convert::TryFrom;
@@ -257,7 +258,7 @@ macro_rules! impl_command_matching {
 #[derive(Debug, Clone)]
 pub enum Command {
     /// Add a new series with the specified nickname and optional series ID.
-    Add(String, Option<anime::remote::SeriesID>),
+    Add(String, SeriesParameters),
     /// Remove the selected series from the program.
     Delete,
     /// Set the user's login token for a remote service.
@@ -281,16 +282,23 @@ pub enum Command {
 impl_command_matching!(Command, 10,
     Add(_) => {
         name: "add",
-        usage: "<nickname> [id]",
+        usage: "<nickname> [id=value] [path=value] [matcher=value]",
         min_args: 1,
         fn: |args: &[&str]| {
-            let id = if args.len() > 1 {
-                args[1].parse().ok()
+            let params = if args.len() > 1 {
+                let pairs = args[1..].iter().filter_map(|&pair| {
+                    let idx = pair.find('=')?;
+                    let (name, value) = pair.split_at(idx);
+                    let value = value[1..].trim_matches(char_is_quote);
+                    Some((name, value))
+                }).collect::<SmallVec<[_; 1]>>();
+
+                SeriesParameters::from_name_value_pairs(&pairs)?
             } else {
-                None
+                SeriesParameters::default()
             };
 
-            Ok(Command::Add(args[0].into(), id))
+            Ok(Command::Add(args[0].into(), params))
         },
     },
     Delete => {
@@ -325,7 +333,7 @@ impl_command_matching!(Command, 10,
         min_args: 0,
         fn: |args: &[&str]| {
             let args = args.iter()
-                .map(|frag| frag.to_string())
+                .map(|&frag| frag.to_string())
                 .collect();
 
             Ok(Command::PlayerArgs(args))
