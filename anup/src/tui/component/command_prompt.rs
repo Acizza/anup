@@ -147,6 +147,63 @@ pub enum PromptResult {
     NotDone,
 }
 
+fn char_is_quote(ch: char) -> bool {
+    ch == '\"' || ch == '\''
+}
+
+/// Split `string` into shell words.
+///
+/// This implementation only groups (non-nested) quotes into one argument.
+fn simple_shell_words<'a>(string: &'a str) -> SmallVec<[&'a str; 3]> {
+    if string.is_empty() {
+        return SmallVec::new();
+    }
+
+    let mut slices = SmallVec::new();
+    let mut start = 0;
+    let mut in_quote = false;
+
+    let is_surrounded_by_quotes = |slice: &str| {
+        if slice.len() < 2 {
+            return false;
+        }
+
+        slice.starts_with(char_is_quote) && slice.ends_with(char_is_quote)
+    };
+
+    let mut push_slice = |start, end| {
+        let mut slice = &string[start..end];
+
+        if is_surrounded_by_quotes(slice) {
+            slice = &slice[1..slice.len() - 1];
+        }
+
+        if slice.is_empty() {
+            return;
+        }
+
+        slices.push(slice);
+    };
+
+    for (i, ch) in string.chars().enumerate() {
+        match ch {
+            ' ' => {
+                if in_quote {
+                    continue;
+                }
+
+                push_slice(start, i);
+                start = i + 1;
+            }
+            '\"' | '\'' => in_quote = !in_quote,
+            _ => (),
+        }
+    }
+
+    push_slice(start, string.len());
+    slices
+}
+
 macro_rules! impl_command_matching {
     ($enum_name:ident, $num_cmds:expr, $($field:pat => { name: $name:expr, usage: $usage:expr, min_args: $min_args:expr, fn: $parse_fn:expr, },)+) => {
         impl $enum_name {
@@ -162,8 +219,7 @@ macro_rules! impl_command_matching {
             type Error = err::Error;
 
             fn try_from(value: &str) -> result::Result<Self, Self::Error> {
-                let fragments = value.split_whitespace().collect::<SmallVec<[&str; 3]>>();
-
+                let fragments = simple_shell_words(value);
                 ensure!(!fragments.is_empty(), err::NoCommandSpecified);
 
                 let name = fragments[0].to_ascii_lowercase();
@@ -442,5 +498,55 @@ mod tests {
         );
 
         test_command!("status watching\n", Command::Status(Status::Watching));
+    }
+
+    #[test]
+    fn test_shell_words() {
+        use smallvec::smallvec;
+
+        let expected: SmallVec<[_; 4]> = smallvec!["this", "is", "a", "test"];
+        assert_eq!(simple_shell_words("this is a test"), expected);
+
+        let expected: SmallVec<[_; 3]> = smallvec!["this", "is a harder", "test"];
+        assert_eq!(simple_shell_words("this \"is a harder\" test"), expected);
+
+        let expected: SmallVec<[_; 4]> =
+            smallvec!["this", "tests=\"quotes inside of\"", "one", "string"];
+        assert_eq!(
+            simple_shell_words("this tests=\"quotes inside of\" one string"),
+            expected
+        );
+
+        let expected: SmallVec<[_; 3]> = smallvec!["tests", "empty", "quotes"];
+        assert_eq!(simple_shell_words("tests \"\" empty quotes"), expected);
+
+        let expected: SmallVec<[_; 1]> = smallvec!["tests single quote with spaces"];
+        assert_eq!(
+            simple_shell_words("\"tests single quote with spaces\""),
+            expected
+        );
+
+        let expected: SmallVec<[_; 3]> = smallvec!["tests", "alternative quote", "matcher"];
+        assert_eq!(
+            simple_shell_words("tests \'alternative quote\' matcher"),
+            expected
+        );
+
+        let expected: SmallVec<[_; 3]> = smallvec!["tests", "having mixed", "quotes"];
+        assert_eq!(
+            simple_shell_words("tests \"having mixed\' quotes"),
+            expected
+        );
+
+        // Only one quote
+        let expected: SmallVec<[_; 1]> = smallvec!["\""];
+        assert_eq!(simple_shell_words("\""), expected);
+
+        // Only one space
+        let expected: SmallVec<[&str; 0]> = smallvec![];
+        assert_eq!(simple_shell_words(" "), expected);
+
+        // Empty quotes without any other arguments
+        assert_eq!(simple_shell_words("\"\""), expected);
     }
 }
