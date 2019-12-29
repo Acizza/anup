@@ -260,10 +260,10 @@ macro_rules! impl_command_matching {
 pub enum Command {
     /// Add a new series with the specified nickname and optional series ID.
     Add(String, SeriesParameters),
+    /// Set the current remote to AniList with an optional login token.
+    AniList(Option<String>),
     /// Remove the selected series from the program.
     Delete,
-    /// Set the user's login token for a remote service.
-    LoginToken(String),
     /// Set the episode matcher for the selected series.
     Matcher(Option<String>),
     // Set the current remote to offline.
@@ -306,19 +306,25 @@ impl_command_matching!(Command, 12,
             Ok(Command::Add(args[0].into(), params))
         },
     },
+    AniList(_) => {
+        name: "anilist",
+        usage: "[login token]",
+        min_args: 0,
+        fn: |args: &[&str]| {
+            let token = if !args.is_empty() {
+                Some(args.join(" "))
+            } else {
+                None
+            };
+
+            Ok(Command::AniList(token))
+        },
+    },
     Delete => {
         name: "delete",
         usage: "",
         min_args: 0,
         fn: |_| Ok(Command::Delete),
-    },
-    LoginToken(_) => {
-        name: "token",
-        usage: "<token>",
-        min_args: 1,
-        fn: |args: &[&str]| {
-            Ok(Command::LoginToken(args.join(" ")))
-        },
     },
     Matcher(_) => {
         name: "matcher",
@@ -493,9 +499,9 @@ mod tests {
 
         test_command!("delete\n", Command::Delete);
 
-        match enter_command("token inserttokenhere\n") {
-            Command::LoginToken(token) if token == "inserttokenhere" => (),
-            other => expected!(other, Command::LoginToken(String::from("inserttokenhere"))),
+        match enter_command("anilist inserttokenhere\n") {
+            Command::AniList(token) if token == Some("inserttokenhere".into()) => (),
+            other => expected!(other, Command::AniList(Some("inserttokenhere".into()))),
         }
 
         let expected_args: Vec<String> = vec!["arg1".into(), "arg2".into()];

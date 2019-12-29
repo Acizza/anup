@@ -197,8 +197,8 @@ where
                     "Add one by launching the program with a \
                     \nkeyword similar to the series name on disk. \
                     
-                    \n\nFor example: assuming the path \"~/anime/Ooga Booga\" \
-                    \nexists, launching the program with the keyword 'booga' \
+                    \n\nFor example: assuming the path \"~/anime/Jigoku Shoujo\" \
+                    \nexists, launching the program with the keyword 'shoujo' \
                     \nwill add it to the series list. \
                     
                     \n\nYou can also use a non-similar keyword along with \

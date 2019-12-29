@@ -62,7 +62,7 @@ fn init_remote(args: &ArgMatches, log: &mut StatusLog) -> Box<dyn RemoteService>
                 err::Error::NeedAniListToken => {
                     log.push(format!(
                         "No access token found. Go to {} \
-                         and set your token with the 'token' command",
+                         and set your token with the 'anilist' command",
                         anilist::auth_url(crate::ANILIST_CLIENT_ID)
                     ));
                 }
@@ -70,7 +70,7 @@ fn init_remote(args: &ArgMatches, log: &mut StatusLog) -> Box<dyn RemoteService>
                     log.push(LogItem::failed("Logging in", err));
                     log.push(format!(
                         "If you need a new token, go to {} \
-                         and set it with the 'token' command",
+                         and set it with the 'anilist' command",
                         anilist::auth_url(crate::ANILIST_CLIENT_ID)
                     ));
                 }
@@ -340,6 +340,30 @@ impl UIState {
                     Ok(())
                 });
             }
+            Command::AniList(token) => {
+                use anime::remote::anilist::AniList;
+                use anime::remote::AccessToken;
+
+                log.capture_status("Logging in to AniList", || {
+                    let token = match token {
+                        Some(token) => {
+                            let token = AccessToken::encode(token);
+                            token.save()?;
+                            token
+                        }
+                        None => match AccessToken::load() {
+                            Ok(token) => token,
+                            Err(err) if err.is_file_nonexistant() => {
+                                return Err(err::Error::NeedAniListToken)
+                            }
+                            Err(err) => return Err(err),
+                        },
+                    };
+
+                    cstate.remote = Box::new(AniList::authenticated(token)?);
+                    Ok(())
+                });
+            }
             Command::Delete => {
                 if self.selected_series >= self.series.len() {
                     return;
@@ -354,17 +378,6 @@ impl UIState {
 
                 log.capture_status("Deleting series", || Series::delete(&cstate.db, nickname));
                 self.ensure_cur_series_initialized(&cstate.db);
-            }
-            Command::LoginToken(token) => {
-                use anime::remote::anilist::AniList;
-                use anime::remote::AccessToken;
-
-                log.capture_status("Setting user access token", || {
-                    let token = AccessToken::encode(token);
-                    token.save()?;
-                    cstate.remote = Box::new(AniList::authenticated(token)?);
-                    Ok(())
-                });
             }
             Command::Matcher(pattern) => {
                 use anime::local::{EpisodeMap, EpisodeMatcher};
