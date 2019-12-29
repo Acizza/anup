@@ -299,11 +299,6 @@ impl UIState {
     fn process_command(&mut self, command: Command, cstate: &mut CommonState, log: &mut StatusLog) {
         match command {
             Command::Add(nickname, params) => {
-                if self.series.iter().any(|s| s.nickname() == nickname) {
-                    log.push("Series with the specified nickname already exists");
-                    return;
-                }
-
                 if cstate.remote.is_offline() {
                     log.push("This command cannot be ran in offline mode");
                     return;
@@ -323,9 +318,18 @@ impl UIState {
 
                     let status = SeriesStatus::from_series(series, &nickname);
 
-                    self.series.push(status);
-                    self.series
-                        .sort_unstable_by(|x, y| x.nickname().cmp(y.nickname()));
+                    let existing_position = self
+                        .series
+                        .iter()
+                        .position(|series| series.nickname() == nickname);
+
+                    if let Some(pos) = existing_position {
+                        self.series[pos] = status;
+                    } else {
+                        self.series.push(status);
+                        self.series
+                            .sort_unstable_by(|x, y| x.nickname().cmp(y.nickname()));
+                    }
 
                     self.selected_series = self
                         .series
