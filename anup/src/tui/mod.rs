@@ -625,10 +625,6 @@ enum WatchState {
 
 impl PartialEq for WatchState {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Idle, Self::Idle) => true,
-            (Self::Watching(_, _), Self::Watching(_, _)) => true,
-            _ => false,
-        }
+        mem::discriminant(self) == mem::discriminant(other)
     }
 }
