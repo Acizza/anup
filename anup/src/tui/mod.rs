@@ -547,42 +547,42 @@ enum SeriesStatus {
 }
 
 impl SeriesStatus {
-    fn from_series<S>(series: Result<Series>, nickname: S) -> SeriesStatus
+    fn from_series<S>(series: Result<Series>, nickname: S) -> Self
     where
         S: Into<String>,
     {
         match series {
-            Ok(series) => SeriesStatus::Valid(Box::new(series)),
+            Ok(series) => Self::Valid(Box::new(series)),
             // We want to use a somewhat concise error message here, so
             // we should strip error wrappers that don't provide much context
             Err(err::Error::Anime { source, .. }) => {
-                SeriesStatus::Invalid(nickname.into(), format!("{}", source))
+                Self::Invalid(nickname.into(), format!("{}", source))
             }
-            Err(err) => SeriesStatus::Invalid(nickname.into(), format!("{}", err)),
+            Err(err) => Self::Invalid(nickname.into(), format!("{}", err)),
         }
     }
 
     fn get_valid(&self) -> Option<&Series> {
         match self {
-            SeriesStatus::Valid(series) => Some(&series),
-            SeriesStatus::Invalid(_, _) => None,
-            SeriesStatus::Unloaded(_) => None,
+            Self::Valid(series) => Some(&series),
+            Self::Invalid(_, _) => None,
+            Self::Unloaded(_) => None,
         }
     }
 
     fn get_valid_mut(&mut self) -> Option<&mut Series> {
         match self {
-            SeriesStatus::Valid(series) => Some(series),
-            SeriesStatus::Invalid(_, _) => None,
-            SeriesStatus::Unloaded(_) => None,
+            Self::Valid(series) => Some(series),
+            Self::Invalid(_, _) => None,
+            Self::Unloaded(_) => None,
         }
     }
 
     fn nickname(&self) -> &str {
         match self {
-            SeriesStatus::Valid(series) => series.config.nickname.as_ref(),
-            SeriesStatus::Invalid(nickname, _) => nickname.as_ref(),
-            SeriesStatus::Unloaded(nickname) => nickname.as_ref(),
+            Self::Valid(series) => series.config.nickname.as_ref(),
+            Self::Invalid(nickname, _) => nickname.as_ref(),
+            Self::Unloaded(nickname) => nickname.as_ref(),
         }
     }
 }
@@ -594,24 +594,24 @@ enum StatusBarState {
 
 impl StatusBarState {
     fn set_to_command_prompt(&mut self) {
-        *self = StatusBarState::CommandPrompt(CommandPrompt::new());
+        *self = Self::CommandPrompt(CommandPrompt::new());
     }
 
     fn reset(&mut self) {
-        *self = StatusBarState::default();
+        *self = Self::default();
     }
 
     fn in_input_dialog(&self) -> bool {
         match self {
-            StatusBarState::Log => false,
-            StatusBarState::CommandPrompt(_) => true,
+            Self::Log => false,
+            Self::CommandPrompt(_) => true,
         }
     }
 }
 
 impl<'a> Default for StatusBarState {
     fn default() -> Self {
-        StatusBarState::Log
+        Self::Log
     }
 }
 
@@ -626,8 +626,8 @@ enum WatchState {
 impl PartialEq for WatchState {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (WatchState::Idle, WatchState::Idle) => true,
-            (WatchState::Watching(_, _), WatchState::Watching(_, _)) => true,
+            (Self::Idle, Self::Idle) => true,
+            (Self::Watching(_, _), Self::Watching(_, _)) => true,
             _ => false,
         }
     }

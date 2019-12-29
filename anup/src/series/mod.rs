@@ -114,7 +114,7 @@ impl Series {
         Ok(())
     }
 
-    pub fn load<S>(db: &Database, nickname: S) -> Result<Series>
+    pub fn load<S>(db: &Database, nickname: S) -> Result<Self>
     where
         S: AsRef<str>,
     {
@@ -297,13 +297,13 @@ pub struct SeriesEntry {
 }
 
 impl SeriesEntry {
-    pub fn from_remote<R>(remote: &R, info: &SeriesInfo) -> Result<SeriesEntry>
+    pub fn from_remote<R>(remote: &R, info: &SeriesInfo) -> Result<Self>
     where
         R: RemoteService + ?Sized,
     {
         match remote.get_list_entry(info.id)? {
-            Some(entry) => Ok(SeriesEntry::from(entry)),
-            None => Ok(SeriesEntry::from(info.id)),
+            Some(entry) => Ok(Self::from(entry)),
+            None => Ok(Self::from(info.id)),
         }
     }
 
@@ -340,8 +340,8 @@ impl SeriesEntry {
         }
 
         *self = match remote.get_list_entry(self.id())? {
-            Some(entry) => SeriesEntry::from(entry),
-            None => SeriesEntry::from(self.id()),
+            Some(entry) => Self::from(entry),
+            None => Self::from(self.id()),
         };
 
         Ok(())
@@ -432,8 +432,8 @@ impl_series_entry_getters_setters!(
 );
 
 impl From<anime::remote::SeriesEntry> for SeriesEntry {
-    fn from(entry: anime::remote::SeriesEntry) -> SeriesEntry {
-        SeriesEntry {
+    fn from(entry: anime::remote::SeriesEntry) -> Self {
+        Self {
             entry,
             needs_sync: false,
         }
@@ -441,9 +441,9 @@ impl From<anime::remote::SeriesEntry> for SeriesEntry {
 }
 
 impl From<u32> for SeriesEntry {
-    fn from(id: u32) -> SeriesEntry {
+    fn from(id: u32) -> Self {
         let remote_entry = anime::remote::SeriesEntry::new(id);
-        SeriesEntry::from(remote_entry)
+        Self::from(remote_entry)
     }
 }
 

@@ -436,8 +436,8 @@ impl TryFrom<&str> for ProgressDirection {
 
     fn try_from(value: &str) -> result::Result<Self, Self::Error> {
         match value {
-            "f" | "forward" => Ok(ProgressDirection::Forwards),
-            "b" | "backward" => Ok(ProgressDirection::Backwards),
+            "f" | "forward" => Ok(Self::Forwards),
+            "b" | "backward" => Ok(Self::Backwards),
             _ => Err(err::Error::UnknownCmdPromptArg {
                 value: value.into(),
             }),
