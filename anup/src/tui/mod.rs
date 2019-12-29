@@ -382,6 +382,11 @@ impl UIState {
                     series.save(&cstate.db)
                 });
             }
+            Command::Offline => {
+                use anime::remote::offline::Offline;
+                cstate.remote = Box::new(Offline::new());
+                log.push("Remote set to offline");
+            }
             Command::Path(path) => {
                 use anime::local::EpisodeMap;
 

@@ -266,6 +266,8 @@ pub enum Command {
     LoginToken(String),
     /// Set the episode matcher for the selected series.
     Matcher(Option<String>),
+    // Set the current remote to offline.
+    Offline,
     // Set the path for the selected series.
     Path(PathBuf),
     /// Specify the video player arguments for the selected season.
@@ -282,7 +284,7 @@ pub enum Command {
     Status(anime::remote::Status),
 }
 
-impl_command_matching!(Command, 11,
+impl_command_matching!(Command, 12,
     Add(_) => {
         name: "add",
         usage: "<nickname> [id=value] [path=value] [matcher=value]",
@@ -329,6 +331,12 @@ impl_command_matching!(Command, 11,
                 Ok(Command::Matcher(Some(args.join(" "))))
             }
         },
+    },
+    Offline => {
+        name: "offline",
+        usage: "",
+        min_args: 0,
+        fn: |_| Ok(Command::Offline),
     },
     Path(_) => {
         name: "path",
