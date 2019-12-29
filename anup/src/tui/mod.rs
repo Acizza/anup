@@ -6,7 +6,7 @@ use crate::err::{self, Result};
 use crate::file::TomlFile;
 use crate::series::database::Database as SeriesDatabase;
 use crate::series::{self, LastWatched, Series};
-use crate::try_opt_r;
+use crate::{try_opt_r, try_ret};
 use anime::remote::RemoteService;
 use chrono::{DateTime, Duration, Utc};
 use clap::ArgMatches;
@@ -44,17 +44,9 @@ pub fn run(args: &ArgMatches) -> Result<()> {
                     ui.clear().ok();
                     break Ok(());
                 }
-                key => match ui_state.process_key(&mut cstate, &mut ui.status_log, key) {
-                    Ok(_) => (),
-                    Err(err) => {
-                        ui.status_log.push(LogItem::failed("Processing key", err));
-                    }
-                },
+                key => ui_state.process_key(&mut cstate, &mut ui.status_log, key),
             },
-            Event::Tick => match ui_state.process_tick(&cstate, &mut ui.status_log) {
-                Ok(_) => (),
-                Err(err) => ui.status_log.push(LogItem::failed("Processing tick", err)),
-            },
+            Event::Tick => ui_state.process_tick(&cstate, &mut ui.status_log),
         }
     }
 }
@@ -221,24 +213,20 @@ impl UIState {
         }
     }
 
-    fn process_key(
-        &mut self,
-        state: &mut CommonState,
-        log: &mut StatusLog,
-        key: Key,
-    ) -> Result<()> {
+    fn process_key(&mut self, state: &mut CommonState, log: &mut StatusLog, key: Key) {
         if !self.is_idle() {
-            return Ok(());
+            return;
         }
 
         if self.status_bar_state.in_input_dialog() {
-            return self.process_input_dialog_key(state, log, key);
+            self.process_input_dialog_key(state, log, key);
+            return;
         }
 
         match key {
             // Play next episode
             Key::Char(ch) if ch == state.config.tui.keys.play_next_episode => {
-                let series = try_opt_r!(self.cur_valid_series());
+                let series = try_ret!(self.cur_valid_series());
                 let nickname = series.config.nickname.clone();
                 let is_diff_series = self.last_watched.set(nickname);
 
@@ -260,10 +248,10 @@ impl UIState {
             Key::Char(ch) if ch == state.config.tui.keys.run_last_command => {
                 let cmd = match &self.last_used_command {
                     Some(cmd) => cmd.clone(),
-                    None => return Ok(()),
+                    None => return,
                 };
 
-                self.process_command(cmd, state, log)?;
+                self.process_command(cmd, state, log);
             }
             // Select series
             Key::Up | Key::Down => {
@@ -279,18 +267,11 @@ impl UIState {
             }
             _ => (),
         }
-
-        Ok(())
     }
 
-    fn process_input_dialog_key(
-        &mut self,
-        state: &mut CommonState,
-        log: &mut StatusLog,
-        key: Key,
-    ) -> Result<()> {
+    fn process_input_dialog_key(&mut self, state: &mut CommonState, log: &mut StatusLog, key: Key) {
         match &mut self.status_bar_state {
-            StatusBarState::Log => Ok(()),
+            StatusBarState::Log => (),
             StatusBarState::CommandPrompt(prompt) => {
                 use component::command_prompt::PromptResult;
 
@@ -298,40 +279,34 @@ impl UIState {
                     Ok(PromptResult::Command(command)) => {
                         self.status_bar_state.reset();
                         self.last_used_command = Some(command.clone());
-                        self.process_command(command, state, log)
+                        self.process_command(command, state, log);
                     }
                     Ok(PromptResult::Done) => {
                         self.status_bar_state.reset();
-                        Ok(())
                     }
-                    Ok(PromptResult::NotDone) => Ok(()),
+                    Ok(PromptResult::NotDone) => (),
                     // We need to set the status bar state back before propagating errors,
                     // otherwise we'll be stuck in the prompt
                     Err(err) => {
                         self.status_bar_state.reset();
-                        Err(err)
+                        log.push(LogItem::failed("Processing command", err));
                     }
                 }
             }
         }
     }
 
-    fn process_command(
-        &mut self,
-        command: Command,
-        cstate: &mut CommonState,
-        log: &mut StatusLog,
-    ) -> Result<()> {
+    fn process_command(&mut self, command: Command, cstate: &mut CommonState, log: &mut StatusLog) {
         match command {
             Command::Add(nickname, params) => {
                 if self.series.iter().any(|s| s.nickname() == nickname) {
                     log.push("Series with the specified nickname already exists");
-                    return Ok(());
+                    return;
                 }
 
                 if cstate.remote.is_offline() {
                     log.push("This command cannot be ran in offline mode");
-                    return Ok(());
+                    return;
                 }
 
                 log.capture_status("Adding series", || {
@@ -360,12 +335,10 @@ impl UIState {
 
                     Ok(())
                 });
-
-                Ok(())
             }
             Command::Delete => {
                 if self.selected_series >= self.series.len() {
-                    return Ok(());
+                    return;
                 }
 
                 let series = self.series.remove(self.selected_series);
@@ -376,9 +349,7 @@ impl UIState {
                 }
 
                 log.capture_status("Deleting series", || Series::delete(&cstate.db, nickname));
-
                 self.ensure_cur_series_initialized(&cstate.db);
-                Ok(())
             }
             Command::LoginToken(token) => {
                 use anime::remote::anilist::AniList;
@@ -390,13 +361,11 @@ impl UIState {
                     cstate.remote = Box::new(AniList::authenticated(token)?);
                     Ok(())
                 });
-
-                Ok(())
             }
             Command::Matcher(pattern) => {
                 use anime::local::{EpisodeMap, EpisodeMatcher};
 
-                let series = try_opt_r!(self.cur_valid_series_mut());
+                let series = try_ret!(self.cur_valid_series_mut());
 
                 log.capture_status("Setting series episode matcher", || {
                     let matcher = match pattern {
@@ -408,23 +377,19 @@ impl UIState {
                     series.config.episode_matcher = matcher;
                     series.save(&cstate.db)
                 });
-
-                Ok(())
             }
             Command::PlayerArgs(args) => {
-                let series = try_opt_r!(self.cur_valid_series_mut());
+                let series = try_ret!(self.cur_valid_series_mut());
 
                 log.capture_status("Saving player args for series", || {
                     series.config.player_args = args;
                     series.save(&cstate.db)
                 });
-
-                Ok(())
             }
             Command::Progress(direction) => {
                 use component::command_prompt::ProgressDirection;
 
-                let series = try_opt_r!(self.cur_valid_series_mut());
+                let series = try_ret!(self.cur_valid_series_mut());
                 let remote = cstate.remote.as_ref();
 
                 match direction {
@@ -439,40 +404,34 @@ impl UIState {
                         });
                     }
                 }
-
-                Ok(())
             }
             Command::SyncFromRemote => {
-                let series = try_opt_r!(self.cur_valid_series_mut());
+                let series = try_ret!(self.cur_valid_series_mut());
                 let remote = cstate.remote.as_ref();
 
                 log.capture_status("Syncing entry from remote", || {
                     series.entry.force_sync_from_remote(remote)?;
                     series.save(&cstate.db)
                 });
-
-                Ok(())
             }
             Command::SyncToRemote => {
-                let series = try_opt_r!(self.cur_valid_series_mut());
+                let series = try_ret!(self.cur_valid_series_mut());
                 let remote = cstate.remote.as_ref();
 
                 log.capture_status("Syncing entry to remote", || {
                     series.entry.force_sync_to_remote(remote)?;
                     series.save(&cstate.db)
                 });
-
-                Ok(())
             }
             Command::Score(raw_score) => {
-                let series = try_opt_r!(self.cur_valid_series_mut());
+                let series = try_ret!(self.cur_valid_series_mut());
 
                 let score = match cstate.remote.parse_score(&raw_score) {
                     Some(score) if score == 0 => None,
                     Some(score) => Some(score),
                     None => {
                         log.push(LogItem::failed("Parsing score", None));
-                        return Ok(());
+                        return;
                     }
                 };
 
@@ -483,11 +442,9 @@ impl UIState {
                     series.entry.sync_to_remote(remote)?;
                     series.save(&cstate.db)
                 });
-
-                Ok(())
             }
             Command::Status(status) => {
-                let series = try_opt_r!(self.cur_valid_series_mut());
+                let series = try_ret!(self.cur_valid_series_mut());
                 let remote = cstate.remote.as_ref();
 
                 log.capture_status(format!("Setting series status to \"{}\"", status), || {
@@ -495,19 +452,21 @@ impl UIState {
                     series.entry.sync_to_remote(remote)?;
                     series.save(&cstate.db)
                 });
-
-                Ok(())
             }
         }
     }
 
-    fn process_tick(&mut self, state: &CommonState, log: &mut StatusLog) -> Result<()> {
+    fn process_tick(&mut self, state: &CommonState, log: &mut StatusLog) {
         match &mut self.watch_state {
             WatchState::Idle => (),
             WatchState::Watching(_, child) => {
-                let status = match child.try_wait().context(err::IO)? {
-                    Some(status) => status,
-                    None => return Ok(()),
+                let status = match child.try_wait().context(err::IO) {
+                    Ok(Some(status)) => status,
+                    Ok(None) => return,
+                    Err(err) => {
+                        log.push(LogItem::failed("Waiting for player", err));
+                        return;
+                    }
                 };
 
                 // The watch state should be set to idle immediately to avoid a potential infinite loop.
@@ -516,11 +475,11 @@ impl UIState {
                     WatchState::Idle => unreachable!(),
                 };
 
-                let series = try_opt_r!(self.cur_valid_series_mut());
+                let series = try_ret!(self.cur_valid_series_mut());
 
                 if !status.success() {
                     log.push("Player did not exit properly");
-                    return Ok(());
+                    return;
                 }
 
                 if Utc::now() >= progress_time {
@@ -532,8 +491,6 @@ impl UIState {
                 }
             }
         }
-
-        Ok(())
     }
 
     fn start_next_series_episode(&mut self, state: &CommonState) -> Result<()> {
