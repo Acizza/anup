@@ -609,7 +609,7 @@ impl StatusBarState {
     }
 }
 
-impl<'a> Default for StatusBarState {
+impl Default for StatusBarState {
     fn default() -> Self {
         Self::Log
     }
