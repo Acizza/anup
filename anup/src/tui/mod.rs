@@ -382,6 +382,17 @@ impl UIState {
                     series.save(&cstate.db)
                 });
             }
+            Command::Path(path) => {
+                use anime::local::EpisodeMap;
+
+                let series = try_ret!(self.cur_valid_series_mut());
+
+                log.capture_status("Setting series path", || {
+                    series.episodes = EpisodeMap::parse(&path, &series.config.episode_matcher)?;
+                    series.config.path = path;
+                    series.save(&cstate.db)
+                });
+            }
             Command::PlayerArgs(args) => {
                 let series = try_ret!(self.cur_valid_series_mut());
 

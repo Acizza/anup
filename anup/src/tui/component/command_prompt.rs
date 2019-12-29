@@ -1,8 +1,9 @@
 use crate::err::{self, Result};
 use crate::series::SeriesParameters;
 use smallvec::{smallvec, SmallVec};
-use snafu::ensure;
+use snafu::{ensure, ResultExt};
 use std::convert::TryFrom;
+use std::path::PathBuf;
 use std::result;
 use termion::event::Key;
 use tui::style::{Color, Style};
@@ -265,6 +266,8 @@ pub enum Command {
     LoginToken(String),
     /// Set the episode matcher for the selected series.
     Matcher(Option<String>),
+    // Set the path for the selected series.
+    Path(PathBuf),
     /// Specify the video player arguments for the selected season.
     PlayerArgs(Vec<String>),
     /// Increment / decrement the watched episodes of the selected season.
@@ -279,7 +282,7 @@ pub enum Command {
     Status(anime::remote::Status),
 }
 
-impl_command_matching!(Command, 10,
+impl_command_matching!(Command, 11,
     Add(_) => {
         name: "add",
         usage: "<nickname> [id=value] [path=value] [matcher=value]",
@@ -325,6 +328,16 @@ impl_command_matching!(Command, 10,
             } else {
                 Ok(Command::Matcher(Some(args.join(" "))))
             }
+        },
+    },
+    Path(_) => {
+        name: "path",
+        usage: "<path to series>",
+        min_args: 1,
+        fn: |args: &[&str]| {
+            let path = PathBuf::from(args.join(" ")).canonicalize().context(err::IO)?;
+            ensure!(path.is_dir(), err::NotADirectory);
+            Ok(Command::Path(path))
         },
     },
     PlayerArgs(_) => {
