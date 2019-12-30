@@ -219,8 +219,7 @@ impl UIState {
         }
 
         if self.status_bar_state.in_input_dialog() {
-            self.process_input_dialog_key(state, log, key);
-            return;
+            return self.process_input_dialog_key(state, log, key);
         }
 
         match key {
@@ -241,9 +240,7 @@ impl UIState {
                 });
             }
             // Command prompt
-            Key::Char(':') => {
-                self.status_bar_state.set_to_command_prompt();
-            }
+            Key::Char(':') => self.status_bar_state.set_to_command_prompt(),
             // Run last used command
             Key::Char(ch) if ch == state.config.tui.keys.run_last_command => {
                 let cmd = match &self.last_used_command {
@@ -281,9 +278,7 @@ impl UIState {
                         self.last_used_command = Some(command.clone());
                         self.process_command(command, state, log);
                     }
-                    Ok(PromptResult::Done) => {
-                        self.status_bar_state.reset();
-                    }
+                    Ok(PromptResult::Done) => self.status_bar_state.reset(),
                     Ok(PromptResult::NotDone) => (),
                     // We need to set the status bar state back before propagating errors,
                     // otherwise we'll be stuck in the prompt
