@@ -10,7 +10,7 @@ use database::{Database, Deletable, Insertable, Selectable};
 use snafu::{ensure, OptionExt, ResultExt};
 use std::borrow::Cow;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 #[derive(Debug)]
@@ -65,28 +65,7 @@ impl Series {
         };
 
         let entry = SeriesEntry::from_remote(remote, &info)?;
-
-        Self::with_remote_info(nickname, path, episodes, matcher, info, entry)
-    }
-
-    pub fn with_remote_info<S>(
-        nickname: S,
-        path: PathBuf,
-        episodes: EpisodeMap,
-        matcher: EpisodeMatcher,
-        info: SeriesInfo,
-        entry: SeriesEntry,
-    ) -> Result<Self>
-    where
-        S: Into<String>,
-    {
-        let config = SeriesConfig {
-            id: info.id,
-            nickname: nickname.into(),
-            path,
-            episode_matcher: matcher,
-            player_args: Vec::new(),
-        };
+        let config = SeriesConfig::new(info.id, nickname, path, matcher, config);
 
         let series = Self {
             info,
@@ -114,20 +93,21 @@ impl Series {
         Ok(())
     }
 
-    pub fn load<S>(db: &Database, nickname: S) -> Result<Self>
+    pub fn load<S>(db: &Database, config: &Config, nickname: S) -> Result<Self>
     where
         S: AsRef<str>,
     {
-        let config = SeriesConfig::select_from_db(db, nickname.as_ref())?;
-        let info = SeriesInfo::select_from_db(db, config.id)?;
-        let entry = SeriesEntry::select_from_db(db, config.id)?;
+        let sconfig = SeriesConfig::select_from_db(db, nickname.as_ref())?;
+        let info = SeriesInfo::select_from_db(db, sconfig.id)?;
+        let entry = SeriesEntry::select_from_db(db, sconfig.id)?;
 
-        let episodes = EpisodeMap::parse(&config.path, &config.episode_matcher)?;
+        let path = sconfig.full_path(config);
+        let episodes = EpisodeMap::parse(path.as_ref(), &sconfig.episode_matcher)?;
 
         Ok(Self {
             info,
             entry,
-            config,
+            config: sconfig,
             episodes,
         })
     }
@@ -140,16 +120,16 @@ impl Series {
         SeriesConfig::delete_from_db(db, nickname.as_ref())
     }
 
-    pub fn episode_path(&self, episode: u32) -> Option<PathBuf> {
+    pub fn episode_path(&self, episode: u32, config: &Config) -> Option<PathBuf> {
         let episode_filename = self.episodes.get(&episode)?;
-        let mut path = self.config.path.clone();
+        let mut path = self.config.full_path(config).into_owned();
         path.push(episode_filename);
         path.canonicalize().ok()
     }
 
     pub fn play_episode_cmd(&self, episode: u32, config: &Config) -> Result<Command> {
         let episode_path = self
-            .episode_path(episode)
+            .episode_path(episode, config)
             .context(err::EpisodeNotFound { episode })?;
 
         let mut cmd = Command::new(&config.episode.player);
@@ -451,9 +431,58 @@ impl From<u32> for SeriesEntry {
 pub struct SeriesConfig {
     pub id: u32,
     pub nickname: String,
-    pub path: PathBuf,
+    path: PathBuf,
     pub episode_matcher: EpisodeMatcher,
     pub player_args: Vec<String>,
+}
+
+impl SeriesConfig {
+    pub fn new<'a, S, P>(
+        id: u32,
+        nickname: S,
+        path: P,
+        episode_matcher: EpisodeMatcher,
+        config: &Config,
+    ) -> Self
+    where
+        S: Into<String>,
+        P: Into<Cow<'a, Path>>,
+    {
+        Self {
+            id,
+            nickname: nickname.into(),
+            path: Self::stripped_path(path, config),
+            episode_matcher,
+            player_args: Vec::new(),
+        }
+    }
+
+    pub fn full_path(&self, config: &Config) -> Cow<PathBuf> {
+        if self.path.is_relative() {
+            Cow::Owned(config.series_dir.join(self.path.clone()))
+        } else {
+            Cow::Borrowed(&self.path)
+        }
+    }
+
+    fn stripped_path<'a, P>(path: P, config: &Config) -> PathBuf
+    where
+        P: Into<Cow<'a, Path>>,
+    {
+        let path = path.into();
+
+        match path.strip_prefix(&config.series_dir) {
+            Ok(stripped) => stripped.into(),
+            Err(_) => path.into_owned(),
+        }
+    }
+
+    pub fn set_path<'a, P>(&mut self, path: P, config: &Config)
+    where
+        P: Into<Cow<'a, Path>>,
+    {
+        self.path = Self::stripped_path(path, config);
+    }
 }
 
 pub struct LastWatched(Option<String>);

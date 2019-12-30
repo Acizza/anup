@@ -118,7 +118,7 @@ fn init_ui_state(cstate: &CommonState, args: &ArgMatches) -> Result<UIState> {
         last_used_command: None,
     };
 
-    ui_state.ensure_cur_series_initialized(&cstate.db);
+    ui_state.ensure_cur_series_initialized(cstate);
     Ok(ui_state)
 }
 
@@ -192,7 +192,7 @@ impl UIState {
             .and_then(|status| status.get_valid_mut())
     }
 
-    fn ensure_cur_series_initialized(&mut self, db: &SeriesDatabase) {
+    fn ensure_cur_series_initialized(&mut self, cstate: &CommonState) {
         let status = match self.cur_series_status() {
             Some(status) => status,
             None => return,
@@ -202,7 +202,7 @@ impl UIState {
             SeriesStatus::Valid(_) | SeriesStatus::Invalid(_, _) => (),
             SeriesStatus::Unloaded(ref nickname) => {
                 let new_status = {
-                    let series = Series::load(db, nickname);
+                    let series = Series::load(&cstate.db, &cstate.config, nickname);
                     SeriesStatus::from_series(series, nickname)
                 };
 
@@ -260,7 +260,7 @@ impl UIState {
                     _ => self.selected_series,
                 };
 
-                self.ensure_cur_series_initialized(&state.db);
+                self.ensure_cur_series_initialized(state);
             }
             _ => (),
         }
@@ -372,7 +372,7 @@ impl UIState {
                 }
 
                 log.capture_status("Deleting series", || Series::delete(&cstate.db, nickname));
-                self.ensure_cur_series_initialized(&cstate.db);
+                self.ensure_cur_series_initialized(cstate);
             }
             Command::Matcher(pattern) => {
                 use anime::local::{EpisodeMap, EpisodeMatcher};
@@ -385,7 +385,9 @@ impl UIState {
                         None => EpisodeMatcher::new(),
                     };
 
-                    series.episodes = EpisodeMap::parse(&series.config.path, &matcher)?;
+                    let path = series.config.full_path(&cstate.config);
+
+                    series.episodes = EpisodeMap::parse(path.as_ref(), &matcher)?;
                     series.config.episode_matcher = matcher;
                     series.save(&cstate.db)
                 });
@@ -402,7 +404,7 @@ impl UIState {
 
                 log.capture_status("Setting series path", || {
                     series.episodes = EpisodeMap::parse(&path, &series.config.episode_matcher)?;
-                    series.config.path = path;
+                    series.config.set_path(path, &cstate.config);
                     series.save(&cstate.db)
                 });
             }

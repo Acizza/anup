@@ -158,7 +158,7 @@ fn play_episode(args: &ArgMatches) -> Result<()> {
     let series_names = series::database::get_series_names(&db)?;
 
     let mut series = match desired_series {
-        Some(desired) if series_names.contains(&desired) => Series::load(&db, desired)?,
+        Some(desired) if series_names.contains(&desired) => Series::load(&db, &config, desired)?,
         Some(desired) => {
             let params = series_params_from_args(args);
             let series = Series::from_remote(desired, params, &config, remote)?;
