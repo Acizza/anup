@@ -1,9 +1,8 @@
 use crate::err::{self, Result};
 use crate::series::SeriesParameters;
 use smallvec::{smallvec, SmallVec};
-use snafu::{ensure, ResultExt};
+use snafu::ensure;
 use std::convert::TryFrom;
-use std::path::PathBuf;
 use std::result;
 use termion::event::Key;
 use tui::style::{Color, Style};
@@ -149,10 +148,6 @@ pub enum PromptResult {
     NotDone,
 }
 
-fn char_is_quote(ch: char) -> bool {
-    ch == '\"' || ch == '\''
-}
-
 /// Split `string` into shell words.
 ///
 /// This implementation only groups (non-nested) quotes into one argument.
@@ -169,6 +164,8 @@ fn simple_shell_words<'a>(string: &'a str) -> SmallVec<[&'a str; 3]> {
         if slice.len() < 2 {
             return false;
         }
+
+        let char_is_quote = |c| c == '\"' || c == '\'';
 
         slice.starts_with(char_is_quote) && slice.ends_with(char_is_quote)
     };
@@ -264,16 +261,14 @@ pub enum Command {
     AniList(Option<String>),
     /// Remove the selected series from the program.
     Delete,
-    /// Set the episode matcher for the selected series.
-    Matcher(Option<String>),
     // Set the current remote to offline.
     Offline,
-    // Set the path for the selected series.
-    Path(PathBuf),
     /// Specify the video player arguments for the selected season.
     PlayerArgs(Vec<String>),
     /// Increment / decrement the watched episodes of the selected season.
     Progress(ProgressDirection),
+    /// Set the parameters for the selected series.
+    Set(SeriesParameters),
     /// Syncronize the selected season to the remote service.
     SyncFromRemote,
     /// Syncronize the selected season from the remote service.
@@ -284,21 +279,14 @@ pub enum Command {
     Status(anime::remote::Status),
 }
 
-impl_command_matching!(Command, 12,
+impl_command_matching!(Command, 11,
     Add(_) => {
         name: "add",
-        usage: "<nickname> [id=value] [path=value] [matcher=value]",
+        usage: "<nickname> [id=value] [path=\"value\"] [matcher=\"regex with {title} and {episode}\"]",
         min_args: 1,
         fn: |args: &[&str]| {
             let params = if args.len() > 1 {
-                let pairs = args[1..].iter().filter_map(|&pair| {
-                    let idx = pair.find('=')?;
-                    let (name, value) = pair.split_at(idx);
-                    let value = value[1..].trim_matches(char_is_quote);
-                    Some((name, value))
-                }).collect::<SmallVec<[_; 1]>>();
-
-                SeriesParameters::from_name_value_pairs(&pairs)?
+                SeriesParameters::from_name_value_list(&args[1..])?
             } else {
                 SeriesParameters::default()
             };
@@ -326,33 +314,11 @@ impl_command_matching!(Command, 12,
         min_args: 0,
         fn: |_| Ok(Command::Delete),
     },
-    Matcher(_) => {
-        name: "matcher",
-        usage: "[regex containing {title} and {episode}]",
-        min_args: 0,
-        fn: |args: &[&str]| {
-            if args.is_empty() {
-                Ok(Command::Matcher(None))
-            } else {
-                Ok(Command::Matcher(Some(args.join(" "))))
-            }
-        },
-    },
     Offline => {
         name: "offline",
         usage: "",
         min_args: 0,
         fn: |_| Ok(Command::Offline),
-    },
-    Path(_) => {
-        name: "path",
-        usage: "<path to series>",
-        min_args: 1,
-        fn: |args: &[&str]| {
-            let path = PathBuf::from(args.join(" ")).canonicalize().context(err::IO)?;
-            ensure!(path.is_dir(), err::NotADirectory);
-            Ok(Command::Path(path))
-        },
     },
     PlayerArgs(_) => {
         name: "args",
@@ -373,6 +339,15 @@ impl_command_matching!(Command, 12,
         fn: |args: &[&str]| {
             let dir = ProgressDirection::try_from(args[0])?;
             Ok(Command::Progress(dir))
+        },
+    },
+    Set(_) => {
+        name: "set",
+        usage: "[id=value] [path=\"value\"] [matcher=\"regex with {title} and {episode}\"]",
+        min_args: 1,
+        fn: |args: &[&str]| {
+            let params = SeriesParameters::from_name_value_list(args)?;
+            Ok(Command::Set(params))
         },
     },
     SyncFromRemote => {

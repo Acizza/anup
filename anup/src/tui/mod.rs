@@ -374,39 +374,10 @@ impl UIState {
                 log.capture_status("Deleting series", || Series::delete(&cstate.db, nickname));
                 self.ensure_cur_series_initialized(cstate);
             }
-            Command::Matcher(pattern) => {
-                use anime::local::{EpisodeMap, EpisodeMatcher};
-
-                let series = try_ret!(self.cur_valid_series_mut());
-
-                log.capture_status("Setting series episode matcher", || {
-                    let matcher = match pattern {
-                        Some(pattern) => series::episode_matcher_with_pattern(pattern)?,
-                        None => EpisodeMatcher::new(),
-                    };
-
-                    let path = series.config.full_path(&cstate.config);
-
-                    series.episodes = EpisodeMap::parse(path.as_ref(), &matcher)?;
-                    series.config.episode_matcher = matcher;
-                    series.save(&cstate.db)
-                });
-            }
             Command::Offline => {
                 use anime::remote::offline::Offline;
                 cstate.remote = Box::new(Offline::new());
                 log.push("Remote set to offline");
-            }
-            Command::Path(path) => {
-                use anime::local::EpisodeMap;
-
-                let series = try_ret!(self.cur_valid_series_mut());
-
-                log.capture_status("Setting series path", || {
-                    series.episodes = EpisodeMap::parse(&path, &series.config.episode_matcher)?;
-                    series.config.set_path(path, &cstate.config);
-                    series.save(&cstate.db)
-                });
             }
             Command::PlayerArgs(args) => {
                 let series = try_ret!(self.cur_valid_series_mut());
@@ -433,6 +404,40 @@ impl UIState {
                             series.episode_regressed(remote, &cstate.config, &cstate.db)
                         });
                     }
+                }
+            }
+            Command::Set(params) => {
+                // Note: we can't place this after getting the current series status due to borrow issues
+                if let Some(id) = params.id {
+                    if let Some(found) = self.series.iter().find(|&s| s.eq(&id)) {
+                        return log.push(format!("Series already exists as {}", found.nickname()));
+                    }
+                }
+
+                let status = try_ret!(self.cur_series_status_mut());
+                let remote = cstate.remote.as_ref();
+
+                match status {
+                    SeriesStatus::Valid(series) => {
+                        if params.id.is_some() && remote.is_offline() {
+                            return log.push("You must be online to specify a new series ID");
+                        }
+
+                        log.capture_status("Applying parameters to existing series", || {
+                            series.apply_parameters(params, &cstate.config, remote)?;
+                            series.save(&cstate.db)
+                        });
+                    }
+                    SeriesStatus::Invalid(ref nickname, _) => {
+                        let series = Series::from_remote(nickname, params, &cstate.config, remote);
+
+                        if let Ok(series) = &series {
+                            log.capture_status("Saving new series", || series.save(&cstate.db));
+                        }
+
+                        *status = SeriesStatus::from_series(series, nickname);
+                    }
+                    SeriesStatus::Unloaded(_) => (),
                 }
             }
             Command::SyncFromRemote => {
@@ -598,6 +603,15 @@ impl SeriesStatus {
             Self::Valid(series) => series.config.nickname.as_ref(),
             Self::Invalid(nickname, _) => nickname.as_ref(),
             Self::Unloaded(nickname) => nickname.as_ref(),
+        }
+    }
+}
+
+impl PartialEq<anime::remote::SeriesID> for SeriesStatus {
+    fn eq(&self, id: &anime::remote::SeriesID) -> bool {
+        match self {
+            Self::Valid(series) => series.config.id == *id,
+            Self::Invalid(_, _) | Self::Unloaded(_) => false,
         }
     }
 }

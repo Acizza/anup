@@ -7,9 +7,11 @@ use anime::local::{EpisodeMap, EpisodeMatcher};
 use anime::remote::{RemoteService, SeriesInfo, Status};
 use chrono::{Local, NaiveDate};
 use database::{Database, Deletable, Insertable, Selectable};
+use smallvec::SmallVec;
 use snafu::{ensure, OptionExt, ResultExt};
 use std::borrow::Cow;
 use std::fs;
+use std::mem;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -35,10 +37,7 @@ impl Series {
         let nickname = nickname.into();
 
         let path = match params.path {
-            Some(path) => {
-                ensure!(path.is_dir(), err::NotADirectory);
-                path
-            }
+            Some(path) => path,
             None => detect::best_matching_folder(&nickname, &config.series_dir)?,
         };
 
@@ -75,6 +74,47 @@ impl Series {
         };
 
         Ok(series)
+    }
+
+    /// Sets the specified parameters on the series and reloads any neccessary state.
+    pub fn apply_parameters<R>(
+        &mut self,
+        params: SeriesParameters,
+        config: &Config,
+        remote: &R,
+    ) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+    {
+        match params.id {
+            Some(_) => {
+                let nickname = mem::take(&mut self.config.nickname);
+                *self = Self::from_remote(nickname, params, config, remote)?;
+                Ok(())
+            }
+            None => {
+                let mut any_changed = false;
+
+                if let Some(path) = params.path {
+                    self.config.set_path(path, config);
+                    any_changed = true;
+                }
+
+                if let Some(pattern) = params.matcher {
+                    let matcher = episode_matcher_with_pattern(pattern)?;
+                    self.config.episode_matcher = matcher;
+                    any_changed = true;
+                }
+
+                if !any_changed {
+                    return Ok(());
+                }
+
+                let path = self.config.full_path(config);
+                self.episodes = EpisodeMap::parse(path.as_ref(), &self.config.episode_matcher)?;
+                Ok(())
+            }
+        }
     }
 
     pub fn save(&self, db: &Database) -> Result<()> {
@@ -250,13 +290,36 @@ impl SeriesParameters {
         for &(name, value) in pairs {
             match name.to_ascii_lowercase().as_ref() {
                 "id" => params.id = Some(value.parse()?),
-                "path" => params.path = Some(value.into()),
+                "path" => {
+                    let path = PathBuf::from(value).canonicalize().context(err::IO)?;
+                    ensure!(path.is_dir(), err::NotADirectory);
+                    params.path = Some(path);
+                }
                 "matcher" => params.matcher = Some(value.to_string()),
                 _ => (),
             }
         }
 
         Ok(params)
+    }
+
+    pub fn from_name_value_list<'a, I>(pairs: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = &'a &'a str>,
+    {
+        let char_is_quote = |c| c == '\"' || c == '\'';
+
+        let pairs = pairs
+            .into_iter()
+            .filter_map(|pair| {
+                let idx = pair.find('=')?;
+                let (name, value) = pair.split_at(idx);
+                let value = value[1..].trim_matches(char_is_quote);
+                Some((name, value))
+            })
+            .collect::<SmallVec<[_; 1]>>();
+
+        Self::from_name_value_pairs(&pairs)
     }
 }
 
