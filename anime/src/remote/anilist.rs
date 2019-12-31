@@ -4,7 +4,7 @@ use super::{
 use crate::err::{self, Result};
 use chrono::{Datelike, NaiveDate};
 use once_cell::sync::Lazy;
-use reqwest::Client;
+use reqwest::blocking::Client;
 use serde_derive::{Deserialize, Serialize};
 use serde_json as json;
 use serde_json::json;
