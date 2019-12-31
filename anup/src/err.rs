@@ -23,28 +23,28 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("file io error [{:?}]: {}", path, source))]
+    #[snafu(display("file io error at {}: {}", path.display(), source))]
     FileIO {
         path: path::PathBuf,
         source: io::Error,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("dir entry error [{:?}]: {}", dir, source))]
+    #[snafu(display("dir entry error at {}: {}", dir.display(), source))]
     EntryIO {
         dir: path::PathBuf,
         source: io::Error,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("toml decode error [{:?}]: {}", path, source))]
+    #[snafu(display("toml decode error at {}: {}", path.display(), source))]
     TomlDecode {
         path: path::PathBuf,
         source: toml::de::Error,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("toml encode error [{:?}]: {}", path, source))]
+    #[snafu(display("toml encode error at {}: {}", path.display(), source))]
     TomlEncode {
         path: path::PathBuf,
         source: toml::ser::Error,
