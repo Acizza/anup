@@ -194,18 +194,23 @@ where
                     .render(frame, info_layout[0]);
 
                 let body = Text::raw(
-                    "Add one by launching the program with a \
-                    \nkeyword similar to the series name on disk. \
+                    "Add one by pressing ':' and using the 'add' command \
+
+                    \n\nThe command requires a nickname for the series \
+                    \nyou want to add. For automatic detection, the nickname \
+                    \nshould be similar to the name of the folder the series \
+                    \nis in on disk. Any tags in the series folder name \
+                    \nshould not affect the detection algorithm. \
                     
-                    \n\nFor example: assuming the path \"~/anime/Jigoku Shoujo\" \
-                    \nexists, launching the program with the keyword 'shoujo' \
-                    \nwill add it to the series list. \
+                    \n\nIf you don't care about automatic detection, \
+                    \nyou can set the ID of the series by appending 'id=<value>' \
+                    \nto the 'add' command and use any nickname you wish. \
                     
-                    \n\nYou can also use a non-similar keyword along with \
-                    \nthe -p flag to manually specify the path to the series. \
-                    
-                    \n\nNote that by default, the program will look for a series \
-                    \nin \"~/anime/\". You can change this in the config file.",
+                    \n\nBy default, the program will look for series in '~/anime/'. \
+                    \nYou can change this in `~/.config/anup/config.toml`. \
+                    \nYou can also manually specify the path to a series by appending \
+                    \n'path=\"<value>\"' to the 'add' command when adding a new series, \
+                    \nor the 'set' command when modifying an existing one.",
                 );
 
                 Paragraph::new([body].iter())
