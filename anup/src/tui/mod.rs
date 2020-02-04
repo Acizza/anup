@@ -6,10 +6,9 @@ use crate::err::{self, Result};
 use crate::file::TomlFile;
 use crate::series::database::Database as SeriesDatabase;
 use crate::series::{self, LastWatched, Series};
-use crate::{try_opt_r, try_ret};
+use crate::{try_opt_r, try_ret, CmdOptions};
 use anime::remote::RemoteService;
 use chrono::{DateTime, Duration, Utc};
-use clap::ArgMatches;
 use component::command_prompt::{Command, CommandPrompt};
 use component::log::{LogItem, StatusLog};
 use snafu::ResultExt;
@@ -18,18 +17,18 @@ use std::process;
 use termion::event::Key;
 use ui::{Event, Events, UI};
 
-pub fn run(args: &ArgMatches) -> Result<()> {
+pub fn run(args: CmdOptions) -> Result<()> {
     let mut ui = UI::init()?;
 
     let mut cstate = {
         let config = Config::load_or_create()?;
-        let remote = init_remote(args, &mut ui.status_log);
+        let remote = init_remote(&args, &mut ui.status_log);
         let db = SeriesDatabase::open()?;
 
         CommonState { config, remote, db }
     };
 
-    let mut ui_state = init_ui_state(&cstate, args)?;
+    let mut ui_state = init_ui_state(&cstate, &args)?;
     let events = Events::new(Duration::seconds(1));
 
     loop {
@@ -51,7 +50,7 @@ pub fn run(args: &ArgMatches) -> Result<()> {
     }
 }
 
-fn init_remote(args: &ArgMatches, log: &mut StatusLog) -> Box<dyn RemoteService> {
+fn init_remote(args: &CmdOptions, log: &mut StatusLog) -> Box<dyn RemoteService> {
     use anime::remote::anilist;
     use anime::remote::offline::Offline;
 
@@ -90,15 +89,12 @@ struct CommonState {
     db: SeriesDatabase,
 }
 
-fn init_ui_state(cstate: &CommonState, args: &ArgMatches) -> Result<UIState> {
+fn init_ui_state(cstate: &CommonState, args: &CmdOptions) -> Result<UIState> {
     let series = init_series_list(&cstate, args)?;
     let last_watched = LastWatched::load()?;
 
     let selected_series = {
-        let desired_series = args
-            .value_of("series")
-            .map(|s| s.into())
-            .or_else(|| last_watched.get().clone());
+        let desired_series = args.series.as_ref().or_else(|| last_watched.get());
 
         match desired_series {
             Some(desired) => series
@@ -122,12 +118,12 @@ fn init_ui_state(cstate: &CommonState, args: &ArgMatches) -> Result<UIState> {
     Ok(ui_state)
 }
 
-fn init_series_list(cstate: &CommonState, args: &ArgMatches) -> Result<Vec<SeriesStatus>> {
+fn init_series_list(cstate: &CommonState, args: &CmdOptions) -> Result<Vec<SeriesStatus>> {
     let series_names = series::database::get_series_names(&cstate.db)?;
 
     // Did the user specify a series that we don't have?
-    let new_desired_series = args.value_of("series").and_then(|desired| {
-        if series_names.contains(&desired.to_string()) {
+    let new_desired_series = args.series.as_ref().and_then(|desired| {
+        if series_names.contains(&desired) {
             None
         } else {
             Some(desired)

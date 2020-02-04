@@ -563,8 +563,8 @@ impl LastWatched {
     }
 
     #[inline(always)]
-    pub fn get(&self) -> &Option<String> {
-        &self.0
+    pub fn get(&self) -> Option<&String> {
+        self.0.as_ref()
     }
 
     pub fn set<'a, S>(&mut self, nickname: S) -> bool

@@ -12,66 +12,77 @@ use crate::series::database::{Database as SeriesDatabase, Insertable, Selectable
 use crate::series::{LastWatched, Series, SeriesParameters};
 use anime::remote::{RemoteService, SeriesInfo};
 use chrono::{Duration, Utc};
-use clap::clap_app;
-use clap::ArgMatches;
+use gumdrop::Options;
 use snafu::{ensure, ResultExt};
 use std::path::PathBuf;
 use std::str;
 
 const ANILIST_CLIENT_ID: u32 = 427;
 
-fn main() {
-    let args = clap_app!(anup =>
-        (version: env!("CARGO_PKG_VERSION"))
-        (author: env!("CARGO_PKG_AUTHORS"))
-        (@arg series: +takes_value "The name of the series to watch")
-        (@arg matcher: -m --matcher +takes_value "The custom pattern to match episode files with")
-        (@arg offline: -o --offline "Run in offline mode")
-        (@arg prefetch: --prefetch "Fetch series info from AniList (for use with offline mode)")
-        (@arg sync: --sync "Syncronize changes made while offline to AniList")
-        (@arg path: -p --path +takes_value "Manually specify a path to a series")
-        (@arg single: -s --single "Play a single episode from the specified or last watched series")
-        (@arg token: -t --token +takes_value "Your account access token")
-        (@setting AllowLeadingHyphen)
-    )
-    .get_matches();
+#[derive(Options)]
+pub struct CmdOptions {
+    #[options(help = "print help message")]
+    help: bool,
+    #[options(free, help = "the nickname of the series to watch")]
+    pub series: Option<String>,
+    #[options(help = "the custom regex pattern to match episode files with")]
+    pub matcher: Option<String>,
+    #[options(help = "run in offline mode")]
+    pub offline: bool,
+    #[options(help = "the path to the series")]
+    pub path: Option<PathBuf>,
+    #[options(help = "play a single episode from the specified or last watched series")]
+    pub single: bool,
+    #[options(help = "your account access token")]
+    pub token: Option<String>,
+    #[options(
+        no_short,
+        help = "fetch series info from AniList for use with offline mode"
+    )]
+    pub prefetch: bool,
+    #[options(no_short, help = "syncronize changes made while offline to AniList")]
+    pub sync: bool,
+}
 
-    if let Err(err) = run(&args) {
+fn main() {
+    let args = CmdOptions::parse_args_default_or_exit();
+
+    if let Err(err) = run(args) {
         err::display_error(err);
         std::process::exit(1);
     }
 }
 
-fn run(args: &ArgMatches) -> Result<()> {
-    if args.is_present("single") {
+fn run(args: CmdOptions) -> Result<()> {
+    if args.single {
         play_episode(args)
-    } else if args.is_present("prefetch") {
+    } else if args.prefetch {
         prefetch(args)
-    } else if args.is_present("sync") {
+    } else if args.sync {
         sync(args)
     } else {
         tui::run(args)
     }
 }
 
-fn series_params_from_args(args: &ArgMatches) -> SeriesParameters {
+fn series_params_from_args(args: &CmdOptions) -> SeriesParameters {
     SeriesParameters {
         id: None, // TODO
-        path: args.value_of("path").map(PathBuf::from),
-        matcher: args.value_of("matcher").map(str::to_string),
+        path: args.path.clone(),
+        matcher: args.matcher.clone(),
     }
 }
 
-fn init_remote(args: &ArgMatches, can_use_offline: bool) -> Result<Box<dyn RemoteService>> {
+fn init_remote(args: &CmdOptions, can_use_offline: bool) -> Result<Box<dyn RemoteService>> {
     use anime::remote::anilist::AniList;
     use anime::remote::offline::Offline;
     use anime::remote::AccessToken;
 
-    if args.is_present("offline") {
+    if args.offline {
         ensure!(can_use_offline, err::MustRunOnline);
         Ok(Box::new(Offline::new()))
     } else {
-        let token = match args.value_of("token") {
+        let token = match &args.token {
             Some(token) => {
                 let token = AccessToken::encode(token);
                 token.save()?;
@@ -91,16 +102,16 @@ fn init_remote(args: &ArgMatches, can_use_offline: bool) -> Result<Box<dyn Remot
     }
 }
 
-fn prefetch(args: &ArgMatches) -> Result<()> {
-    let desired_series = match args.value_of("series") {
+fn prefetch(args: CmdOptions) -> Result<()> {
+    let desired_series = match &args.series {
         Some(desired_series) => desired_series,
         None => return Err(err::Error::MustSpecifySeriesName),
     };
 
     let config = Config::load_or_create()?;
     let db = SeriesDatabase::open()?;
-    let remote = init_remote(args, false)?;
-    let params = series_params_from_args(args);
+    let remote = init_remote(&args, false)?;
+    let params = series_params_from_args(&args);
 
     let series = Series::from_remote(desired_series, params, &config, remote.as_ref())?;
     series.save(&db)?;
@@ -113,7 +124,7 @@ fn prefetch(args: &ArgMatches) -> Result<()> {
     db.close()
 }
 
-fn sync(args: &ArgMatches) -> Result<()> {
+fn sync(args: CmdOptions) -> Result<()> {
     let db = SeriesDatabase::open()?;
     let mut list_entries = series::database::get_series_entries_need_sync(&db)?;
 
@@ -121,7 +132,7 @@ fn sync(args: &ArgMatches) -> Result<()> {
         return Ok(());
     }
 
-    let remote = init_remote(args, false)?;
+    let remote = init_remote(&args, false)?;
 
     for entry in &mut list_entries {
         match SeriesInfo::select_from_db(&db, entry.id()) {
@@ -140,27 +151,23 @@ fn sync(args: &ArgMatches) -> Result<()> {
     db.close()
 }
 
-fn play_episode(args: &ArgMatches) -> Result<()> {
+fn play_episode(args: CmdOptions) -> Result<()> {
     use anime::remote::Status;
 
     let config = Config::load_or_create()?;
     let db = SeriesDatabase::open()?;
     let mut last_watched = LastWatched::load()?;
 
-    let remote = init_remote(args, true)?;
+    let remote = init_remote(&args, true)?;
     let remote = remote.as_ref();
 
-    let desired_series = args
-        .value_of("series")
-        .map(str::to_string)
-        .or_else(|| last_watched.get().clone());
-
+    let desired_series = args.series.as_ref().or_else(|| last_watched.get());
     let series_names = series::database::get_series_names(&db)?;
 
     let mut series = match desired_series {
         Some(desired) if series_names.contains(&desired) => Series::load(&db, &config, desired)?,
         Some(desired) => {
-            let params = series_params_from_args(args);
+            let params = series_params_from_args(&args);
             let series = Series::from_remote(desired, params, &config, remote)?;
             series.save(&db)?;
             series

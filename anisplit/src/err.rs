@@ -45,9 +45,6 @@ pub enum Error {
     #[snafu(display("path must be a directory"))]
     NotADirectory,
 
-    #[snafu(display("failed to parse series ID: {}", source))]
-    InvalidSeriesID { source: std::num::ParseIntError },
-
     #[snafu(display("missing group \"{}\" in name format", group))]
     MissingFormatGroup { group: String },
 

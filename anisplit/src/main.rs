@@ -2,9 +2,9 @@ mod err;
 
 use anime::local::{EpisodeMap, EpisodeMatcher};
 use anime::remote::anilist::AniList;
-use anime::remote::{RemoteService, SeriesID, SeriesInfo};
-use clap::{clap_app, ArgMatches};
+use anime::remote::{RemoteService, SeriesInfo};
 use err::Result;
+use gumdrop::Options;
 use snafu::{ensure, OptionExt, ResultExt};
 use std::fs;
 use std::os::unix::fs::symlink;
@@ -12,45 +12,56 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
-fn main() {
-    let args = clap_app!(anisplit =>
-        (version: env!("CARGO_PKG_VERSION"))
-        (author: env!("CARGO_PKG_AUTHORS"))
-        (about: "This is a tool to split up an anime series that has multiple \
-                 seasons merged together.")
-        (@arg path: +takes_value +required "The path pointing to the series to split")
-        (@arg out_dir: -o --out +takes_value "The path to create the split seasons in. If this is not specified, the parent directory of the series path will be used")
-        (@arg series_id: -i --id +takes_value "The anime series ID. Use if the program doesn't detect the right series automatically")
-        (@arg name_format: -f --format +takes_value "The format to rename the files as. Must contain \"{title}\" and \"{episode}\"")
-        (@arg matcher: -m --matcher +takes_value "The custom pattern to match episode files with")
-        (@group method =>
-            (@arg symlink: --symlink "Create symbolic links that point to the original episode files. This is the default method")
-            (@arg hardlink: --hardlink "Create hard links that point to the original episode files")
-            (@arg move: --move "Move the original episode files and rename them")
-            (@arg preview: --preview "Show the changes to files that will be made")
-        )
-    )
-    .get_matches();
+#[derive(Options)]
+struct CmdOptions {
+    #[options(help = "print help message")]
+    help: bool,
+    #[options(free, required, help = "the path pointing to the series to split")]
+    path: PathBuf,
+    #[options(
+        help = "the path to create the split seasons in. By default, the parent directory of the series path will be used"
+    )]
+    out_dir: Option<PathBuf>,
+    #[options(
+        help = "the anime series ID. Use if the program doesn't detect the right series automatically"
+    )]
+    series_id: Option<u32>,
+    #[options(
+        help = "the format to rename the files as. Must contain \"{title}\" and \"{episode}\""
+    )]
+    name_format: Option<String>,
+    #[options(help = "the custom regex pattern to match episode files with")]
+    matcher: Option<String>,
+    #[options(no_short, help = "link episode files via symlinks")]
+    symlink: bool,
+    #[options(no_short, help = "link episode files via hardlinks")]
+    hardlink: bool,
+    #[options(no_short, help = "link episode files via file moves")]
+    move_files: bool,
+    #[options(no_short, help = "show the changes to files that would be made")]
+    preview: bool,
+}
 
-    if let Err(err) = run(&args) {
+fn main() {
+    let args = CmdOptions::parse_args_default_or_exit();
+
+    if let Err(err) = run(args) {
         err::display_error(err);
         std::process::exit(1);
     }
 }
 
-fn run(args: &ArgMatches) -> Result<()> {
+fn run(args: CmdOptions) -> Result<()> {
     let remote = AniList::unauthenticated();
 
-    let path = PathBuf::from(args.value_of("path").unwrap())
-        .canonicalize()
-        .context(err::IO)?;
+    let path = args.path.canonicalize().context(err::IO)?;
 
-    let name_format = match args.value_of("name_format") {
+    let name_format = match &args.name_format {
         Some(format) => NameFormat::new(format)?,
         None => NameFormat::new("{title} - {episode}.mkv")?,
     };
 
-    let matcher = match args.value_of("matcher") {
+    let matcher = match &args.matcher {
         Some(pattern) => {
             let pattern = pattern
                 .replace("{title}", "(?P<title>.+)")
@@ -60,7 +71,7 @@ fn run(args: &ArgMatches) -> Result<()> {
         None => EpisodeMatcher::new(),
     };
 
-    let out_dir = match args.value_of("out_dir") {
+    let out_dir = match &args.out_dir {
         Some(out_dir) => PathBuf::from(out_dir),
         None => path.parent().context(err::NoDirParent)?.into(),
     };
@@ -68,14 +79,14 @@ fn run(args: &ArgMatches) -> Result<()> {
     let data = SeriesData {
         episodes: EpisodeMap::parse(&path, &matcher)?,
         name_format,
-        link_method: LinkMethod::from_args(args),
+        link_method: LinkMethod::from_args(&args),
         path,
         out_dir,
     };
 
     let series = {
         let title = parse_path_title(&data.path)?;
-        find_series_info(args, title, &remote)?
+        find_series_info(&args, title, &remote)?
     };
 
     format_sequels(&data, series, &remote)
@@ -129,14 +140,14 @@ enum LinkMethod {
 }
 
 impl LinkMethod {
-    fn from_args(args: &ArgMatches) -> LinkMethod {
-        if args.is_present("symlink") {
+    fn from_args(args: &CmdOptions) -> LinkMethod {
+        if args.symlink {
             LinkMethod::Symlink
-        } else if args.is_present("hardlink") {
+        } else if args.hardlink {
             LinkMethod::Hardlink
-        } else if args.is_present("move") {
+        } else if args.move_files {
             LinkMethod::Move
-        } else if args.is_present("preview") {
+        } else if args.preview {
             LinkMethod::Preview
         } else {
             LinkMethod::default()
@@ -249,13 +260,12 @@ where
     Ok(title)
 }
 
-fn find_series_info<S>(args: &ArgMatches, title: S, remote: &AniList) -> Result<SeriesInfo>
+fn find_series_info<S>(args: &CmdOptions, title: S, remote: &AniList) -> Result<SeriesInfo>
 where
     S: AsRef<str>,
 {
-    match args.value_of("series_id") {
+    match args.series_id {
         Some(id) => {
-            let id = id.parse::<SeriesID>().context(err::InvalidSeriesID)?;
             let info = remote.search_info_by_id(id)?;
             Ok(info)
         }
