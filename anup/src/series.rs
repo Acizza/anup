@@ -1,12 +1,12 @@
-pub mod database;
-
 use crate::config::Config;
+use crate::database::schema::{series_configs, series_entries, series_info};
+use crate::database::{self, Database};
 use crate::err::{self, Result};
 use crate::file::SaveDir;
 use anime::local::{EpisodeMap, EpisodeMatcher};
-use anime::remote::{RemoteService, SeriesInfo, Status};
+use anime::remote::{RemoteService, Status};
 use chrono::{Local, NaiveDate};
-use database::{Database, Deletable, Insertable, Selectable};
+use diesel::prelude::*;
 use smallvec::SmallVec;
 use snafu::{ensure, OptionExt, ResultExt};
 use std::borrow::Cow;
@@ -64,7 +64,7 @@ impl Series {
         };
 
         let entry = SeriesEntry::from_remote(remote, &info)?;
-        let config = SeriesConfig::new(info.id, nickname, path, matcher, config);
+        let config = SeriesConfig::new(info.id as i32, nickname, path, matcher, config);
 
         let series = Self {
             info,
@@ -112,23 +112,18 @@ impl Series {
 
                 let path = self.config.full_path(config);
                 self.episodes = EpisodeMap::parse(path.as_ref(), &self.config.episode_matcher)?;
+
                 Ok(())
             }
         }
     }
 
     pub fn save(&self, db: &Database) -> Result<()> {
-        db.conn()
-            .prepare_cached("BEGIN")
-            .and_then(|mut query| query.execute(rusqlite::NO_PARAMS))?;
-
-        self.config.insert_into_db(db, self.info.id)?;
-        self.info.insert_into_db(db, ())?;
-        self.entry.insert_into_db(db, ())?;
-
-        db.conn()
-            .prepare_cached("END")
-            .and_then(|mut query| query.execute(rusqlite::NO_PARAMS))?;
+        db.conn().transaction(|| {
+            self.config.save(db)?;
+            self.info.save(db)?;
+            self.entry.save(db)
+        })?;
 
         Ok(())
     }
@@ -137,9 +132,14 @@ impl Series {
     where
         S: AsRef<str>,
     {
-        let sconfig = SeriesConfig::select_from_db(db, nickname.as_ref())?;
-        let info = SeriesInfo::select_from_db(db, sconfig.id)?;
-        let entry = SeriesEntry::select_from_db(db, sconfig.id)?;
+        use diesel::result::Error as DieselError;
+
+        let (sconfig, info, entry) = db.conn().transaction::<_, DieselError, _>(|| {
+            let sconfig = SeriesConfig::load_by_name(db, nickname)?;
+            let info = SeriesInfo::load(db, sconfig.id)?;
+            let entry = SeriesEntry::load(db, sconfig.id)?;
+            Ok((sconfig, info, entry))
+        })?;
 
         let path = sconfig.full_path(config);
         let episodes = EpisodeMap::parse(path.as_ref(), &sconfig.episode_matcher)?;
@@ -152,12 +152,12 @@ impl Series {
         })
     }
 
-    pub fn delete<S>(db: &Database, nickname: S) -> Result<()>
+    pub fn delete_by_name<S>(db: &Database, nickname: S) -> diesel::QueryResult<usize>
     where
         S: AsRef<str>,
     {
         // The database is set up to remove all associated series data when we remove its configuration
-        SeriesConfig::delete_from_db(db, nickname.as_ref())
+        SeriesConfig::delete_by_name(db, nickname)
     }
 
     pub fn episode_path(&self, episode: u32, config: &Config) -> Option<PathBuf> {
@@ -175,7 +175,7 @@ impl Series {
         let mut cmd = Command::new(&config.episode.player);
         cmd.arg(episode_path);
         cmd.args(&config.episode.player_args);
-        cmd.args(&self.config.player_args);
+        cmd.args(self.config.player_args.as_ref());
         cmd.stdout(Stdio::null());
         cmd.stderr(Stdio::null());
         cmd.stdin(Stdio::null());
@@ -196,9 +196,9 @@ impl Series {
             Status::Watching | Status::Rewatching => {
                 // There is an edge case where all episodes have been watched, but the status
                 // is still set to watching / rewatching. Here we just start a rewatch
-                if entry.watched_eps() >= self.info.episodes {
+                if entry.watched_episodes() >= self.info.episodes {
                     entry.set_status(Status::Rewatching, config);
-                    entry.set_watched_eps(0);
+                    entry.set_watched_episodes(0);
 
                     if last_status == Status::Rewatching {
                         entry.set_times_rewatched(entry.times_rewatched() + 1);
@@ -207,12 +207,12 @@ impl Series {
             }
             Status::Completed => {
                 entry.set_status(Status::Rewatching, config);
-                entry.set_watched_eps(0);
+                entry.set_watched_episodes(0);
             }
             Status::PlanToWatch | Status::OnHold => entry.set_status(Status::Watching, config),
             Status::Dropped => {
                 entry.set_status(Status::Watching, config);
-                entry.set_watched_eps(0);
+                entry.set_watched_episodes(0);
             }
         }
 
@@ -224,19 +224,19 @@ impl Series {
     where
         R: RemoteService + ?Sized,
     {
-        let new_progress = self.entry.watched_eps() + 1;
+        let new_progress = self.entry.watched_episodes() + 1;
 
         if new_progress >= self.info.episodes {
             // The watched episode range is inclusive, so it's fine to bump the watched count
             // if we're at exactly at the last episode
             if new_progress == self.info.episodes {
-                self.entry.set_watched_eps(new_progress);
+                self.entry.set_watched_episodes(new_progress);
             }
 
             return self.series_complete(remote, config, db);
         }
 
-        self.entry.set_watched_eps(new_progress);
+        self.entry.set_watched_episodes(new_progress);
         self.entry.sync_to_remote(remote)?;
         self.save(db)
     }
@@ -246,7 +246,7 @@ impl Series {
         R: RemoteService + ?Sized,
     {
         let entry = &mut self.entry;
-        entry.set_watched_eps(entry.watched_eps().saturating_sub(1));
+        entry.set_watched_episodes(entry.watched_episodes().saturating_sub(1));
 
         let new_status = match entry.status() {
             Status::Completed if entry.times_rewatched() > 0 => Status::Rewatching,
@@ -278,7 +278,7 @@ impl Series {
 
 #[derive(Clone, Debug)]
 pub struct SeriesParameters {
-    pub id: Option<anime::remote::SeriesID>,
+    pub id: Option<i32>,
     pub path: Option<PathBuf>,
     pub matcher: Option<String>,
 }
@@ -333,175 +333,18 @@ impl Default for SeriesParameters {
     }
 }
 
-#[derive(Debug)]
-pub struct SeriesEntry {
-    entry: anime::remote::SeriesEntry,
-    needs_sync: bool,
-}
-
-impl SeriesEntry {
-    pub fn from_remote<R>(remote: &R, info: &SeriesInfo) -> Result<Self>
-    where
-        R: RemoteService + ?Sized,
-    {
-        match remote.get_list_entry(info.id)? {
-            Some(entry) => Ok(Self::from(entry)),
-            None => Ok(Self::from(info.id)),
-        }
-    }
-
-    pub fn force_sync_to_remote<R>(&mut self, remote: &R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
-        if remote.is_offline() {
-            return Ok(());
-        }
-
-        remote.update_list_entry(self.inner())?;
-        self.needs_sync = false;
-        Ok(())
-    }
-
-    pub fn sync_to_remote<R>(&mut self, remote: &R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
-        if !self.needs_sync {
-            return Ok(());
-        }
-
-        self.force_sync_to_remote(remote)
-    }
-
-    pub fn force_sync_from_remote<R>(&mut self, remote: &R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
-        if remote.is_offline() {
-            return Ok(());
-        }
-
-        *self = match remote.get_list_entry(self.id())? {
-            Some(entry) => Self::from(entry),
-            None => Self::from(self.id()),
-        };
-
-        Ok(())
-    }
-
-    pub fn sync_from_remote<R>(&mut self, remote: &R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
-        if self.needs_sync {
-            return Ok(());
-        }
-
-        self.force_sync_from_remote(remote)
-    }
-
-    #[inline(always)]
-    pub fn inner(&self) -> &anime::remote::SeriesEntry {
-        &self.entry
-    }
-
-    #[inline(always)]
-    pub fn needs_sync(&self) -> bool {
-        self.needs_sync
-    }
-
-    pub fn set_status(&mut self, status: Status, config: &Config) {
-        match status {
-            Status::Watching if self.start_date().is_none() => {
-                self.entry.start_date = Some(Local::today().naive_local());
-            }
-            Status::Rewatching
-                if self.start_date().is_none()
-                    || (self.status() == Status::Completed && config.reset_dates_on_rewatch) =>
-            {
-                self.entry.start_date = Some(Local::today().naive_local());
-            }
-            Status::Completed
-                if self.end_date().is_none()
-                    || (self.status() == Status::Rewatching && config.reset_dates_on_rewatch) =>
-            {
-                self.entry.end_date = Some(Local::today().naive_local());
-            }
-            Status::Dropped if self.entry.end_date.is_none() => {
-                self.entry.end_date = Some(Local::today().naive_local());
-            }
-            _ => (),
-        }
-
-        self.entry.status = status;
-        self.needs_sync = true;
-    }
-}
-
-macro_rules! impl_series_entry_getters_setters {
-    ($($field:ident: $field_ty:ty => $setter:tt,)+) => {
-        impl SeriesEntry {
-            $(
-            #[inline(always)]
-            pub fn $field(&self) -> $field_ty {
-                self.entry.$field
-            }
-
-            impl_series_entry_getters_setters!(setter $field, $field_ty, $setter);
-            )+
-        }
-    };
-
-    (setter $field:ident, $field_ty:ty, !) => {};
-
-    (setter $field:ident, $field_ty:ty, $setter:ident) => {
-        #[inline(always)]
-        pub fn $setter(&mut self, value: $field_ty) {
-            self.entry.$field = value;
-            self.needs_sync = true;
-        }
-    }
-}
-
-impl_series_entry_getters_setters!(
-    id: u32 => !,
-    status: Status => !,
-    watched_eps: u32 => set_watched_eps,
-    score: Option<u8> => set_score,
-    times_rewatched: u32 => set_times_rewatched,
-    start_date: Option<NaiveDate> => !,
-    end_date: Option<NaiveDate> => !,
-);
-
-impl From<anime::remote::SeriesEntry> for SeriesEntry {
-    fn from(entry: anime::remote::SeriesEntry) -> Self {
-        Self {
-            entry,
-            needs_sync: false,
-        }
-    }
-}
-
-impl From<u32> for SeriesEntry {
-    fn from(id: u32) -> Self {
-        let remote_entry = anime::remote::SeriesEntry::new(id);
-        Self::from(remote_entry)
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Queryable, Insertable)]
 pub struct SeriesConfig {
-    pub id: u32,
+    pub id: i32,
     pub nickname: String,
-    path: PathBuf,
+    path: database::Path,
     pub episode_matcher: EpisodeMatcher,
-    pub player_args: Vec<String>,
+    pub player_args: database::PlayerArgs,
 }
 
 impl SeriesConfig {
     pub fn new<'a, S, P>(
-        id: u32,
+        id: i32,
         nickname: S,
         path: P,
         episode_matcher: EpisodeMatcher,
@@ -514,10 +357,48 @@ impl SeriesConfig {
         Self {
             id,
             nickname: nickname.into(),
-            path: Self::stripped_path(path, config),
+            path: Self::stripped_path(path, config).into(),
             episode_matcher,
-            player_args: Vec::new(),
+            player_args: database::PlayerArgs::new(),
         }
+    }
+
+    pub fn load_by_name<S>(db: &Database, name: S) -> diesel::QueryResult<Self>
+    where
+        S: AsRef<str>,
+    {
+        use crate::database::schema::series_configs::dsl::*;
+
+        let name = name.as_ref();
+
+        series_configs
+            .filter(nickname.eq(name))
+            .get_result(db.conn())
+    }
+
+    pub fn save(&self, db: &Database) -> diesel::QueryResult<usize> {
+        use crate::database::schema::series_configs::dsl::*;
+
+        diesel::replace_into(series_configs)
+            .values(self)
+            .execute(db.conn())
+    }
+
+    pub fn delete_by_name<S>(db: &Database, name: S) -> diesel::QueryResult<usize>
+    where
+        S: AsRef<str>,
+    {
+        use crate::database::schema::series_configs::dsl::*;
+
+        let name = name.as_ref();
+
+        diesel::delete(series_configs.filter(nickname.eq(name))).execute(db.conn())
+    }
+
+    pub fn all_series_names(db: &Database) -> diesel::QueryResult<Vec<String>> {
+        use crate::database::schema::series_configs::dsl::*;
+
+        series_configs.select(nickname).load(db.conn())
     }
 
     pub fn full_path(&self, config: &Config) -> Cow<PathBuf> {
@@ -544,7 +425,246 @@ impl SeriesConfig {
     where
         P: Into<Cow<'a, Path>>,
     {
-        self.path = Self::stripped_path(path, config);
+        self.path = Self::stripped_path(path, config).into();
+    }
+}
+
+#[derive(Debug, Queryable, Insertable)]
+#[table_name = "series_info"]
+pub struct SeriesInfo {
+    pub id: i32,
+    pub title_preferred: String,
+    pub title_romaji: String,
+    pub episodes: i16,
+    pub episode_length_mins: i16,
+    pub sequel: Option<i32>,
+}
+
+impl SeriesInfo {
+    pub fn load(db: &Database, info_id: i32) -> diesel::QueryResult<Self> {
+        use crate::database::schema::series_info::dsl::*;
+
+        series_info.filter(id.eq(info_id)).get_result(db.conn())
+    }
+
+    pub fn save(&self, db: &Database) -> diesel::QueryResult<usize> {
+        use crate::database::schema::series_info::dsl::*;
+
+        diesel::replace_into(series_info)
+            .values(self)
+            .execute(db.conn())
+    }
+}
+
+impl From<anime::remote::SeriesInfo> for SeriesInfo {
+    fn from(value: anime::remote::SeriesInfo) -> Self {
+        Self {
+            id: value.id as i32,
+            title_preferred: value.title.preferred,
+            title_romaji: value.title.romaji,
+            episodes: value.episodes as i16,
+            episode_length_mins: value.episode_length as i16,
+            sequel: value.sequel.map(|sequel| sequel as i32),
+        }
+    }
+}
+
+#[derive(Debug, Queryable, Insertable)]
+#[table_name = "series_entries"]
+pub struct SeriesEntry {
+    id: i32,
+    watched_episodes: i16,
+    score: Option<i16>,
+    status: anime::remote::Status,
+    times_rewatched: i16,
+    start_date: Option<chrono::NaiveDate>,
+    end_date: Option<chrono::NaiveDate>,
+    needs_sync: bool,
+}
+
+impl SeriesEntry {
+    pub fn load(db: &Database, entry_id: i32) -> diesel::QueryResult<Self> {
+        use crate::database::schema::series_entries::dsl::*;
+
+        series_entries.filter(id.eq(entry_id)).get_result(db.conn())
+    }
+
+    pub fn save(&self, db: &Database) -> diesel::QueryResult<usize> {
+        use crate::database::schema::series_entries::dsl::*;
+
+        diesel::replace_into(series_entries)
+            .values(self)
+            .execute(db.conn())
+    }
+
+    pub fn entries_that_need_sync(db: &Database) -> diesel::QueryResult<Vec<Self>> {
+        use crate::database::schema::series_entries::dsl::*;
+
+        series_entries.filter(needs_sync.eq(true)).load(db.conn())
+    }
+
+    pub fn from_remote<R>(remote: &R, info: &SeriesInfo) -> Result<Self>
+    where
+        R: RemoteService + ?Sized,
+    {
+        match remote.get_list_entry(info.id as u32)? {
+            Some(entry) => Ok(Self::from(entry)),
+            None => Ok(Self::from(info.id)),
+        }
+    }
+
+    pub fn force_sync_to_remote<R>(&mut self, remote: &R) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+    {
+        if remote.is_offline() {
+            return Ok(());
+        }
+
+        remote.update_list_entry(&self.into())?;
+        self.needs_sync = false;
+        Ok(())
+    }
+
+    pub fn sync_to_remote<R>(&mut self, remote: &R) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+    {
+        if !self.needs_sync {
+            return Ok(());
+        }
+
+        self.force_sync_to_remote(remote)
+    }
+
+    pub fn force_sync_from_remote<R>(&mut self, remote: &R) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+    {
+        if remote.is_offline() {
+            return Ok(());
+        }
+
+        *self = match remote.get_list_entry(self.id() as u32)? {
+            Some(entry) => Self::from(entry),
+            None => Self::from(self.id()),
+        };
+
+        Ok(())
+    }
+
+    pub fn sync_from_remote<R>(&mut self, remote: &R) -> Result<()>
+    where
+        R: RemoteService + ?Sized,
+    {
+        if self.needs_sync {
+            return Ok(());
+        }
+
+        self.force_sync_from_remote(remote)
+    }
+
+    #[inline(always)]
+    pub fn needs_sync(&self) -> bool {
+        self.needs_sync
+    }
+
+    pub fn set_status(&mut self, status: Status, config: &Config) {
+        match status {
+            Status::Watching if self.start_date().is_none() => {
+                self.start_date = Some(Local::today().naive_local());
+            }
+            Status::Rewatching
+                if self.start_date().is_none()
+                    || (self.status() == Status::Completed && config.reset_dates_on_rewatch) =>
+            {
+                self.start_date = Some(Local::today().naive_local());
+            }
+            Status::Completed
+                if self.end_date().is_none()
+                    || (self.status() == Status::Rewatching && config.reset_dates_on_rewatch) =>
+            {
+                self.end_date = Some(Local::today().naive_local());
+            }
+            Status::Dropped if self.end_date.is_none() => {
+                self.end_date = Some(Local::today().naive_local());
+            }
+            _ => (),
+        }
+
+        self.status = status;
+        self.needs_sync = true;
+    }
+}
+
+macro_rules! impl_series_entry_getters_setters {
+    ($($field:ident: $field_ty:ty => $setter:tt,)+) => {
+        impl SeriesEntry {
+            $(
+            #[inline(always)]
+            pub fn $field(&self) -> $field_ty {
+                self.$field
+            }
+
+            impl_series_entry_getters_setters!(setter $field, $field_ty, $setter);
+            )+
+        }
+    };
+
+    (setter $field:ident, $field_ty:ty, !) => {};
+
+    (setter $field:ident, $field_ty:ty, $setter:ident) => {
+        #[inline(always)]
+        pub fn $setter(&mut self, value: $field_ty) {
+            self.$field = value;
+            self.needs_sync = true;
+        }
+    }
+}
+
+impl_series_entry_getters_setters!(
+    id: i32 => !,
+    status: Status => !,
+    watched_episodes: i16 => set_watched_episodes,
+    score: Option<i16> => set_score,
+    times_rewatched: i16 => set_times_rewatched,
+    start_date: Option<NaiveDate> => !,
+    end_date: Option<NaiveDate> => !,
+);
+
+impl Into<anime::remote::SeriesEntry> for &mut SeriesEntry {
+    fn into(self) -> anime::remote::SeriesEntry {
+        anime::remote::SeriesEntry {
+            id: self.id as u32,
+            watched_eps: self.watched_episodes as u32,
+            score: self.score.map(|score| score as u8),
+            status: self.status,
+            times_rewatched: self.times_rewatched as u32,
+            start_date: self.start_date,
+            end_date: self.end_date,
+        }
+    }
+}
+
+impl From<anime::remote::SeriesEntry> for SeriesEntry {
+    fn from(entry: anime::remote::SeriesEntry) -> Self {
+        Self {
+            id: entry.id as i32,
+            watched_episodes: entry.watched_eps as i16,
+            score: entry.score.map(Into::into),
+            status: entry.status,
+            times_rewatched: entry.times_rewatched as i16,
+            start_date: entry.start_date,
+            end_date: entry.end_date,
+            needs_sync: false,
+        }
+    }
+}
+
+impl From<i32> for SeriesEntry {
+    fn from(id: i32) -> Self {
+        let remote_entry = anime::remote::SeriesEntry::new(id as u32);
+        Self::from(remote_entry)
     }
 }
 
@@ -605,7 +725,7 @@ impl LastWatched {
 
 enum SeriesInfoSelector {
     Name(String),
-    ID(anime::remote::SeriesID),
+    ID(i32),
 }
 
 impl SeriesInfoSelector {
@@ -616,12 +736,14 @@ impl SeriesInfoSelector {
         match self {
             SeriesInfoSelector::Name(name) => {
                 let results = remote.search_info_by_name(&name)?;
-                detect::best_matching_info(&name, results).context(err::NoMatchingSeries { name })
+                detect::best_matching_info(&name, results)
+                    .context(err::NoMatchingSeries { name })
+                    .map(Into::into)
             }
-            SeriesInfoSelector::ID(id) => {
-                let info = remote.search_info_by_id(id)?;
-                Ok(info)
-            }
+            SeriesInfoSelector::ID(id) => remote
+                .search_info_by_id(id as u32)
+                .map(Into::into)
+                .map_err(Into::into),
         }
     }
 }

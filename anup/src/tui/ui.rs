@@ -239,7 +239,7 @@ where
                 let mut items = SmallVec::<[_; 2]>::new();
 
                 items.push(Text::styled(
-                    &info.title.preferred,
+                    &info.title_preferred,
                     Style::default().modifier(Modifier::BOLD),
                 ));
 
@@ -274,16 +274,16 @@ where
         {
             let left_items = create_stat_list!(
                 "Watch Time" => {
-                    let watch_time_mins = info.episodes * info.episode_length;
+                    let watch_time_mins = info.episodes * info.episode_length_mins;
                     util::hm_from_mins(watch_time_mins as f32)
                 },
                 "Time Left" => {
-                    let eps_left = info.episodes - entry.watched_eps().min(info.episodes);
-                    let time_left_mins = eps_left * info.episode_length;
+                    let eps_left = info.episodes - entry.watched_episodes().min(info.episodes);
+                    let time_left_mins = eps_left * info.episode_length_mins;
 
                     util::hm_from_mins(time_left_mins as f32)
                 },
-                "Episode Length" => format!("{}M", info.episode_length)
+                "Episode Length" => format!("{}M", info.episode_length_mins)
             );
 
             Paragraph::new(left_items.iter())
@@ -293,9 +293,9 @@ where
 
         {
             let center_items = create_stat_list!(
-                "Progress" => format!("{}|{}", entry.watched_eps(), info.episodes),
+                "Progress" => format!("{}|{}", entry.watched_episodes(), info.episodes),
                 "Score" => match entry.score() {
-                    Some(score) => score_parser.score_to_str(score),
+                    Some(score) => score_parser.score_to_str(score as u8),
                     None => "??".into(),
                 },
                 "Status" => entry.status()

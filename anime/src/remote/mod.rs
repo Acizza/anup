@@ -7,8 +7,15 @@ use snafu::ResultExt;
 use std::borrow::Cow;
 use std::fmt;
 
-#[cfg(feature = "rusqlite-support")]
-use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
+#[cfg(feature = "diesel-support")]
+use {
+    diesel::{
+        deserialize::{self, FromSql},
+        serialize::{self, Output, ToSql},
+        sql_types::SmallInt,
+    },
+    std::io::Write,
+};
 
 /// Type representing the ID of an anime series.
 pub type SeriesID = u32;
@@ -77,8 +84,8 @@ pub struct SeriesInfo {
     pub sequel: Option<u32>,
 }
 
-impl<'a> Into<Cow<'a, SeriesInfo>> for SeriesInfo {
-    fn into(self) -> Cow<'a, SeriesInfo> {
+impl<'a> Into<Cow<'a, Self>> for SeriesInfo {
+    fn into(self) -> Cow<'a, Self> {
         Cow::Owned(self)
     }
 }
@@ -120,8 +127,8 @@ pub struct SeriesEntry {
 impl SeriesEntry {
     /// Create a new `SeriesEntry` associated to the anime with the specified `id`.
     #[inline]
-    pub fn new(id: u32) -> SeriesEntry {
-        SeriesEntry {
+    pub fn new(id: u32) -> Self {
+        Self {
             id,
             watched_eps: 0,
             score: None,
@@ -135,6 +142,11 @@ impl SeriesEntry {
 
 /// The watch status of an anime series.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "diesel-support",
+    derive(AsExpression, FromSqlRow),
+    sql_type = "SmallInt"
+)]
 pub enum Status {
     Watching,
     Completed,
@@ -145,8 +157,8 @@ pub enum Status {
 }
 
 impl Default for Status {
-    fn default() -> Status {
-        Status::PlanToWatch
+    fn default() -> Self {
+        Self::PlanToWatch
     }
 }
 
@@ -165,24 +177,32 @@ impl fmt::Display for Status {
     }
 }
 
-#[cfg(feature = "rusqlite-support")]
-impl FromSql for Status {
-    fn column_result(value: ValueRef) -> FromSqlResult<Self> {
-        match value.as_i64()? {
+#[cfg(feature = "diesel-support")]
+impl<DB> FromSql<SmallInt, DB> for Status
+where
+    DB: diesel::backend::Backend,
+    i16: FromSql<SmallInt, DB>,
+{
+    fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
+        match i16::from_sql(bytes)? {
             1 => Ok(Status::Watching),
             2 => Ok(Status::Completed),
             3 => Ok(Status::OnHold),
             4 => Ok(Status::Dropped),
             5 => Ok(Status::PlanToWatch),
             6 => Ok(Status::Rewatching),
-            _ => Err(FromSqlError::InvalidType),
+            other => Err(format!("invalid status: {}", other).into()),
         }
     }
 }
 
-#[cfg(feature = "rusqlite-support")]
-impl ToSql for Status {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput> {
+#[cfg(feature = "diesel-support")]
+impl<DB> ToSql<SmallInt, DB> for Status
+where
+    DB: diesel::backend::Backend,
+    i16: ToSql<SmallInt, DB>,
+{
+    fn to_sql<W: Write>(&self, out: &mut Output<W, DB>) -> serialize::Result {
         let value = match self {
             Status::Watching => 1,
             Status::Completed => 2,
@@ -192,7 +212,7 @@ impl ToSql for Status {
             Status::Rewatching => 6,
         };
 
-        Ok(value.into())
+        value.to_sql(out)
     }
 }
 

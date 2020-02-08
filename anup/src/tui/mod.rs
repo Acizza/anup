@@ -2,10 +2,10 @@ mod component;
 mod ui;
 
 use crate::config::Config;
+use crate::database::Database;
 use crate::err::{self, Result};
 use crate::file::TomlFile;
-use crate::series::database::Database as SeriesDatabase;
-use crate::series::{self, LastWatched, Series};
+use crate::series::{LastWatched, Series, SeriesConfig};
 use crate::{try_opt_r, try_ret, CmdOptions};
 use anime::remote::RemoteService;
 use chrono::{DateTime, Duration, Utc};
@@ -23,7 +23,7 @@ pub fn run(args: CmdOptions) -> Result<()> {
     let mut cstate = {
         let config = Config::load_or_create()?;
         let remote = init_remote(&args, &mut ui.status_log);
-        let db = SeriesDatabase::open()?;
+        let db = Database::open()?;
 
         CommonState { config, remote, db }
     };
@@ -39,7 +39,6 @@ pub fn run(args: CmdOptions) -> Result<()> {
             Event::Input(key) => match key {
                 // Exit
                 Key::Char('q') if !ui_state.status_bar_state.in_input_dialog() => {
-                    cstate.db.close().ok();
                     ui.clear().ok();
                     break Ok(());
                 }
@@ -86,7 +85,7 @@ fn init_remote(args: &CmdOptions, log: &mut StatusLog) -> Box<dyn RemoteService>
 struct CommonState {
     config: Config,
     remote: Box<dyn RemoteService>,
-    db: SeriesDatabase,
+    db: Database,
 }
 
 fn init_ui_state(cstate: &CommonState, args: &CmdOptions) -> Result<UIState> {
@@ -119,7 +118,7 @@ fn init_ui_state(cstate: &CommonState, args: &CmdOptions) -> Result<UIState> {
 }
 
 fn init_series_list(cstate: &CommonState, args: &CmdOptions) -> Result<Vec<SeriesStatus>> {
-    let series_names = series::database::get_series_names(&cstate.db)?;
+    let series_names = SeriesConfig::all_series_names(&cstate.db)?;
 
     // Did the user specify a series that we don't have?
     let new_desired_series = args.series.as_ref().and_then(|desired| {
@@ -367,7 +366,11 @@ impl UIState {
                     self.selected_series = self.selected_series.saturating_sub(1);
                 }
 
-                log.capture_status("Deleting series", || Series::delete(&cstate.db, nickname));
+                log.capture_status("Deleting series", || {
+                    Series::delete_by_name(&cstate.db, nickname)?;
+                    Ok(())
+                });
+
                 self.ensure_cur_series_initialized(cstate);
             }
             Command::Offline => {
@@ -379,7 +382,7 @@ impl UIState {
                 let series = try_ret!(self.cur_valid_series_mut());
 
                 log.capture_status("Saving player args for series", || {
-                    series.config.player_args = args;
+                    series.config.player_args = args.into();
                     series.save(&cstate.db)
                 });
             }
@@ -469,7 +472,7 @@ impl UIState {
                 let remote = cstate.remote.as_ref();
 
                 log.capture_status("Setting score", || {
-                    series.entry.set_score(score);
+                    series.entry.set_score(score.map(|s| s as i16));
                     series.entry.sync_to_remote(remote)?;
                     series.save(&cstate.db)
                 });
@@ -529,16 +532,20 @@ impl UIState {
 
         series.begin_watching(state.remote.as_ref(), &state.config, &state.db)?;
 
-        let next_ep = series.entry.watched_eps() + 1;
+        let next_ep = series.entry.watched_episodes() + 1;
 
         let child = series
-            .play_episode_cmd(next_ep, &state.config)?
+            .play_episode_cmd(next_ep as u32, &state.config)?
             .spawn()
-            .context(err::FailedToPlayEpisode { episode: next_ep })?;
+            .context(err::FailedToPlayEpisode {
+                episode: next_ep as u32,
+            })?;
 
         let progress_time = {
-            let secs_must_watch =
-                (series.info.episode_length as f32 * state.config.episode.pcnt_must_watch) * 60.0;
+            let secs_must_watch = (series.info.episode_length_mins as f32
+                * state.config.episode.pcnt_must_watch)
+                * 60.0;
+
             let time_must_watch = Duration::seconds(secs_must_watch as i64);
 
             Utc::now() + time_must_watch
@@ -603,8 +610,8 @@ impl SeriesStatus {
     }
 }
 
-impl PartialEq<anime::remote::SeriesID> for SeriesStatus {
-    fn eq(&self, id: &anime::remote::SeriesID) -> bool {
+impl PartialEq<i32> for SeriesStatus {
+    fn eq(&self, id: &i32) -> bool {
         match self {
             Self::Valid(series) => series.config.id == *id,
             Self::Invalid(_, _) | Self::Unloaded(_) => false,

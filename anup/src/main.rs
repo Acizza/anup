@@ -1,4 +1,8 @@
+#[macro_use]
+extern crate diesel;
+
 mod config;
+mod database;
 mod err;
 mod file;
 mod series;
@@ -6,11 +10,11 @@ mod tui;
 mod util;
 
 use crate::config::Config;
+use crate::database::Database;
 use crate::err::Result;
 use crate::file::TomlFile;
-use crate::series::database::{Database as SeriesDatabase, Insertable, Selectable};
-use crate::series::{LastWatched, Series, SeriesParameters};
-use anime::remote::{RemoteService, SeriesInfo};
+use crate::series::{LastWatched, Series, SeriesConfig, SeriesEntry, SeriesInfo, SeriesParameters};
+use anime::remote::RemoteService;
 use chrono::{Duration, Utc};
 use gumdrop::Options;
 use snafu::{ensure, ResultExt};
@@ -109,7 +113,7 @@ fn prefetch(args: CmdOptions) -> Result<()> {
     };
 
     let config = Config::load_or_create()?;
-    let db = SeriesDatabase::open()?;
+    let db = Database::open()?;
     let remote = init_remote(&args, false)?;
     let params = series_params_from_args(&args);
 
@@ -118,15 +122,15 @@ fn prefetch(args: CmdOptions) -> Result<()> {
 
     println!(
         "{} was fetched\nyou can now watch this series offline",
-        series.info.title.preferred
+        series.info.title_preferred
     );
 
-    db.close()
+    Ok(())
 }
 
 fn sync(args: CmdOptions) -> Result<()> {
-    let db = SeriesDatabase::open()?;
-    let mut list_entries = series::database::get_series_entries_need_sync(&db)?;
+    let db = Database::open()?;
+    let mut list_entries = SeriesEntry::entries_that_need_sync(&db)?;
 
     if list_entries.is_empty() {
         return Ok(());
@@ -135,8 +139,8 @@ fn sync(args: CmdOptions) -> Result<()> {
     let remote = init_remote(&args, false)?;
 
     for entry in &mut list_entries {
-        match SeriesInfo::select_from_db(&db, entry.id()) {
-            Ok(info) => println!("{} is being synced..", info.title.preferred),
+        match SeriesInfo::load(&db, entry.id()) {
+            Ok(info) => println!("{} is being synced..", info.title_preferred),
             Err(err) => eprintln!(
                 "warning: failed to get info for anime with ID {}: {}",
                 entry.id(),
@@ -145,24 +149,24 @@ fn sync(args: CmdOptions) -> Result<()> {
         }
 
         entry.sync_to_remote(remote.as_ref())?;
-        entry.insert_into_db(&db, ())?;
+        entry.save(&db)?;
     }
 
-    db.close()
+    Ok(())
 }
 
 fn play_episode(args: CmdOptions) -> Result<()> {
     use anime::remote::Status;
 
     let config = Config::load_or_create()?;
-    let db = SeriesDatabase::open()?;
+    let db = Database::open()?;
     let mut last_watched = LastWatched::load()?;
 
     let remote = init_remote(&args, true)?;
     let remote = remote.as_ref();
 
     let desired_series = args.series.as_ref().or_else(|| last_watched.get());
-    let series_names = series::database::get_series_names(&db)?;
+    let series_names = SeriesConfig::all_series_names(&db)?;
 
     let mut series = match desired_series {
         Some(desired) if series_names.contains(&desired) => Series::load(&db, &config, desired)?,
@@ -183,19 +187,19 @@ fn play_episode(args: CmdOptions) -> Result<()> {
 
     let progress_time = {
         let secs_must_watch =
-            (series.info.episode_length as f32 * config.episode.pcnt_must_watch) * 60.0;
+            (series.info.episode_length_mins as f32 * config.episode.pcnt_must_watch) * 60.0;
         let time_must_watch = Duration::seconds(secs_must_watch as i64);
 
         Utc::now() + time_must_watch
     };
 
-    let next_episode_num = series.entry.watched_eps() + 1;
+    let next_episode_num = series.entry.watched_episodes() + 1;
 
     let status = series
-        .play_episode_cmd(next_episode_num, &config)?
+        .play_episode_cmd(next_episode_num as u32, &config)?
         .status()
         .context(err::FailedToPlayEpisode {
-            episode: next_episode_num,
+            episode: next_episode_num as u32,
         })?;
 
     ensure!(status.success(), err::AbnormalPlayerExit);
@@ -204,18 +208,18 @@ fn play_episode(args: CmdOptions) -> Result<()> {
         series.episode_completed(remote, &config, &db)?;
 
         if series.entry.status() == Status::Completed {
-            println!("{} completed!", series.info.title.preferred);
+            println!("{} completed!", series.info.title_preferred);
         } else {
             println!(
                 "{}/{} of {} completed",
-                series.entry.watched_eps(),
+                series.entry.watched_episodes(),
                 series.info.episodes,
-                series.info.title.preferred
+                series.info.title_preferred
             );
         }
     } else {
         println!("did not watch long enough to count episode as completed");
     }
 
-    db.close()
+    Ok(())
 }

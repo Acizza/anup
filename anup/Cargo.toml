@@ -22,15 +22,16 @@ unicode-width = "~0.1.0"
 
 [dependencies.anime]
 path = "../anime"
-features = [ "rusqlite-support" ]
+features = [ "diesel-support" ]
 
 [dependencies.chrono]
 version = "~0.4.0"
 features = [ "serde" ]
 
-[dependencies.rusqlite]
-version = "~0.21.0"
-features = [ "chrono" ]
+[dependencies.diesel]
+version = "~1.4.0"
+default-features = false
+features = [ "sqlite", "chrono" ]
 
 [dependencies.snafu]
 version = "~0.6.0"

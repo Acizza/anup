@@ -7,11 +7,23 @@ use std::fs;
 use std::ops::Deref;
 use std::path::Path;
 
-#[cfg(feature = "rusqlite-support")]
-use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, Value, ValueRef};
+#[cfg(feature = "diesel-support")]
+use {
+    diesel::{
+        deserialize::{self, FromSql},
+        serialize::{self, Output, ToSql},
+        sql_types::{Nullable, Text},
+    },
+    std::io::Write,
+};
 
 /// A regex pattern to parse episode files.
 #[derive(Debug, Default)]
+#[cfg_attr(
+    feature = "diesel-support",
+    derive(AsExpression, FromSqlRow),
+    sql_type = "Text"
+)]
 pub struct EpisodeMatcher(Option<Regex>);
 
 impl EpisodeMatcher {
@@ -30,8 +42,8 @@ impl EpisodeMatcher {
 
     /// Create a new `EpisodeMatcher` with the default matcher.
     #[inline]
-    pub fn new() -> EpisodeMatcher {
-        EpisodeMatcher(None)
+    pub fn new() -> Self {
+        Self(None)
     }
 
     /// Create a new `EpisodeMatcher` with a specified regex pattern.
@@ -50,7 +62,7 @@ impl EpisodeMatcher {
     /// assert_eq!(matcher.get().as_str(), pattern);
     /// ```
     #[inline]
-    pub fn from_pattern<S>(pattern: S) -> Result<EpisodeMatcher>
+    pub fn from_pattern<S>(pattern: S) -> Result<Self>
     where
         S: AsRef<str>,
     {
@@ -67,7 +79,7 @@ impl EpisodeMatcher {
         );
 
         let regex = Regex::new(pattern).context(err::Regex { pattern })?;
-        Ok(EpisodeMatcher(Some(regex)))
+        Ok(Self(Some(regex)))
     }
 
     /// Returns a reference to the inner `Regex` for the `EpisodeMatcher`.
@@ -95,36 +107,35 @@ impl EpisodeMatcher {
     }
 }
 
-#[cfg(feature = "rusqlite-support")]
-impl FromSql for EpisodeMatcher {
-    fn column_result(value: ValueRef) -> FromSqlResult<Self> {
-        use std::str;
-
-        match value {
-            ValueRef::Null => Ok(EpisodeMatcher::new()),
-            ValueRef::Text(bytes) | ValueRef::Blob(bytes) => {
-                let pattern =
-                    str::from_utf8(bytes).map_err(|err| FromSqlError::Other(Box::new(err)))?;
-
-                let matcher = EpisodeMatcher::from_pattern(pattern)
-                    .map_err(|err| FromSqlError::Other(Box::new(err)))?;
+#[cfg(feature = "diesel-support")]
+impl<DB> FromSql<Nullable<Text>, DB> for EpisodeMatcher
+where
+    DB: diesel::backend::Backend,
+    String: FromSql<Text, DB>,
+{
+    fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
+        match bytes {
+            Some(_) => {
+                let pattern = String::from_sql(bytes)?;
+                let matcher = Self::from_pattern(pattern)
+                    .map_err(|err| format!("invalid episode matcher pattern: {}", err))?;
 
                 Ok(matcher)
             }
-            _ => Err(FromSqlError::InvalidType),
+            None => Ok(Self::new()),
         }
     }
 }
 
-#[cfg(feature = "rusqlite-support")]
-impl ToSql for EpisodeMatcher {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput> {
-        let result = match &self.0 {
-            Some(matcher) => matcher.as_str().as_bytes().into(),
-            None => ToSqlOutput::Owned(Value::Null),
-        };
-
-        Ok(result)
+#[cfg(feature = "diesel-support")]
+impl<DB> ToSql<Text, DB> for EpisodeMatcher
+where
+    DB: diesel::backend::Backend,
+    str: ToSql<Text, DB>,
+{
+    fn to_sql<W: Write>(&self, out: &mut Output<W, DB>) -> serialize::Result {
+        let value = self.0.as_ref().map(|matcher| matcher.as_str());
+        value.to_sql(out)
     }
 }
 
@@ -171,7 +182,7 @@ pub struct EpisodeMap(HashMap<u32, String>);
 
 impl EpisodeMap {
     /// Detect all episodes in `dir` with the specified `matcher` and return them in a new `EpisodeMap`.
-    pub fn parse<P>(dir: P, matcher: &EpisodeMatcher) -> Result<EpisodeMap>
+    pub fn parse<P>(dir: P, matcher: &EpisodeMatcher) -> Result<Self>
     where
         P: AsRef<Path>,
     {

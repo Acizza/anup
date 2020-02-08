@@ -151,7 +151,7 @@ pub enum PromptResult {
 /// Split `string` into shell words.
 ///
 /// This implementation only groups (non-nested) quotes into one argument.
-fn simple_shell_words<'a>(string: &'a str) -> SmallVec<[&'a str; 3]> {
+fn split_shell_words<'a>(string: &'a str) -> SmallVec<[&'a str; 3]> {
     if string.is_empty() {
         return SmallVec::new();
     }
@@ -218,7 +218,8 @@ macro_rules! impl_command_matching {
             type Error = err::Error;
 
             fn try_from(value: &str) -> result::Result<Self, Self::Error> {
-                let fragments = simple_shell_words(value);
+                let fragments = split_shell_words(value);
+
                 ensure!(!fragments.is_empty(), err::NoCommandSpecified);
 
                 let name = fragments[0].to_ascii_lowercase();
@@ -264,7 +265,7 @@ pub enum Command {
     // Set the current remote to offline.
     Offline,
     /// Specify the video player arguments for the selected season.
-    PlayerArgs(Vec<String>),
+    PlayerArgs(SmallVec<[String; 3]>),
     /// Increment / decrement the watched episodes of the selected season.
     Progress(ProgressDirection),
     /// Set the parameters for the selected series.
@@ -479,7 +480,7 @@ mod tests {
             other => expected!(other, Command::AniList(Some("inserttokenhere".into()))),
         }
 
-        let expected_args: Vec<String> = vec!["arg1".into(), "arg2".into()];
+        let expected_args: SmallVec<[_; 3]> = smallvec!["arg1".into(), "arg2".into()];
 
         match enter_command("args arg1 arg2\n") {
             Command::PlayerArgs(args) => {
@@ -515,48 +516,45 @@ mod tests {
         use smallvec::smallvec;
 
         let expected: SmallVec<[_; 4]> = smallvec!["this", "is", "a", "test"];
-        assert_eq!(simple_shell_words("this is a test"), expected);
+        assert_eq!(split_shell_words("this is a test"), expected);
 
         let expected: SmallVec<[_; 3]> = smallvec!["this", "is a harder", "test"];
-        assert_eq!(simple_shell_words("this \"is a harder\" test"), expected);
+        assert_eq!(split_shell_words("this \"is a harder\" test"), expected);
 
         let expected: SmallVec<[_; 4]> =
             smallvec!["this", "tests=\"quotes inside of\"", "one", "string"];
         assert_eq!(
-            simple_shell_words("this tests=\"quotes inside of\" one string"),
+            split_shell_words("this tests=\"quotes inside of\" one string"),
             expected
         );
 
         let expected: SmallVec<[_; 3]> = smallvec!["tests", "empty", "quotes"];
-        assert_eq!(simple_shell_words("tests \"\" empty quotes"), expected);
+        assert_eq!(split_shell_words("tests \"\" empty quotes"), expected);
 
         let expected: SmallVec<[_; 1]> = smallvec!["tests single quote with spaces"];
         assert_eq!(
-            simple_shell_words("\"tests single quote with spaces\""),
+            split_shell_words("\"tests single quote with spaces\""),
             expected
         );
 
         let expected: SmallVec<[_; 3]> = smallvec!["tests", "alternative quote", "matcher"];
         assert_eq!(
-            simple_shell_words("tests \'alternative quote\' matcher"),
+            split_shell_words("tests \'alternative quote\' matcher"),
             expected
         );
 
         let expected: SmallVec<[_; 3]> = smallvec!["tests", "having mixed", "quotes"];
-        assert_eq!(
-            simple_shell_words("tests \"having mixed\' quotes"),
-            expected
-        );
+        assert_eq!(split_shell_words("tests \"having mixed\' quotes"), expected);
 
         // Only one quote
         let expected: SmallVec<[_; 1]> = smallvec!["\""];
-        assert_eq!(simple_shell_words("\""), expected);
+        assert_eq!(split_shell_words("\""), expected);
 
         // Only one space
         let expected: SmallVec<[&str; 0]> = smallvec![];
-        assert_eq!(simple_shell_words(" "), expected);
+        assert_eq!(split_shell_words(" "), expected);
 
         // Empty quotes without any other arguments
-        assert_eq!(simple_shell_words("\"\""), expected);
+        assert_eq!(split_shell_words("\"\""), expected);
     }
 }

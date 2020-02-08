@@ -1,4 +1,0 @@
-SELECT
-    nickname
-FROM
-    SeriesConfig
