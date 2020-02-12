@@ -423,13 +423,13 @@ pub enum Event {
 pub struct Events(mpsc::Receiver<Event>);
 
 impl Events {
-    pub fn new(tick_rate: Duration) -> Events {
+    pub fn new(tick_rate: Duration) -> Self {
         let (tx, rx) = mpsc::channel();
 
-        Events::spawn_key_handler(tx.clone());
-        Events::spawn_tick_handler(tick_rate, tx);
+        Self::spawn_key_handler(tx.clone());
+        Self::spawn_tick_handler(tick_rate, tx);
 
-        Events(rx)
+        Self(rx)
     }
 
     fn spawn_key_handler(tx: mpsc::Sender<Event>) -> thread::JoinHandle<()> {
