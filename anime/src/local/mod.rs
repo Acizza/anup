@@ -18,7 +18,7 @@ use {
 };
 
 /// A regex pattern to parse episode files.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 #[cfg_attr(
     feature = "diesel-support",
     derive(AsExpression, FromSqlRow),
