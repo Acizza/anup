@@ -3,6 +3,7 @@ use super::{
 };
 use crate::err::{self, Result};
 use chrono::{Datelike, NaiveDate};
+use once_cell::sync::Lazy;
 use serde_derive::{Deserialize, Serialize};
 use serde_json as json;
 use serde_json::json;
@@ -283,6 +284,13 @@ fn send_gql_request<S>(
 where
     S: Into<String>,
 {
+    static REQ_AGENT: Lazy<ureq::Agent> = Lazy::new(|| {
+        let mut agent = ureq::agent();
+        agent.set("Content-Type", "application/json");
+        agent.set("Accept", "application/json");
+        agent
+    });
+
     let query = minimize_query(query);
 
     let body = json!({
@@ -290,10 +298,8 @@ where
         "variables": vars,
     });
 
-    let mut request = ureq::post(API_URL);
+    let mut request = REQ_AGENT.post(API_URL);
     request.timeout_connect(15_000);
-    request.set("Content-Type", "application/json");
-    request.set("Accept", "application/json");
 
     if let Some(token) = token {
         request.auth_kind("Bearer", &token.decode()?);
