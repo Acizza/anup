@@ -76,7 +76,7 @@ impl Drop for Database {
     }
 }
 
-#[derive(Debug, AsExpression, FromSqlRow)]
+#[derive(Clone, Debug, AsExpression, FromSqlRow)]
 #[sql_type = "Text"]
 pub struct Path(PathBuf);
 
