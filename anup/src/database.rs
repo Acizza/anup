@@ -116,7 +116,7 @@ impl Deref for Path {
     }
 }
 
-#[derive(Debug, Default, AsExpression, FromSqlRow)]
+#[derive(Clone, Debug, Default, AsExpression, FromSqlRow)]
 #[sql_type = "Text"]
 pub struct PlayerArgs(SmallVec<[String; 3]>);
 
