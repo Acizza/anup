@@ -102,6 +102,12 @@ where
     }
 }
 
+impl AsRef<std::path::Path> for Path {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
 impl From<PathBuf> for Path {
     fn from(value: PathBuf) -> Self {
         Self(value)
