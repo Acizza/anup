@@ -6,6 +6,7 @@ use anime::remote::{RemoteService, SeriesInfo};
 use err::Result;
 use gumdrop::Options;
 use snafu::{ensure, OptionExt, ResultExt};
+use std::borrow::Cow;
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
@@ -255,7 +256,7 @@ where
     ensure!(path.is_dir(), err::NotADirectory);
 
     let fname = path.file_name().context(err::NoDirName)?.to_string_lossy();
-    let title = detect::parse_folder_title(fname).context(err::FolderTitleParse)?;
+    let title = detect::dir::parse_title(fname).context(err::FolderTitleParse)?;
 
     Ok(title)
 }
@@ -271,8 +272,11 @@ where
         }
         None => {
             let title = title.as_ref();
-            let results = remote.search_info_by_name(title)?;
-            detect::best_matching_info(title, results).context(err::UnableToDetectSeries { title })
+            let results = remote.search_info_by_name(title)?.map(Cow::Owned);
+
+            detect::series_info::closest_match(results, title)
+                .map(|(_, info)| info.into_owned())
+                .context(err::UnableToDetectSeries { title })
         }
     }
 }

@@ -11,9 +11,12 @@ mod util;
 
 use crate::config::Config;
 use crate::database::Database;
-use crate::err::Result;
+use crate::err::{Error, Result};
 use crate::file::TomlFile;
-use crate::series::{LastWatched, Series, SeriesConfig, SeriesEntry, SeriesInfo, SeriesParameters};
+use crate::series::config::SeriesConfig;
+use crate::series::entry::SeriesEntry;
+use crate::series::info::SeriesInfo;
+use crate::series::{LastWatched, Series, SeriesParams};
 use anime::remote::RemoteService;
 use chrono::{Duration, Utc};
 use gumdrop::Options;
@@ -69,8 +72,8 @@ fn run(args: CmdOptions) -> Result<()> {
     }
 }
 
-fn series_params_from_args(args: &CmdOptions) -> SeriesParameters {
-    SeriesParameters {
+fn series_params_from_args(args: &CmdOptions) -> SeriesParams {
+    SeriesParams {
         id: None, // TODO
         path: args.path.clone(),
         matcher: args.matcher.clone(),
@@ -95,7 +98,7 @@ fn init_remote(args: &CmdOptions, can_use_offline: bool) -> Result<Box<dyn Remot
             None => match AccessToken::load() {
                 Ok(token) => token,
                 Err(ref err) if err.is_file_nonexistant() => {
-                    return Err(err::Error::NeedAniListToken);
+                    return Err(Error::NeedAniListToken);
                 }
                 Err(err) => return Err(err),
             },
@@ -109,15 +112,26 @@ fn init_remote(args: &CmdOptions, can_use_offline: bool) -> Result<Box<dyn Remot
 fn prefetch(args: CmdOptions) -> Result<()> {
     let desired_series = match &args.series {
         Some(desired_series) => desired_series,
-        None => return Err(err::Error::MustSpecifySeriesName),
+        None => return Err(Error::MustSpecifySeriesName),
     };
 
     let config = Config::load_or_create()?;
     let db = Database::open()?;
-    let remote = init_remote(&args, false)?;
     let params = series_params_from_args(&args);
 
-    let series = Series::from_remote(desired_series, params, &config, remote.as_ref())?;
+    let mut cfg =
+        SeriesConfig::load_by_name(&db, desired_series).map_err(|_| Error::MustAddSeries {
+            name: desired_series.clone(),
+        })?;
+
+    cfg.apply_params(&params, &config)?;
+
+    let remote = init_remote(&args, false)?;
+    let remote = remote.as_ref();
+
+    let info = SeriesInfo::from_remote_by_id(cfg.id, remote)?;
+    let series = Series::from_remote(cfg, info, &config, remote)?;
+
     series.save(&db)?;
 
     println!(
@@ -165,18 +179,19 @@ fn play_episode(args: CmdOptions) -> Result<()> {
     let remote = init_remote(&args, true)?;
     let remote = remote.as_ref();
 
-    let desired_series = args.series.as_ref().or_else(|| last_watched.get());
-    let series_names = SeriesConfig::all_series_names(&db)?;
+    let desired_series = args
+        .series
+        .as_ref()
+        .or_else(|| last_watched.get())
+        .ok_or(Error::MustSpecifySeriesName)?;
 
-    let mut series = match desired_series {
-        Some(desired) if series_names.contains(&desired) => Series::load(&db, &config, desired)?,
-        Some(desired) => {
-            let params = series_params_from_args(&args);
-            let series = Series::from_remote(desired, params, &config, remote)?;
-            series.save(&db)?;
-            series
-        }
-        None => return Err(err::Error::MustSpecifySeriesName),
+    let mut series = {
+        let cfg =
+            SeriesConfig::load_by_name(&db, desired_series).map_err(|_| Error::MustAddSeries {
+                name: desired_series.clone(),
+            })?;
+
+        Series::load(cfg, &config, &db)?
     };
 
     if last_watched.set(&series.config.nickname) {

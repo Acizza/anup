@@ -1,5 +1,5 @@
 use crate::err::{self, Result};
-use crate::series::SeriesParameters;
+use crate::series::SeriesParams;
 use smallvec::{smallvec, SmallVec};
 use snafu::ensure;
 use std::convert::TryFrom;
@@ -256,8 +256,8 @@ macro_rules! impl_command_matching {
 /// A parsed command with its arguments.
 #[derive(Debug, Clone)]
 pub enum Command {
-    /// Add a new series with the specified nickname and optional series ID.
-    Add(String, SeriesParameters),
+    /// Add a new series with the specified nickname and series parameters.
+    Add(String, SeriesParams),
     /// Set the current remote to AniList with an optional login token.
     AniList(Option<String>),
     /// Remove the selected series from the program.
@@ -269,7 +269,7 @@ pub enum Command {
     /// Increment / decrement the watched episodes of the selected season.
     Progress(ProgressDirection),
     /// Set the parameters for the selected series.
-    Set(SeriesParameters),
+    Set(SeriesParams),
     /// Syncronize the selected season to the remote service.
     SyncFromRemote,
     /// Syncronize the selected season from the remote service.
@@ -287,9 +287,9 @@ impl_command_matching!(Command, 11,
         min_args: 1,
         fn: |args: &[&str]| {
             let params = if args.len() > 1 {
-                SeriesParameters::from_name_value_list(&args[1..])?
+                SeriesParams::from_name_value_list(&args[1..])?
             } else {
-                SeriesParameters::default()
+                SeriesParams::default()
             };
 
             Ok(Command::Add(args[0].into(), params))
@@ -347,7 +347,7 @@ impl_command_matching!(Command, 11,
         usage: "[id=value] [path=\"value\"] [matcher=\"regex with {title} and {episode}\"]",
         min_args: 1,
         fn: |args: &[&str]| {
-            let params = SeriesParameters::from_name_value_list(args)?;
+            let params = SeriesParams::from_name_value_list(args)?;
             Ok(Command::Set(params))
         },
     },
@@ -409,6 +409,7 @@ impl Command {
         detect::closest_match(&Command::COMMANDS, MIN_CONFIDENCE, |cmd| {
             Some(strsim::jaro_winkler(&cmd.name, name) as f32)
         })
+        .map(|(_, cmd)| cmd)
     }
 }
 

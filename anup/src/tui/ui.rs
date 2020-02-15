@@ -1,5 +1,7 @@
 use super::component::log::StatusLog;
-use super::{Series, SeriesStatus, StatusBarState, UIState, WatchState};
+use super::{
+    DrawState, SelectSeriesState, Series, SeriesStatus, StatusBarState, UIState, WatchState,
+};
 use crate::err::{self, Result};
 use crate::util;
 use anime::remote::ScoreParser;
@@ -77,7 +79,14 @@ where
                     .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
                     .split(horiz_splitter[1]);
 
-                UI::draw_info_panel(state, score_parser, &info_panel_splitter, &mut frame);
+                match &state.draw_state {
+                    DrawState::Normal => {
+                        UI::draw_info_panel(state, score_parser, &info_panel_splitter, &mut frame)
+                    }
+                    DrawState::SelectSeries(state) => {
+                        UI::draw_series_select_panel(state, &info_panel_splitter, &mut frame)
+                    }
+                }
 
                 *status_log_rect = info_panel_splitter[1];
                 UI::draw_status_bar(state, status_log, *status_log_rect, &mut frame);
@@ -219,6 +228,27 @@ where
                     .render(frame, info_layout[1]);
             }
         }
+    }
+
+    fn draw_series_select_panel(state: &SelectSeriesState, layout: &[Rect], frame: &mut Frame<B>) {
+        let names = state
+            .info_list
+            .iter()
+            .map(|info| &info.title_preferred)
+            .collect::<Vec<_>>();
+
+        SelectableList::default()
+            .block(
+                Block::default()
+                    .title("Select a series from the list")
+                    .borders(Borders::ALL),
+            )
+            .items(&names)
+            .select(Some(state.selected))
+            .style(Style::default().fg(Color::White))
+            .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC))
+            .highlight_symbol(">")
+            .render(frame, layout[0]);
     }
 
     fn draw_series_info<S>(

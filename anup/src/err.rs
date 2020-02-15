@@ -75,20 +75,14 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("no series found with name: {}", name))]
-    NoMatchingSeries { name: String },
+    #[snafu(display("no series found on disk matching name: {}", name))]
+    NoMatchingSeriesOnDisk { name: String },
 
-    #[snafu(display("unable to extract series title from folder"))]
-    FolderTitleParse,
+    #[snafu(display("{} must be added to the program first\nyou can do this in the TUI by using the add command", name))]
+    MustAddSeries { name: String },
 
     #[snafu(display("path must be a directory"))]
     NotADirectory,
-
-    #[snafu(display("directory has no name"))]
-    NoDirName,
-
-    #[snafu(display("need existing series info to run in offline mode\nrun the program with --prefetch first when an internet connection is available"))]
-    RunWithPrefetch,
 
     #[snafu(display("series name must be specified"))]
     MustSpecifySeriesName,
@@ -125,6 +119,9 @@ pub enum Error {
 
     #[snafu(display("missing \"{}\" group for custom episode matcher\nmake sure both {{title}} and {{episode}} are specified", group))]
     MissingEpisodeMatcherGroup { group: &'static str },
+
+    #[snafu(display("{}", msg))]
+    LogMessage { msg: String },
 }
 
 impl Error {
@@ -141,32 +138,6 @@ impl From<anime::Error> for Error {
         Error::Anime {
             source,
             backtrace: Backtrace::generate(),
-        }
-    }
-}
-
-impl From<detect::Error> for Error {
-    fn from(source: detect::Error) -> Error {
-        match source {
-            detect::Error::FileIO {
-                path,
-                source,
-                backtrace,
-            } => Error::FileIO {
-                path,
-                source,
-                backtrace,
-            },
-            detect::Error::EntryIO {
-                dir,
-                source,
-                backtrace,
-            } => Error::EntryIO {
-                dir,
-                source,
-                backtrace,
-            },
-            detect::Error::NoMatchingSeries { name } => Error::NoMatchingSeries { name },
         }
     }
 }
