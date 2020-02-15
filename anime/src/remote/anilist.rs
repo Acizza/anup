@@ -3,8 +3,6 @@ use super::{
 };
 use crate::err::{self, Result};
 use chrono::{Datelike, NaiveDate};
-use once_cell::sync::Lazy;
-use reqwest::blocking::Client;
 use serde_derive::{Deserialize, Serialize};
 use serde_json as json;
 use serde_json::json;
@@ -285,31 +283,29 @@ fn send_gql_request<S>(
 where
     S: Into<String>,
 {
-    static CLIENT: Lazy<Client> = Lazy::new(Client::new);
-
     let query = minimize_query(query);
 
     let body = json!({
         "query": query,
         "variables": vars,
-    })
-    .to_string();
+    });
 
-    let mut request = CLIENT
-        .post(API_URL)
-        .header("Content-Type", "application/json")
-        .header("Accept", "application/json");
+    let mut request = ureq::post(API_URL);
+    request.timeout_connect(15_000);
+    request.set("Content-Type", "application/json");
+    request.set("Accept", "application/json");
 
     if let Some(token) = token {
-        request = request.bearer_auth(&token.decode()?);
+        request.auth_kind("Bearer", &token.decode()?);
     }
 
-    let json: json::Value = request
-        .body(body)
-        .send()
-        .context(err::Reqwest)?
-        .json()
-        .context(err::Reqwest)?;
+    let resp = request.send_json(body);
+
+    if let Some(err) = resp.synthetic_error() {
+        return Err(err.into());
+    }
+
+    let json = resp.into_json().context(err::HttpIO)?;
 
     if json["errors"] != json::Value::Null {
         let err = &json["errors"][0];

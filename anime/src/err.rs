@@ -1,4 +1,4 @@
-use snafu::{Backtrace, Snafu};
+use snafu::{Backtrace, GenerateBacktrace, Snafu};
 use std::io;
 use std::path;
 use std::result;
@@ -48,9 +48,16 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("reqwest error: {}", source))]
-    Reqwest {
-        source: reqwest::Error,
+    #[snafu(display("http error: {}", msg))]
+    Http {
+        msg: String,
+        status: u16,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("http io error: {}", source))]
+    HttpIO {
+        source: io::Error,
         backtrace: Backtrace,
     },
 
@@ -87,15 +94,18 @@ impl Error {
     pub fn is_http_code(&self, http_code: u16) -> bool {
         match self {
             Error::BadAniListResponse { code, .. } if http_code == *code => true,
-            Error::Reqwest { source, .. } => {
-                let status = match source.status() {
-                    Some(status) => status,
-                    None => return false,
-                };
-
-                status.as_u16() == http_code
-            }
+            Error::Http { status, .. } => *status == http_code,
             _ => false,
+        }
+    }
+}
+
+impl From<&ureq::Error> for Error {
+    fn from(source: &ureq::Error) -> Self {
+        Self::Http {
+            msg: format!("{}", source),
+            status: source.status(),
+            backtrace: Backtrace::generate(),
         }
     }
 }
