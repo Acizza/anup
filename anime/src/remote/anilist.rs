@@ -284,6 +284,8 @@ fn send_gql_request<S>(
 where
     S: Into<String>,
 {
+    const REQ_TIMEOUT_MS: u64 = 15_000;
+
     static REQ_AGENT: Lazy<ureq::Agent> = Lazy::new(|| {
         let mut agent = ureq::agent();
         agent.set("Content-Type", "application/json");
@@ -299,7 +301,9 @@ where
     });
 
     let mut request = REQ_AGENT.post(API_URL);
-    request.timeout_connect(15_000);
+    request.timeout_connect(REQ_TIMEOUT_MS);
+    request.timeout_read(REQ_TIMEOUT_MS);
+    request.timeout_write(REQ_TIMEOUT_MS);
 
     if let Some(token) = token {
         request.auth_kind("Bearer", &token.decode()?);
