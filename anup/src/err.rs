@@ -120,8 +120,14 @@ pub enum Error {
     #[snafu(display("missing \"{}\" group for custom episode matcher\nmake sure both {{title}} and {{episode}} are specified", group))]
     MissingEpisodeMatcherGroup { group: &'static str },
 
-    #[snafu(display("{}", msg))]
-    LogMessage { msg: String },
+    #[snafu(display("series already exists as {}", name))]
+    SeriesAlreadyExists { name: String },
+
+    #[snafu(display("must be online to {}", reason))]
+    MustBeOnlineTo { reason: String },
+
+    #[snafu(display("invalid score"))]
+    InvalidScore,
 }
 
 impl Error {

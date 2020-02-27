@@ -1,5 +1,5 @@
+mod backend;
 mod component;
-mod ui;
 
 use crate::config::Config;
 use crate::database::Database;
@@ -8,550 +8,83 @@ use crate::file::TomlFile;
 use crate::series::config::SeriesConfig;
 use crate::series::info::{InfoResult, InfoSelector, SeriesInfo};
 use crate::series::{LastWatched, Series, SeriesParams};
-use crate::{try_opt_r, try_ret, CmdOptions};
+use crate::try_opt_r;
+use crate::CmdOptions;
 use anime::remote::RemoteService;
+use backend::{TermionBackend, UIBackend, UIEvent, UIEvents};
 use chrono::{DateTime, Duration, Utc};
-use component::command_prompt::{Command, CommandPrompt};
-use component::log::{LogItem, StatusLog};
+use component::episode_watcher::EpisodeWatcher;
+use component::info_panel::InfoPanel;
+use component::prompt::command::Command;
+use component::prompt::log::{LogItem, StatusLog};
+use component::prompt::Prompt;
+use component::series_list::SeriesList;
+use component::{Component, Draw};
 use snafu::ResultExt;
 use std::borrow::Cow;
 use std::mem;
+use std::ops::{Index, IndexMut};
 use std::process;
 use termion::event::Key;
-use ui::{Event, Events, UI};
+use tui::backend::Backend;
+use tui::layout::{Constraint, Direction, Layout};
 
 pub fn run(args: CmdOptions) -> Result<()> {
-    let mut ui = UI::init()?;
-
-    let mut cstate = {
-        let config = Config::load_or_create()?;
-        let remote = init_remote(&args, &mut ui.status_log);
-        let db = Database::open()?;
-
-        CommonState { config, remote, db }
-    };
-
-    let mut ui_state = init_ui_state(&cstate, &args)?;
-    let events = Events::new(Duration::seconds(1));
+    let backend = UIBackend::init()?;
+    let mut ui = UIWorld::<TermionBackend>::init(&args, backend)?;
+    let events = UIEvents::new(Duration::seconds(1));
 
     loop {
-        ui.draw(&ui_state, cstate.remote.as_ref())?;
-        ui.adjust_cursor(&ui_state)?;
+        ui.draw()?;
 
         match events.next()? {
-            Event::Input(key) => match key {
-                // Exit
-                Key::Char('q') if !ui_state.status_bar_state.in_input_dialog() => {
-                    ui.clear().ok();
+            UIEvent::Input(key) => {
+                if ui.process_key(key) {
+                    ui.exit();
                     break Ok(());
                 }
-                key => ui_state.process_key(&mut cstate, &mut ui.status_log, key),
-            },
-            Event::Tick => ui_state.process_tick(&cstate, &mut ui.status_log),
-        }
-    }
-}
-
-fn init_remote(args: &CmdOptions, log: &mut StatusLog) -> Box<dyn RemoteService> {
-    use anime::remote::anilist;
-    use anime::remote::offline::Offline;
-
-    match crate::init_remote(args, true) {
-        Ok(remote) => remote,
-        Err(err) => {
-            match err {
-                Error::NeedAniListToken => {
-                    log.push(format!(
-                        "No access token found. Go to {} \
-                         and set your token with the 'anilist' command",
-                        anilist::auth_url(crate::ANILIST_CLIENT_ID)
-                    ));
-                }
-                _ => {
-                    log.push(LogItem::failed("Logging in", err));
-                    log.push(format!(
-                        "If you need a new token, go to {} \
-                         and set it with the 'anilist' command",
-                        anilist::auth_url(crate::ANILIST_CLIENT_ID)
-                    ));
-                }
             }
-
-            log.push("Continuing in offline mode");
-
-            Box::new(Offline::new())
+            UIEvent::Tick => ui.tick(),
         }
     }
 }
 
-/// Items that are not tied to the UI and are commonly used together.
-struct CommonState {
+pub struct UIState {
+    series: Selection<SeriesStatus>,
+    current_action: CurrentAction,
     config: Config,
     remote: Box<dyn RemoteService>,
     db: Database,
 }
 
-fn init_ui_state(cstate: &CommonState, args: &CmdOptions) -> Result<UIState> {
-    let series = SeriesConfig::load_all(&cstate.db)?
-        .into_iter()
-        .map(Into::into)
-        .map(SeriesStatus::Unloaded)
-        .collect::<Vec<_>>();
-
-    let last_watched = LastWatched::load()?;
-
-    let selected_series = {
-        let desired_series = args.series.as_ref().or_else(|| last_watched.get());
-
-        match desired_series {
-            Some(desired) => series
-                .iter()
-                .position(|series| series.nickname() == desired)
-                .unwrap_or(0),
-            None => 0,
-        }
-    };
-
-    let mut ui_state = UIState {
-        series,
-        selected_series,
-        last_watched,
-        watch_state: WatchState::default(),
-        draw_state: DrawState::default(),
-        status_bar_state: StatusBarState::default(),
-        last_used_command: None,
-    };
-
-    ui_state.ensure_cur_series_initialized(cstate);
-    Ok(ui_state)
-}
-
-/// Current state of the UI.
-pub struct UIState {
-    series: Vec<SeriesStatus>,
-    selected_series: usize,
-    last_watched: LastWatched,
-    watch_state: WatchState,
-    draw_state: DrawState,
-    status_bar_state: StatusBarState,
-    last_used_command: Option<Command>,
-}
-
 impl UIState {
-    fn cur_series_status(&self) -> Option<&SeriesStatus> {
-        self.series.get(self.selected_series)
+    fn init(remote: Box<dyn RemoteService>) -> Result<Self> {
+        let config = Config::load_or_create()?;
+        let db = Database::open()?;
+
+        let series = SeriesConfig::load_all(&db)?
+            .into_iter()
+            .map(Into::into)
+            .map(SeriesStatus::Unloaded)
+            .collect::<Vec<_>>();
+
+        Ok(Self {
+            series: Selection::new(series),
+            current_action: CurrentAction::default(),
+            config,
+            remote,
+            db,
+        })
     }
 
-    fn cur_valid_series(&self) -> Option<&Series> {
-        self.cur_series_status()
-            .and_then(|status| status.get_valid())
-    }
-
-    fn cur_series_status_mut(&mut self) -> Option<&mut SeriesStatus> {
-        self.series.get_mut(self.selected_series)
-    }
-
-    fn cur_valid_series_mut(&mut self) -> Option<&mut Series> {
-        self.cur_series_status_mut()
-            .and_then(|status| status.get_valid_mut())
-    }
-
-    fn ensure_cur_series_initialized(&mut self, cstate: &CommonState) {
-        let status = match self.cur_series_status_mut() {
-            Some(status) => status,
-            None => return,
-        };
-
-        match status {
-            SeriesStatus::Valid(_) | SeriesStatus::Invalid(_, _) => (),
-            SeriesStatus::Unloaded(cfg) => {
-                let series = Series::load(*cfg.clone(), &cstate.config, &cstate.db);
-                status.update(series);
-            }
-        }
-    }
-
-    fn process_key(&mut self, state: &mut CommonState, log: &mut StatusLog, key: Key) {
-        if !self.is_idle() {
-            return;
-        }
-
-        if self.status_bar_state.in_input_dialog() {
-            return self.process_input_dialog_key(state, log, key);
-        }
-
-        if self.draw_state.in_special_state() {
-            return self.process_special_draw_state_key(state, log, key);
-        }
-
-        match key {
-            // Play next episode
-            Key::Char(ch) if ch == state.config.tui.keys.play_next_episode => {
-                let series = try_ret!(self.cur_valid_series());
-                let nickname = series.config.nickname.clone();
-                let is_diff_series = self.last_watched.set(nickname);
-
-                if is_diff_series {
-                    log.capture_status("Setting series as last watched", || {
-                        self.last_watched.save()
-                    });
-                }
-
-                log.capture_status("Playing next episode", || {
-                    self.start_next_series_episode(&state)
-                });
-            }
-            // Command prompt
-            Key::Char(':') => self.status_bar_state.set_to_command_prompt(),
-            // Run last used command
-            Key::Char(ch) if ch == state.config.tui.keys.run_last_command => {
-                let cmd = match &self.last_used_command {
-                    Some(cmd) => cmd.clone(),
-                    None => return,
-                };
-
-                self.process_command(cmd, state, log);
-            }
-            // Select series
-            Key::Up | Key::Down => {
-                self.selected_series = match key {
-                    Key::Up => self.selected_series.saturating_sub(1),
-                    Key::Down if self.selected_series < self.series.len().saturating_sub(1) => {
-                        self.selected_series + 1
-                    }
-                    _ => self.selected_series,
-                };
-
-                self.ensure_cur_series_initialized(state);
-            }
-            _ => (),
-        }
-    }
-
-    fn process_input_dialog_key(&mut self, state: &mut CommonState, log: &mut StatusLog, key: Key) {
-        match &mut self.status_bar_state {
-            StatusBarState::Log => (),
-            StatusBarState::CommandPrompt(prompt) => {
-                use component::command_prompt::PromptResult;
-
-                match prompt.process_key(key) {
-                    Ok(PromptResult::Command(command)) => {
-                        self.status_bar_state.reset();
-                        self.last_used_command = Some(command.clone());
-                        self.process_command(command, state, log);
-                    }
-                    Ok(PromptResult::Done) => self.status_bar_state.reset(),
-                    Ok(PromptResult::NotDone) => (),
-                    // We need to set the status bar state back before propagating errors,
-                    // otherwise we'll be stuck in the prompt
-                    Err(err) => {
-                        self.status_bar_state.reset();
-                        log.push(LogItem::failed("Processing command", err));
-                    }
-                }
-            }
-        }
-    }
-
-    fn process_special_draw_state_key(
-        &mut self,
-        cstate: &CommonState,
-        log: &mut StatusLog,
-        key: Key,
-    ) {
-        match &mut self.draw_state {
-            DrawState::Normal => (),
-            DrawState::SelectSeries(state) => match key {
-                Key::Up | Key::Down => {
-                    state.selected = match key {
-                        Key::Up => state.selected.saturating_sub(1),
-                        Key::Down if state.selected < state.info_list.len().saturating_sub(1) => {
-                            state.selected + 1
-                        }
-                        _ => state.selected,
-                    };
-                }
-                Key::Char('\n') => {
-                    let mut state = match mem::take(&mut self.draw_state) {
-                        DrawState::SelectSeries(state) => state,
-                        _ => unreachable!(),
-                    };
-
-                    let info = state.info_list.swap_remove(state.selected);
-
-                    log.capture_status("Adding series", || {
-                        let config = SeriesConfig::from_params(
-                            state.nickname,
-                            &info,
-                            state.params,
-                            &cstate.config,
-                        )?;
-
-                        self.add_series(config, info, cstate)
-                    });
-
-                    self.draw_state = DrawState::default();
-                }
-                _ => (),
-            },
-        }
-    }
-
-    fn process_command(&mut self, command: Command, cstate: &mut CommonState, log: &mut StatusLog) {
-        match command {
-            Command::Add(nickname, params) => {
-                if cstate.remote.is_offline() {
-                    log.push("This command cannot be ran in offline mode");
-                    return;
-                }
-
-                log.capture_status("Fetching series info", || {
-                    let info = {
-                        let sel = InfoSelector::from_params_or_name(&params, &nickname);
-                        SeriesInfo::from_remote(sel, cstate.remote.as_ref())?
-                    };
-
-                    match info {
-                        InfoResult::Confident(info) => {
-                            let config =
-                                SeriesConfig::from_params(nickname, &info, params, &cstate.config)?;
-
-                            self.add_series(config, info, cstate)?;
-                        }
-                        InfoResult::Unconfident(info_list) => {
-                            self.draw_state = DrawState::select_series(info_list, nickname, params);
-                        }
-                    }
-
-                    Ok(())
-                });
-            }
-            Command::AniList(token) => {
-                use anime::remote::anilist::AniList;
-                use anime::remote::AccessToken;
-
-                log.capture_status("Logging in to AniList", || {
-                    let token = match token {
-                        Some(token) => {
-                            let token = AccessToken::encode(token);
-                            token.save()?;
-                            token
-                        }
-                        None => match AccessToken::load() {
-                            Ok(token) => token,
-                            Err(err) if err.is_file_nonexistant() => {
-                                return Err(Error::NeedAniListToken)
-                            }
-                            Err(err) => return Err(err),
-                        },
-                    };
-
-                    cstate.remote = Box::new(AniList::authenticated(token)?);
-                    Ok(())
-                });
-            }
-            Command::Delete => {
-                if self.selected_series >= self.series.len() {
-                    return;
-                }
-
-                let series = self.series.remove(self.selected_series);
-                let nickname = series.nickname();
-
-                if self.selected_series == self.series.len() {
-                    self.selected_series = self.selected_series.saturating_sub(1);
-                }
-
-                log.capture_status("Deleting series", || {
-                    Series::delete_by_name(&cstate.db, nickname)?;
-                    Ok(())
-                });
-
-                self.ensure_cur_series_initialized(cstate);
-            }
-            Command::Offline => {
-                use anime::remote::offline::Offline;
-                cstate.remote = Box::new(Offline::new());
-                log.push("Remote set to offline");
-            }
-            Command::PlayerArgs(args) => {
-                let series = try_ret!(self.cur_valid_series_mut());
-
-                log.capture_status("Saving player args for series", || {
-                    series.config.player_args = args.into();
-                    series.save(&cstate.db)
-                });
-            }
-            Command::Progress(direction) => {
-                use component::command_prompt::ProgressDirection;
-
-                let series = try_ret!(self.cur_valid_series_mut());
-                let remote = cstate.remote.as_ref();
-
-                match direction {
-                    ProgressDirection::Forwards => {
-                        log.capture_status("Forcing forward watch progress", || {
-                            series.episode_completed(remote, &cstate.config, &cstate.db)
-                        });
-                    }
-                    ProgressDirection::Backwards => {
-                        log.capture_status("Forcing backwards watch progress", || {
-                            series.episode_regressed(remote, &cstate.config, &cstate.db)
-                        });
-                    }
-                }
-            }
-            Command::Set(params) => {
-                // Note: we can't place this after getting the current series status due to borrow issues
-                if let Some(id) = params.id {
-                    if let Some(found) = self.series.iter().find(|&s| s.eq(&id)) {
-                        return log.push(format!("Series already exists as {}", found.nickname()));
-                    }
-                }
-
-                let status = try_ret!(self.cur_series_status_mut());
-                let remote = cstate.remote.as_ref();
-
-                log.capture_status("Applying series parameters", || {
-                    if params.id.is_some() && remote.is_offline() {
-                        return Err(Error::LogMessage {
-                            msg: "must be online to specify a new series id".into(),
-                        });
-                    }
-
-                    match status {
-                        SeriesStatus::Valid(series) => {
-                            series.apply_parameters(params, &cstate.config, remote)?;
-                            series.save(&cstate.db)?;
-                        }
-                        SeriesStatus::Invalid(cfg, _) => {
-                            cfg.apply_params(&params, &cstate.config)?;
-
-                            let series = if params.id.is_some() {
-                                let info = SeriesInfo::from_remote_by_id(cfg.id, remote)?;
-                                Series::from_remote(*cfg.clone(), info, &cstate.config, remote)
-                            } else {
-                                Series::load(*cfg.clone(), &cstate.config, &cstate.db)
-                            };
-
-                            if let Ok(series) = &series {
-                                series.save(&cstate.db)?;
-                            }
-
-                            status.update(series);
-                        }
-                        SeriesStatus::Unloaded(_) => (),
-                    }
-
-                    Ok(())
-                });
-            }
-            Command::SyncFromRemote => {
-                let series = try_ret!(self.cur_valid_series_mut());
-                let remote = cstate.remote.as_ref();
-
-                log.capture_status("Syncing entry from remote", || {
-                    series.entry.force_sync_from_remote(remote)?;
-                    series.save(&cstate.db)
-                });
-            }
-            Command::SyncToRemote => {
-                let series = try_ret!(self.cur_valid_series_mut());
-                let remote = cstate.remote.as_ref();
-
-                log.capture_status("Syncing entry to remote", || {
-                    series.entry.force_sync_to_remote(remote)?;
-                    series.save(&cstate.db)
-                });
-            }
-            Command::Score(raw_score) => {
-                let series = try_ret!(self.cur_valid_series_mut());
-
-                let score = match cstate.remote.parse_score(&raw_score) {
-                    Some(score) if score == 0 => None,
-                    Some(score) => Some(score),
-                    None => {
-                        log.push(LogItem::failed("Parsing score", None));
-                        return;
-                    }
-                };
-
-                let remote = cstate.remote.as_ref();
-
-                log.capture_status("Setting score", || {
-                    series.entry.set_score(score.map(|s| s as i16));
-                    series.entry.sync_to_remote(remote)?;
-                    series.save(&cstate.db)
-                });
-            }
-            Command::Status(status) => {
-                let series = try_ret!(self.cur_valid_series_mut());
-                let remote = cstate.remote.as_ref();
-
-                log.capture_status(format!("Setting series status to \"{}\"", status), || {
-                    series.entry.set_status(status, &cstate.config);
-                    series.entry.sync_to_remote(remote)?;
-                    series.save(&cstate.db)
-                });
-            }
-        }
-    }
-
-    fn process_tick(&mut self, state: &CommonState, log: &mut StatusLog) {
-        match &mut self.watch_state {
-            WatchState::Idle => (),
-            WatchState::Watching(_, child) => {
-                let status = match child.try_wait().context(err::IO) {
-                    Ok(Some(status)) => status,
-                    Ok(None) => return,
-                    Err(err) => {
-                        log.push(LogItem::failed("Waiting for player", err));
-                        return;
-                    }
-                };
-
-                // The watch state should be reset immediately to avoid a potential infinite loop.
-                let progress_time = match mem::take(&mut self.watch_state) {
-                    WatchState::Watching(progress_time, _) => progress_time,
-                    WatchState::Idle => unreachable!(),
-                };
-
-                let series = try_ret!(self.cur_valid_series_mut());
-
-                if !status.success() {
-                    log.push("Player did not exit properly");
-                    return;
-                }
-
-                if Utc::now() >= progress_time {
-                    log.capture_status("Marking episode as completed", || {
-                        series.episode_completed(state.remote.as_ref(), &state.config, &state.db)
-                    });
-                } else {
-                    log.push("Not marking episode as completed");
-                }
-            }
-        }
-    }
-
-    fn add_series(
-        &mut self,
-        config: SeriesConfig,
-        info: SeriesInfo,
-        cstate: &CommonState,
-    ) -> Result<()> {
+    fn add_series(&mut self, config: SeriesConfig, info: SeriesInfo) {
         let config: Cow<SeriesConfig> = Cow::Owned(config);
 
-        let series = Series::from_remote(
-            config.clone().into_owned(),
-            info,
-            &cstate.config,
-            cstate.remote.as_ref(),
-        );
-
-        if let Ok(series) = &series {
-            series.save(&cstate.db)?;
-        }
+        let series = Series::from_remote(config.clone(), info, &self.config, self.remote.as_ref())
+            .and_then(|series| {
+                series.save(&self.db)?;
+                Ok(series)
+            });
 
         let status = SeriesStatus::from_series(series, config);
         let nickname = status.nickname().to_string();
@@ -566,51 +99,607 @@ impl UIState {
                 .sort_unstable_by(|x, y| x.nickname().cmp(y.nickname()));
         }
 
-        self.selected_series = self
+        let selected = self
             .series
             .iter()
             .position(|s| s.nickname() == nickname)
             .unwrap_or(0);
 
-        Ok(())
+        self.series.set_selected(selected);
     }
 
-    fn start_next_series_episode(&mut self, state: &CommonState) -> Result<()> {
-        let series = try_opt_r!(self.cur_valid_series_mut());
-
-        series.begin_watching(state.remote.as_ref(), &state.config, &state.db)?;
-
-        let next_ep = series.entry.watched_episodes() + 1;
-
-        let child = series
-            .play_episode_cmd(next_ep as u32, &state.config)?
-            .spawn()
-            .context(err::FailedToPlayEpisode {
-                episode: next_ep as u32,
-            })?;
-
-        let progress_time = {
-            let secs_must_watch = (series.info.episode_length_mins as f32
-                * state.config.episode.pcnt_must_watch)
-                * 60.0;
-
-            let time_must_watch = Duration::seconds(secs_must_watch as i64);
-
-            Utc::now() + time_must_watch
+    fn init_selected_series(&mut self) {
+        let selected = match self.series.selected_mut() {
+            Some(selected) => selected,
+            None => return,
         };
 
-        self.watch_state = WatchState::Watching(progress_time, child);
+        selected.ensure_valid(&self.config, &self.db);
+    }
+
+    fn delete_selected_series(&mut self) -> Result<()> {
+        let series = try_opt_r!(self.series.remove_selected());
+
+        // Since we changed our selected series, we need to make sure the new one is initialized
+        self.init_selected_series();
+
+        Series::delete_by_name(&self.db, series.nickname())?;
         Ok(())
     }
 
-    fn is_idle(&self) -> bool {
-        self.watch_state == WatchState::Idle
+    fn process_command(&mut self, command: Command) -> LogResult {
+        match command {
+            Command::Add(nickname, params) => LogResult::capture("Adding series", || {
+                if self.remote.is_offline() {
+                    return Err(Error::MustRunOnline);
+                }
+
+                let info = {
+                    let sel = InfoSelector::from_params_or_name(&params, &nickname);
+                    SeriesInfo::from_remote(sel, self.remote.as_ref())?
+                };
+
+                match info {
+                    InfoResult::Confident(info) => {
+                        let config =
+                            SeriesConfig::from_params(nickname, &info, params, &self.config)?;
+
+                        self.add_series(config, info);
+                    }
+                    InfoResult::Unconfident(info_list) => {
+                        self.current_action =
+                            CurrentAction::select_series(info_list, params, nickname);
+                    }
+                }
+
+                Ok(())
+            }),
+            Command::AniList(token) => LogResult::capture("logging in to AniList", || {
+                use anime::remote::anilist::AniList;
+                use anime::remote::AccessToken;
+
+                let token = match token {
+                    Some(token) => {
+                        let token = AccessToken::encode(token);
+                        token.save()?;
+                        token
+                    }
+                    None => match AccessToken::load() {
+                        Ok(token) => token,
+                        Err(err) if err.is_file_nonexistant() => {
+                            return Err(Error::NeedAniListToken)
+                        }
+                        Err(err) => return Err(err),
+                    },
+                };
+
+                self.remote = Box::new(AniList::authenticated(token)?);
+                Ok(())
+            }),
+            Command::Delete => {
+                LogResult::capture("deleting series", || self.delete_selected_series())
+            }
+            Command::Offline => {
+                use anime::remote::offline::Offline;
+                self.remote = Box::new(Offline::new());
+                LogResult::Ok
+            }
+            Command::PlayerArgs(args) => LogResult::capture("setting series args", || {
+                let series = try_opt_r!(self.series.valid_selection_mut());
+
+                series.config.player_args = args.into();
+                series.save(&self.db)
+            }),
+            Command::Progress(direction) => LogResult::capture("forcing watch progress", || {
+                use component::prompt::command::ProgressDirection;
+
+                let series = try_opt_r!(self.series.valid_selection_mut());
+                let remote = self.remote.as_ref();
+
+                match direction {
+                    ProgressDirection::Forwards => {
+                        series.episode_completed(remote, &self.config, &self.db)
+                    }
+                    ProgressDirection::Backwards => {
+                        series.episode_regressed(remote, &self.config, &self.db)
+                    }
+                }
+            }),
+            Command::Set(params) => LogResult::capture("applying series parameters", || {
+                // Note: we can't place this after getting the current series status due to borrow issues
+                if let Some(id) = params.id {
+                    if let Some(found) = self.series.iter().find(|&s| s.eq(&id)) {
+                        return Err(Error::SeriesAlreadyExists {
+                            name: found.nickname().into(),
+                        });
+                    }
+                }
+
+                let status = try_opt_r!(self.series.selected_mut());
+                let remote = self.remote.as_ref();
+
+                if params.id.is_some() && remote.is_offline() {
+                    return Err(Error::MustBeOnlineTo {
+                        reason: "set a new series id".into(),
+                    });
+                }
+
+                match status {
+                    SeriesStatus::Valid(series) => {
+                        series.apply_parameters(params, &self.config, remote)?;
+                        series.save(&self.db)?;
+                    }
+                    SeriesStatus::Invalid(cfg, _) => {
+                        cfg.apply_params(&params, &self.config)?;
+                        let cfg = Cow::Borrowed(cfg.as_ref());
+
+                        let series = if params.id.is_some() {
+                            let info = SeriesInfo::from_remote_by_id(cfg.id, remote)?;
+                            Series::from_remote(cfg, info, &self.config, remote)
+                        } else {
+                            Series::load(cfg.into_owned(), &self.config, &self.db)
+                        };
+
+                        if let Ok(series) = &series {
+                            series.save(&self.db)?;
+                        }
+
+                        status.update(series);
+                    }
+                    SeriesStatus::Unloaded(_) => (),
+                }
+
+                Ok(())
+            }),
+            cmd @ Command::SyncFromRemote | cmd @ Command::SyncToRemote => {
+                LogResult::capture("syncing entry to/from remote", || {
+                    let series = try_opt_r!(self.series.valid_selection_mut());
+                    let remote = self.remote.as_ref();
+
+                    match cmd {
+                        Command::SyncFromRemote => series.entry.force_sync_from_remote(remote)?,
+                        Command::SyncToRemote => series.entry.force_sync_to_remote(remote)?,
+                        _ => unreachable!(),
+                    }
+
+                    series.save(&self.db)
+                })
+            }
+            Command::Score(raw_score) => LogResult::capture("setting score", || {
+                let series = try_opt_r!(self.series.valid_selection_mut());
+
+                let score = match self.remote.parse_score(&raw_score) {
+                    Some(score) if score == 0 => None,
+                    Some(score) => Some(score),
+                    None => return Err(Error::InvalidScore),
+                };
+
+                let remote = self.remote.as_ref();
+
+                series.entry.set_score(score.map(|s| s as i16));
+                series.entry.sync_to_remote(remote)?;
+                series.save(&self.db)
+            }),
+            Command::Status(status) => LogResult::capture("setting series status", || {
+                let series = try_opt_r!(self.series.valid_selection_mut());
+                let remote = self.remote.as_ref();
+
+                series.entry.set_status(status, &self.config);
+                series.entry.sync_to_remote(remote)?;
+                series.save(&self.db)
+            }),
+        }
+    }
+}
+
+struct UIWorld<'a, B: Backend> {
+    backend: UIBackend<B>,
+    state: UIState,
+    prompt: Prompt<'a>,
+    series_list: SeriesList,
+    info_panel: InfoPanel,
+    episode_watcher: EpisodeWatcher,
+}
+
+macro_rules! impl_ui_component_fns {
+    ($($comp_var:ident),+) => {
+        impl<'a, B> UIWorld<'a, B> where B: Backend {
+            fn tick_components(&mut self) -> LogResult {
+                $(
+                    if let err @ LogResult::Err(_, _) = self.$comp_var.tick(&mut self.state) {
+                        return err;
+                    }
+                )+
+
+                LogResult::Ok
+            }
+
+            fn process_key_for_components(&mut self, key: Key) -> LogResult {
+                $(
+                    if let err @ LogResult::Err(_, _) = self.$comp_var.process_key(key, &mut self.state) {
+                        return err;
+                    }
+                )+
+
+                LogResult::Ok
+            }
+        }
+    };
+}
+
+impl_ui_component_fns!(prompt, series_list, info_panel, episode_watcher);
+
+impl<'a, B> UIWorld<'a, B>
+where
+    B: Backend,
+{
+    fn init(args: &CmdOptions, backend: UIBackend<B>) -> Result<Self> {
+        let mut prompt = Prompt::new();
+        let remote = Self::init_remote(args, &mut prompt.log);
+
+        let mut state = UIState::init(remote)?;
+
+        let last_watched = LastWatched::load()?;
+        let series_list = SeriesList::init(args, &mut state, &last_watched);
+
+        Ok(Self {
+            backend,
+            state,
+            prompt,
+            series_list,
+            info_panel: InfoPanel::new(),
+            episode_watcher: EpisodeWatcher::new(last_watched),
+        })
+    }
+
+    fn init_remote(args: &CmdOptions, log: &mut StatusLog) -> Box<dyn RemoteService> {
+        use anime::remote::anilist;
+        use anime::remote::offline::Offline;
+
+        match crate::init_remote(args, true) {
+            Ok(remote) => remote,
+            Err(err) => {
+                match err {
+                    Error::NeedAniListToken => {
+                        log.push(format!(
+                            "No access token found. Go to {} \
+                             and set your token with the 'anilist' command",
+                            anilist::auth_url(crate::ANILIST_CLIENT_ID)
+                        ));
+                    }
+                    _ => {
+                        log.push(LogItem::failed("Logging in", err));
+                        log.push(format!(
+                            "If you need a new token, go to {} \
+                             and set it with the 'anilist' command",
+                            anilist::auth_url(crate::ANILIST_CLIENT_ID)
+                        ));
+                    }
+                }
+
+                log.push("Continuing in offline mode");
+
+                Box::new(Offline::new())
+            }
+        }
+    }
+
+    fn exit(mut self) {
+        self.backend.clear().ok();
+    }
+
+    fn tick(&mut self) {
+        match self.tick_components() {
+            LogResult::Ok => (),
+            LogResult::Err(desc, err) => {
+                self.prompt.log.push(LogItem::failed(desc, Some(err)));
+            }
+        }
+    }
+
+    fn draw_internal(&mut self) -> Result<()> {
+        // We need to remove the mutable borrow on self so we can call other mutable methods on it during our draw call.
+        // This *should* be completely safe as none of the methods we need to call can mutate our backend.
+        let term: *mut _ = &mut self.backend.terminal;
+        let term: &mut _ = unsafe { &mut *term };
+
+        term.draw(|mut frame| {
+            let horiz_splitter = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Min(20), Constraint::Percentage(70)].as_ref())
+                .split(frame.size());
+
+            self.series_list
+                .draw(&self.state, horiz_splitter[0], &mut frame);
+
+            // Series info panel vertical splitter
+            let info_panel_splitter = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
+                .split(horiz_splitter[1]);
+
+            self.info_panel
+                .draw(&self.state, info_panel_splitter[0], &mut frame);
+
+            self.prompt
+                .draw(&self.state, info_panel_splitter[1], &mut frame);
+        })
+        .context(err::IO)
+    }
+
+    fn draw(&mut self) -> Result<()> {
+        self.draw_internal()?;
+
+        self.prompt.after_draw(&mut self.backend);
+        self.info_panel.after_draw(&mut self.backend);
+
+        Ok(())
+    }
+
+    /// Process a key input for all UI components.
+    ///
+    /// Returns true if the program should exit.
+    fn process_key(&mut self, key: Key) -> bool {
+        if let Key::Char('q') = key {
+            return true;
+        }
+
+        match &self.state.current_action {
+            CurrentAction::Idle => (),
+            CurrentAction::WatchingEpisode(_, _) => return false,
+            action @ CurrentAction::SelectingSeries(_)
+            | action @ CurrentAction::EnteringCommand => {
+                let component: &mut dyn Component = match action {
+                    CurrentAction::SelectingSeries(_) => &mut self.info_panel,
+                    CurrentAction::EnteringCommand => &mut self.prompt,
+                    _ => unreachable!(),
+                };
+
+                if let LogResult::Err(desc, err) = component.process_key(key, &mut self.state) {
+                    self.prompt.log.push(LogItem::failed(desc, err));
+                }
+
+                return false;
+            }
+        }
+
+        if let LogResult::Err(desc, err) = self.process_key_for_components(key) {
+            self.prompt.log.push(LogItem::failed(desc, err));
+        }
+
+        false
+    }
+}
+
+type ProgressTime = DateTime<Utc>;
+
+#[derive(Debug)]
+pub enum CurrentAction {
+    Idle,
+    WatchingEpisode(ProgressTime, process::Child),
+    SelectingSeries(SelectingSeriesState),
+    EnteringCommand,
+}
+
+impl CurrentAction {
+    #[inline(always)]
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    fn select_series<I, S>(series_list: I, params: SeriesParams, nickname: S) -> Self
+    where
+        I: Into<Selection<SeriesInfo>>,
+        S: Into<String>,
+    {
+        let state = SelectingSeriesState::new(series_list, params, nickname);
+        Self::SelectingSeries(state)
+    }
+}
+
+impl Default for CurrentAction {
+    fn default() -> Self {
+        Self::Idle
+    }
+}
+
+impl PartialEq for CurrentAction {
+    fn eq(&self, other: &Self) -> bool {
+        mem::discriminant(self) == mem::discriminant(other)
+    }
+}
+
+#[derive(Debug)]
+pub struct SelectingSeriesState {
+    pub series_list: Selection<SeriesInfo>,
+    pub params: SeriesParams,
+    pub nickname: String,
+}
+
+impl SelectingSeriesState {
+    fn new<I, S>(series_list: I, params: SeriesParams, nickname: S) -> Self
+    where
+        I: Into<Selection<SeriesInfo>>,
+        S: Into<String>,
+    {
+        Self {
+            series_list: series_list.into(),
+            params,
+            nickname: nickname.into(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Selection<T> {
+    items: Vec<T>,
+    selected: usize,
+}
+
+impl<T> Selection<T> {
+    #[inline(always)]
+    fn new(items: Vec<T>) -> Self {
+        Self { items, selected: 0 }
+    }
+
+    #[inline(always)]
+    fn index(&self) -> usize {
+        self.selected
+    }
+
+    #[inline(always)]
+    fn is_valid_index(&self, index: usize) -> bool {
+        index < self.items.len()
+    }
+
+    #[inline(always)]
+    fn selected(&self) -> Option<&T> {
+        if self.items.is_empty() {
+            return None;
+        }
+
+        Some(&self.items[self.selected])
+    }
+
+    #[inline(always)]
+    fn selected_mut(&mut self) -> Option<&mut T> {
+        if self.items.is_empty() {
+            return None;
+        }
+
+        Some(&mut self.items[self.selected])
+    }
+
+    #[inline(always)]
+    fn inc_selected(&mut self) {
+        let new_index = self.selected + 1;
+
+        if !self.is_valid_index(new_index) {
+            return;
+        }
+
+        self.selected = new_index;
+    }
+
+    #[inline(always)]
+    fn dec_selected(&mut self) {
+        if self.selected == 0 {
+            return;
+        }
+
+        self.selected -= 1;
+    }
+
+    #[inline(always)]
+    fn set_selected(&mut self, selected: usize) {
+        if !self.is_valid_index(selected) {
+            return;
+        }
+
+        self.selected = selected;
+    }
+
+    #[inline(always)]
+    fn push(&mut self, item: T) {
+        self.items.push(item);
+    }
+
+    #[inline(always)]
+    fn remove_selected(&mut self) -> Option<T> {
+        self.remove_selected_with(|items, index| items.remove(index))
+    }
+
+    #[inline(always)]
+    fn swap_remove_selected(&mut self) -> Option<T> {
+        self.remove_selected_with(|items, index| items.swap_remove(index))
+    }
+
+    fn remove_selected_with<F>(&mut self, func: F) -> Option<T>
+    where
+        F: Fn(&mut Vec<T>, usize) -> T,
+    {
+        if self.items.is_empty() {
+            return None;
+        }
+
+        let item = func(&mut self.items, self.selected);
+
+        if self.selected == self.items.len() {
+            self.selected = self.selected.saturating_sub(1);
+        }
+
+        Some(item)
+    }
+
+    #[inline(always)]
+    fn sort_unstable_by<F>(&mut self, compare: F)
+    where
+        F: FnMut(&T, &T) -> std::cmp::Ordering,
+    {
+        self.items.sort_unstable_by(compare)
+    }
+
+    #[inline(always)]
+    fn iter(&self) -> impl Iterator<Item = &T> {
+        self.items.iter()
+    }
+}
+
+impl Selection<SeriesStatus> {
+    #[inline(always)]
+    fn valid_selection_mut(&mut self) -> Option<&mut Series> {
+        self.selected_mut().and_then(SeriesStatus::get_valid_mut)
+    }
+}
+
+impl<T> Index<usize> for Selection<T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.items[index]
+    }
+}
+
+impl<T> IndexMut<usize> for Selection<T> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.items[index]
+    }
+}
+
+impl<T> From<Vec<T>> for Selection<T> {
+    fn from(value: Vec<T>) -> Self {
+        Self::new(value)
+    }
+}
+
+pub enum LogResult {
+    Ok,
+    Err(String, Error),
+}
+
+impl LogResult {
+    fn err<S>(desc: S, err: Error) -> Self
+    where
+        S: Into<String>,
+    {
+        Self::Err(desc.into(), err)
+    }
+
+    fn capture<S, F>(context: S, func: F) -> Self
+    where
+        S: Into<String>,
+        F: FnOnce() -> Result<()>,
+    {
+        match func() {
+            Ok(_) => Self::Ok,
+            Err(err) => Self::Err(context.into(), err),
+        }
     }
 }
 
 type Reason = String;
 
-enum SeriesStatus {
+pub enum SeriesStatus {
     Valid(Box<Series>),
     Invalid(Box<SeriesConfig>, Reason),
     Unloaded(Box<SeriesConfig>),
@@ -621,6 +710,16 @@ impl SeriesStatus {
         match series {
             Ok(series) => Self::Valid(Box::new(series)),
             Err(err) => Self::Invalid(Box::new(config.into_owned()), Self::error_reason(err)),
+        }
+    }
+
+    fn ensure_valid(&mut self, config: &Config, db: &Database) {
+        match self {
+            Self::Valid(_) | Self::Invalid(_, _) => (),
+            Self::Unloaded(cfg) => {
+                let series = Series::load(*cfg.clone(), config, db);
+                self.update(series);
+            }
         }
     }
 
@@ -648,14 +747,6 @@ impl SeriesStatus {
         }
     }
 
-    fn get_valid(&self) -> Option<&Series> {
-        match self {
-            Self::Valid(series) => Some(&series),
-            Self::Invalid(_, _) => None,
-            Self::Unloaded(_) => None,
-        }
-    }
-
     fn get_valid_mut(&mut self) -> Option<&mut Series> {
         match self {
             Self::Valid(series) => Some(series),
@@ -678,105 +769,6 @@ impl PartialEq<i32> for SeriesStatus {
         match self {
             Self::Valid(series) => series.config.id == *id,
             Self::Invalid(_, _) | Self::Unloaded(_) => false,
-        }
-    }
-}
-
-enum StatusBarState {
-    Log,
-    CommandPrompt(CommandPrompt),
-}
-
-impl StatusBarState {
-    fn set_to_command_prompt(&mut self) {
-        *self = Self::CommandPrompt(CommandPrompt::new());
-    }
-
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
-
-    fn in_input_dialog(&self) -> bool {
-        match self {
-            Self::Log => false,
-            Self::CommandPrompt(_) => true,
-        }
-    }
-}
-
-impl Default for StatusBarState {
-    fn default() -> Self {
-        Self::Log
-    }
-}
-
-type ProgressTime = DateTime<Utc>;
-
-#[derive(Debug)]
-enum WatchState {
-    Idle,
-    Watching(ProgressTime, process::Child),
-}
-
-impl Default for WatchState {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
-
-impl PartialEq for WatchState {
-    fn eq(&self, other: &Self) -> bool {
-        mem::discriminant(self) == mem::discriminant(other)
-    }
-}
-
-#[derive(Debug)]
-enum DrawState {
-    Normal,
-    SelectSeries(SelectSeriesState),
-}
-
-impl DrawState {
-    fn in_special_state(&self) -> bool {
-        match self {
-            Self::Normal => false,
-            _ => true,
-        }
-    }
-
-    fn select_series<S>(info_list: Vec<SeriesInfo>, nickname: S, params: SeriesParams) -> Self
-    where
-        S: Into<String>,
-    {
-        let state = SelectSeriesState::new(info_list, nickname, params);
-        Self::SelectSeries(state)
-    }
-}
-
-impl Default for DrawState {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
-
-#[derive(Debug)]
-struct SelectSeriesState {
-    info_list: Vec<SeriesInfo>,
-    selected: usize,
-    nickname: String,
-    params: SeriesParams,
-}
-
-impl SelectSeriesState {
-    fn new<S>(info_list: Vec<SeriesInfo>, nickname: S, params: SeriesParams) -> Self
-    where
-        S: Into<String>,
-    {
-        Self {
-            info_list,
-            selected: 0,
-            nickname: nickname.into(),
-            params,
         }
     }
 }

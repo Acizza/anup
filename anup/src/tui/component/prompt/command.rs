@@ -5,8 +5,11 @@ use snafu::ensure;
 use std::convert::TryFrom;
 use std::result;
 use termion::event::Key;
+use tui::backend::Backend;
+use tui::layout::Rect;
 use tui::style::{Color, Style};
-use tui::widgets::Text;
+use tui::widgets::{Block, Borders, Paragraph, Text, Widget};
+use tui::Frame;
 use unicode_width::UnicodeWidthChar;
 
 /// A prompt to enter commands in that provides suggestions.
@@ -17,9 +20,8 @@ pub struct CommandPrompt {
 }
 
 impl CommandPrompt {
-    /// Create a new `CommandPrompt`.
     pub fn new() -> Self {
-        CommandPrompt {
+        Self {
             buffer: String::with_capacity(32),
             hint_cmd: None,
             width: 0,
@@ -28,21 +30,20 @@ impl CommandPrompt {
 
     /// Process a key for the `CommandPrompt`.
     ///
-    /// Returns a `PromptResult` representing the state of the prompt based off of `key`.
+    /// Returns a `InputResult` representing the state of the prompt based off of `key`.
     /// Example return values are given below:
     ///
-    /// | `key`             | `PromptResult`             |
-    /// | ----------------- | -------------------------- |
-    /// | `Key::Char('a')`  | `PromptResult::NotDone`    |
-    /// | `Key::Esc`        | `PromptResult::Done`       |
-    /// | `Key::Char('\n')` | `PromptResult::Command(_)` |
-    pub fn process_key(&mut self, key: Key) -> Result<PromptResult> {
+    /// | `key`             | `InputResult`                   |
+    /// | ----------------- | ------------------------------- |
+    /// | `Key::Char('a')`  | `None`    |
+    /// | `Key::Esc`        | `Some(InputResult::Done)`       |
+    /// | `Key::Char('\n')` | `Some(InputResult::Command(_))` |
+    pub fn process_key(&mut self, key: Key) -> Result<InputResult> {
         match key {
             Key::Char('\n') => {
                 let command = Command::try_from(self.buffer.as_ref())?;
-                self.buffer.clear();
-                self.width = 0;
-                return Ok(PromptResult::Command(command));
+                self.reset();
+                return Ok(InputResult::Command(command));
             }
             Key::Char('\t') => {
                 if let Some(hint_cmd) = &self.hint_cmd {
@@ -77,14 +78,19 @@ impl CommandPrompt {
                 self.hint_cmd = None;
             }
             Key::Esc => {
-                self.buffer.clear();
-                self.width = 0;
-                return Ok(PromptResult::Done);
+                self.reset();
+                return Ok(InputResult::Done);
             }
             _ => (),
         }
 
-        Ok(PromptResult::NotDone)
+        Ok(InputResult::Continue)
+    }
+
+    pub fn reset(&mut self) {
+        self.buffer.clear();
+        self.hint_cmd = None;
+        self.width = 0;
     }
 
     #[inline(always)]
@@ -93,7 +99,7 @@ impl CommandPrompt {
     }
 
     /// The items of the `CommandPrompt` in a form ready for drawing.
-    pub fn draw_items<'b>(&'b self) -> SmallVec<[Text<'b>; 2]> {
+    fn draw_items<'b>(&'b self) -> SmallVec<[Text<'b>; 2]> {
         let mut text = smallvec![Text::raw(&self.buffer)];
 
         if let Some(hint_cmd) = &self.hint_cmd {
@@ -104,6 +110,20 @@ impl CommandPrompt {
         }
 
         text
+    }
+
+    pub fn draw<B>(&mut self, rect: Rect, frame: &mut Frame<B>)
+    where
+        B: Backend,
+    {
+        Paragraph::new(self.draw_items().iter())
+            .block(
+                Block::default()
+                    .title("Enter Command")
+                    .borders(Borders::ALL),
+            )
+            .wrap(true)
+            .render(frame, rect);
     }
 }
 
@@ -139,13 +159,13 @@ struct CommandInfo {
 }
 
 /// The result of processing a key in a `CommandPrompt`.
-pub enum PromptResult {
+pub enum InputResult {
     /// A successfully parsed command.
     Command(Command),
     /// Input is considered completed without a command.
     Done,
-    /// More input is needed to reach a `Command(_)` or `Done` state.
-    NotDone,
+    /// More input is needed.
+    Continue,
 }
 
 /// Split `string` into shell words.
@@ -449,9 +469,9 @@ mod tests {
         let mut enter_command = |name: &str| {
             for ch in name.chars() {
                 match prompt.process_key(Key::Char(ch)) {
-                    Ok(PromptResult::NotDone) => (),
-                    Ok(PromptResult::Done) => panic!("expected {} command, got nothing", name),
-                    Ok(PromptResult::Command(cmd)) => return cmd,
+                    Ok(InputResult::Continue) => (),
+                    Ok(InputResult::Done) => panic!("expected {} command, got nothing", name),
+                    Ok(InputResult::Command(cmd)) => return cmd,
                     Err(err) => panic!("error processing command: {}", err),
                 }
             }

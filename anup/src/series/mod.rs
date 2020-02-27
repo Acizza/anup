@@ -28,22 +28,24 @@ pub struct Series {
 }
 
 impl Series {
-    pub fn from_remote<R>(
-        sconfig: SeriesConfig,
+    pub fn from_remote<'a, C, R>(
+        sconfig: C,
         info: SeriesInfo,
         config: &Config,
         remote: &R,
     ) -> Result<Self>
     where
+        C: Into<Cow<'a, SeriesConfig>>,
         R: RemoteService + ?Sized,
     {
+        let sconfig = sconfig.into();
+
         let ep_path = sconfig.full_path(config);
         let episodes = EpisodeMap::parse(ep_path.as_ref(), &sconfig.episode_matcher)?;
-
         let entry = SeriesEntry::from_remote(remote, &info)?;
 
         let series = Self {
-            config: sconfig,
+            config: sconfig.into_owned(),
             info,
             entry,
             episodes,

@@ -1,10 +1,12 @@
-use crate::err::{self, Result};
+use crate::err;
 use smallvec::{smallvec, SmallVec};
 use std::collections::VecDeque;
 use std::fmt;
+use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::{Color, Style};
-use tui::widgets::Text;
+use tui::widgets::{Block, Borders, Paragraph, Text, Widget};
+use tui::Frame;
 
 /// A scrolling log to display messages along with their status.
 pub struct StatusLog<'a> {
@@ -14,9 +16,8 @@ pub struct StatusLog<'a> {
 }
 
 impl<'a> StatusLog<'a> {
-    /// Create a new `StatusLog`.
-    pub fn new() -> StatusLog<'a> {
-        StatusLog {
+    pub fn new() -> Self {
+        Self {
             items: VecDeque::new(),
             draw_items: VecDeque::new(),
             max_items: 1,
@@ -63,24 +64,23 @@ impl<'a> StatusLog<'a> {
         }
     }
 
-    /// Executes the function defined by `f` and pushes its result
-    /// to the end of the `StatusLog` with the description specified by `desc`.
-    pub fn capture_status<S, F>(&mut self, desc: S, f: F)
+    pub fn draw<B>(&mut self, rect: Rect, frame: &mut Frame<B>)
     where
-        S: Into<String>,
-        F: FnOnce() -> Result<()>,
+        B: Backend,
     {
-        let status = match f() {
-            Ok(_) => LogItemStatus::Ok,
-            Err(err) => LogItemStatus::Failed(Some(err)),
-        };
+        self.adjust_to_size(rect, true);
 
-        self.push(LogItem::with_status(desc, status));
-    }
-
-    /// Returns an iterator over all of the text items ready to be drawn.
-    pub fn draw_items_iter(&self) -> impl Iterator<Item = &Text> {
-        self.draw_items.iter()
+        Paragraph::new(self.draw_items.iter())
+            .block(
+                Block::default()
+                    .title(&format!(
+                        "Status ['{}'] for command entry",
+                        super::COMMAND_KEY
+                    ))
+                    .borders(Borders::ALL),
+            )
+            .wrap(true)
+            .render(frame, rect);
     }
 }
 
@@ -133,7 +133,6 @@ impl<'a> LogItem<'a> {
 
         let status_text = {
             let color = match status {
-                LogItemStatus::Ok => Color::Green,
                 LogItemStatus::Pending => Color::Yellow,
                 LogItemStatus::Failed(_) => Color::Red,
             };
@@ -170,7 +169,6 @@ where
 
 /// The result of a log event. Meant to be used with `LogItem`.
 pub enum LogItemStatus {
-    Ok,
     Pending,
     Failed(Option<err::Error>),
 }
@@ -179,16 +177,21 @@ impl LogItemStatus {
     /// Returns true if the status indicates that it's not waiting for the result of an operation.
     pub fn is_resolved(&self) -> bool {
         match self {
-            LogItemStatus::Ok | LogItemStatus::Failed(_) => true,
+            LogItemStatus::Failed(_) => true,
             LogItemStatus::Pending => false,
         }
+    }
+}
+
+impl From<err::Error> for LogItemStatus {
+    fn from(value: err::Error) -> Self {
+        Self::Failed(Some(value))
     }
 }
 
 impl fmt::Display for LogItemStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LogItemStatus::Ok => write!(f, "ok"),
             LogItemStatus::Pending => write!(f, "pending"),
             LogItemStatus::Failed(_) => write!(f, "failed"),
         }
