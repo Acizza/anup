@@ -9,6 +9,7 @@ use crate::series::config::SeriesConfig;
 use crate::series::info::{InfoResult, InfoSelector, SeriesInfo};
 use crate::series::{LastWatched, Series, SeriesParams};
 use crate::try_opt_r;
+use crate::util;
 use crate::CmdOptions;
 use anime::remote::RemoteService;
 use backend::{TermionBackend, UIBackend, UIEvent, UIEvents};
@@ -24,6 +25,7 @@ use snafu::ResultExt;
 use std::borrow::Cow;
 use std::mem;
 use std::ops::{Index, IndexMut};
+use std::path::PathBuf;
 use std::process;
 use termion::event::Key;
 use tui::backend::Backend;
@@ -129,26 +131,40 @@ impl UIState {
 
     fn process_command(&mut self, command: Command) -> LogResult {
         match command {
-            Command::Add(nickname, params) => LogResult::capture("Adding series", || {
+            Command::Add(nickname, params) => LogResult::capture("adding series", || {
                 if self.remote.is_offline() {
                     return Err(Error::MustRunOnline);
                 }
 
+                let path = match &params.path {
+                    Some(path) => path.clone(),
+                    None => util::closest_matching_dir(&self.config.series_dir, &nickname)?,
+                };
+
                 let info = {
-                    let sel = InfoSelector::from_params_or_name(&params, &nickname);
+                    let sel = params.id.map_or_else(
+                        || InfoSelector::from_path_or_name(&path, &nickname, &self.config),
+                        InfoSelector::ID,
+                    );
+
                     SeriesInfo::from_remote(sel, self.remote.as_ref())?
                 };
 
                 match info {
                     InfoResult::Confident(info) => {
-                        let config =
-                            SeriesConfig::from_params(nickname, &info, params, &self.config)?;
+                        let config = SeriesConfig::from_params(
+                            nickname,
+                            info.id,
+                            path,
+                            params,
+                            &self.config,
+                        )?;
 
                         self.add_series(config, info);
                     }
                     InfoResult::Unconfident(info_list) => {
                         self.current_action =
-                            CurrentAction::select_series(info_list, params, nickname);
+                            CurrentAction::select_series(info_list, params, path, nickname);
                     }
                 }
 
@@ -487,12 +503,12 @@ impl CurrentAction {
         *self = Self::default();
     }
 
-    fn select_series<I, S>(series_list: I, params: SeriesParams, nickname: S) -> Self
+    fn select_series<I, S>(series_list: I, params: SeriesParams, path: PathBuf, nickname: S) -> Self
     where
         I: Into<Selection<SeriesInfo>>,
         S: Into<String>,
     {
-        let state = SelectingSeriesState::new(series_list, params, nickname);
+        let state = SelectingSeriesState::new(series_list, params, path, nickname);
         Self::SelectingSeries(state)
     }
 }
@@ -513,11 +529,12 @@ impl PartialEq for CurrentAction {
 pub struct SelectingSeriesState {
     pub series_list: Selection<SeriesInfo>,
     pub params: SeriesParams,
+    pub path: PathBuf,
     pub nickname: String,
 }
 
 impl SelectingSeriesState {
-    fn new<I, S>(series_list: I, params: SeriesParams, nickname: S) -> Self
+    fn new<I, S>(series_list: I, params: SeriesParams, path: PathBuf, nickname: S) -> Self
     where
         I: Into<Selection<SeriesInfo>>,
         S: Into<String>,
@@ -525,6 +542,7 @@ impl SelectingSeriesState {
         Self {
             series_list: series_list.into(),
             params,
+            path,
             nickname: nickname.into(),
         }
     }

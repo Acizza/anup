@@ -1,10 +1,8 @@
-use super::info::SeriesInfo;
 use super::SeriesParams;
 use crate::config::Config;
 use crate::database::schema::series_configs;
 use crate::database::{self, Database};
 use crate::err::Result;
-use crate::util;
 use anime::local::EpisodeMatcher;
 use diesel::prelude::*;
 use std::borrow::Cow;
@@ -34,26 +32,28 @@ impl SeriesConfig {
         Self {
             id,
             nickname: nickname.into(),
-            path: Self::stripped_path(path, config).into(),
+            path: config.stripped_path(path).into(),
             episode_matcher,
             player_args: database::PlayerArgs::new(),
         }
     }
 
-    pub fn from_params<S>(
+    pub fn from_params<S, C>(
         nickname: S,
-        info: &SeriesInfo,
+        id: i32,
+        path: C,
         params: SeriesParams,
         config: &Config,
     ) -> Result<Self>
     where
         S: Into<String>,
+        C: Into<PathBuf>,
     {
         let nickname = nickname.into();
 
-        let path = match params.path {
-            Some(path) => Self::stripped_path(path, config),
-            None => util::closest_matching_dir(&config.series_dir, &nickname)?,
+        let path = {
+            let source = params.path.unwrap_or_else(|| path.into());
+            config.stripped_path(source)
         };
 
         let episode_matcher = match params.matcher {
@@ -62,7 +62,7 @@ impl SeriesConfig {
         };
 
         Ok(Self {
-            id: info.id,
+            id,
             nickname,
             path: path.into(),
             episode_matcher,
@@ -118,19 +118,7 @@ impl SeriesConfig {
     where
         P: Into<Cow<'a, Path>>,
     {
-        self.path = Self::stripped_path(path, config).into();
-    }
-
-    fn stripped_path<'a, P>(path: P, config: &Config) -> PathBuf
-    where
-        P: Into<Cow<'a, Path>>,
-    {
-        let path = path.into();
-
-        match path.strip_prefix(&config.series_dir) {
-            Ok(stripped) => stripped.into(),
-            Err(_) => path.into_owned(),
-        }
+        self.path = config.stripped_path(path).into();
     }
 
     /// Applies the supplied `SeriesParams` to the `SeriesConfig`.

@@ -3,8 +3,9 @@ use crate::file::{SaveDir, TomlFile};
 use serde::de::{self, Deserializer, Visitor};
 use serde::ser::Serializer;
 use serde_derive::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::ops::Mul;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::result;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -42,6 +43,18 @@ impl Config {
                 Ok(config)
             }
             Err(err) => Err(err),
+        }
+    }
+
+    pub fn stripped_path<'a, P>(&self, path: P) -> PathBuf
+    where
+        P: Into<Cow<'a, Path>>,
+    {
+        let path = path.into();
+
+        match path.strip_prefix(&self.series_dir) {
+            Ok(stripped) => stripped.into(),
+            Err(_) => path.into_owned(),
         }
     }
 }

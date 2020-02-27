@@ -48,7 +48,8 @@ impl Component for InfoPanel {
 
                         let config = SeriesConfig::from_params(
                             select.nickname,
-                            &info,
+                            info.id,
+                            select.path,
                             select.params,
                             &state.config,
                         )?;
