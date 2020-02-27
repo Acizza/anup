@@ -128,6 +128,9 @@ pub enum Error {
 
     #[snafu(display("invalid score"))]
     InvalidScore,
+
+    #[snafu(display("since this is a new series, you must specify the series ID\nyou can use the add command in the TUI instead to avoid this"))]
+    NewSeriesNeedsID,
 }
 
 impl Error {

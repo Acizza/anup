@@ -32,16 +32,21 @@ pub struct CmdOptions {
     help: bool,
     #[options(free, help = "the nickname of the series to watch")]
     pub series: Option<String>,
-    #[options(help = "the custom regex pattern to match episode files with")]
-    pub matcher: Option<String>,
     #[options(help = "run in offline mode")]
     pub offline: bool,
-    #[options(help = "the path to the series")]
-    pub path: Option<PathBuf>,
     #[options(help = "play a single episode from the specified or last watched series")]
     pub single: bool,
     #[options(help = "your account access token")]
     pub token: Option<String>,
+    #[options(no_short, help = "the ID to use for the series")]
+    pub series_id: Option<i32>,
+    #[options(
+        no_short,
+        help = "the custom regex pattern to match episode files with"
+    )]
+    pub matcher: Option<String>,
+    #[options(no_short, help = "the path to the series")]
+    pub path: Option<PathBuf>,
     #[options(
         no_short,
         help = "fetch series info from AniList for use with offline mode"
@@ -74,7 +79,7 @@ fn run(args: CmdOptions) -> Result<()> {
 
 fn series_params_from_args(args: &CmdOptions) -> SeriesParams {
     SeriesParams {
-        id: None, // TODO
+        id: args.series_id,
         path: args.path.clone(),
         matcher: args.matcher.clone(),
     }
@@ -119,12 +124,25 @@ fn prefetch(args: CmdOptions) -> Result<()> {
     let db = Database::open()?;
     let params = series_params_from_args(&args);
 
-    let mut cfg =
-        SeriesConfig::load_by_name(&db, desired_series).map_err(|_| Error::MustAddSeries {
-            name: desired_series.clone(),
-        })?;
+    let cfg = match (SeriesConfig::load_by_name(&db, &desired_series), params.id) {
+        (Ok(mut cfg), _) => {
+            cfg.apply_params(&params, &config)?;
+            cfg
+        }
+        (Err(_), Some(id)) => {
+            if let Some(existing) = SeriesConfig::exists(&db, id) {
+                return Err(Error::SeriesAlreadyExists { name: existing });
+            }
 
-    cfg.apply_params(&params, &config)?;
+            let path = match &params.path {
+                Some(path) => path.clone(),
+                None => util::closest_matching_dir(&config.series_dir, &desired_series)?,
+            };
+
+            SeriesConfig::from_params(desired_series, id, path, params, &config)?
+        }
+        (Err(_), None) => return Err(Error::NewSeriesNeedsID),
+    };
 
     let remote = init_remote(&args, false)?;
     let remote = remote.as_ref();

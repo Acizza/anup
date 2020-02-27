@@ -106,6 +106,16 @@ impl SeriesConfig {
             .get_result(db.conn())
     }
 
+    pub fn exists(db: &Database, config_id: i32) -> Option<String> {
+        use crate::database::schema::series_configs::dsl::*;
+
+        series_configs
+            .filter(id.eq(config_id))
+            .select(nickname)
+            .get_result(db.conn())
+            .ok()
+    }
+
     pub fn full_path(&self, config: &Config) -> Cow<PathBuf> {
         if self.path.is_relative() {
             Cow::Owned(config.series_dir.join(self.path.as_ref()))
