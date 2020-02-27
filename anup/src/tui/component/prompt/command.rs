@@ -35,9 +35,9 @@ impl CommandPrompt {
     ///
     /// | `key`             | `InputResult`                   |
     /// | ----------------- | ------------------------------- |
-    /// | `Key::Char('a')`  | `None`    |
-    /// | `Key::Esc`        | `Some(InputResult::Done)`       |
-    /// | `Key::Char('\n')` | `Some(InputResult::Command(_))` |
+    /// | `Key::Char('a')`  | `InputResult::Continue`    |
+    /// | `Key::Esc`        | `InputResult::Done`       |
+    /// | `Key::Char('\n')` | `InputResult::Command(_)` |
     pub fn process_key(&mut self, key: Key) -> Result<InputResult> {
         match key {
             Key::Char('\n') => {
