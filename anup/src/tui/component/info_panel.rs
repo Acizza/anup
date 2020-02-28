@@ -52,6 +52,7 @@ impl Component for InfoPanel {
                             select.path,
                             select.params,
                             &state.config,
+                            &state.db,
                         )?;
 
                         state.add_series(config, info);

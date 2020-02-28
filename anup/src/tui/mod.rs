@@ -158,6 +158,7 @@ impl UIState {
                             path,
                             params,
                             &self.config,
+                            &self.db,
                         )?;
 
                         self.add_series(config, info);
@@ -222,15 +223,6 @@ impl UIState {
                 }
             }),
             Command::Set(params) => LogResult::capture("applying series parameters", || {
-                // Note: we can't place this after getting the current series status due to borrow issues
-                if let Some(id) = params.id {
-                    if let Some(found) = self.series.iter().find(|&s| s.eq(&id)) {
-                        return Err(Error::SeriesAlreadyExists {
-                            name: found.nickname().into(),
-                        });
-                    }
-                }
-
                 let status = try_opt_r!(self.series.selected_mut());
                 let remote = self.remote.as_ref();
 
@@ -242,11 +234,11 @@ impl UIState {
 
                 match status {
                     SeriesStatus::Valid(series) => {
-                        series.apply_parameters(params, &self.config, remote)?;
+                        series.apply_params(params, &self.config, &self.db, remote)?;
                         series.save(&self.db)?;
                     }
                     SeriesStatus::Invalid(cfg, _) => {
-                        cfg.apply_params(&params, &self.config)?;
+                        cfg.apply_params(&params, &self.config, &self.db)?;
                         let cfg = Cow::Borrowed(cfg.as_ref());
 
                         let series = if params.id.is_some() {

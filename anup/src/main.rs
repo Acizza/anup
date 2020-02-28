@@ -126,20 +126,16 @@ fn prefetch(args: CmdOptions) -> Result<()> {
 
     let cfg = match (SeriesConfig::load_by_name(&db, &desired_series), params.id) {
         (Ok(mut cfg), _) => {
-            cfg.apply_params(&params, &config)?;
+            cfg.apply_params(&params, &config, &db)?;
             cfg
         }
         (Err(_), Some(id)) => {
-            if let Some(existing) = SeriesConfig::exists(&db, id) {
-                return Err(Error::SeriesAlreadyExists { name: existing });
-            }
-
             let path = match &params.path {
                 Some(path) => path.clone(),
                 None => util::closest_matching_dir(&config.series_dir, &desired_series)?,
             };
 
-            SeriesConfig::from_params(desired_series, id, path, params, &config)?
+            SeriesConfig::from_params(desired_series, id, path, params, &config, &db)?
         }
         (Err(_), None) => return Err(Error::NewSeriesNeedsID),
     };

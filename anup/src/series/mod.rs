@@ -55,16 +55,17 @@ impl Series {
     }
 
     /// Sets the specified parameters on the series and reloads any neccessary state.
-    pub fn apply_parameters<R>(
+    pub fn apply_params<R>(
         &mut self,
         params: SeriesParams,
         config: &Config,
+        db: &Database,
         remote: &R,
     ) -> Result<()>
     where
         R: RemoteService + ?Sized,
     {
-        let any_changed = self.config.apply_params(&params, config)?;
+        let any_changed = self.config.apply_params(&params, config, db)?;
 
         if !any_changed {
             return Ok(());

@@ -2,7 +2,7 @@ use super::SeriesParams;
 use crate::config::Config;
 use crate::database::schema::series_configs;
 use crate::database::{self, Database};
-use crate::err::Result;
+use crate::err::{Error, Result};
 use anime::local::EpisodeMatcher;
 use diesel::prelude::*;
 use std::borrow::Cow;
@@ -18,37 +18,22 @@ pub struct SeriesConfig {
 }
 
 impl SeriesConfig {
-    pub fn new<'a, S, P>(
-        id: i32,
-        nickname: S,
-        path: P,
-        episode_matcher: EpisodeMatcher,
-        config: &Config,
-    ) -> Self
-    where
-        S: Into<String>,
-        P: Into<Cow<'a, Path>>,
-    {
-        Self {
-            id,
-            nickname: nickname.into(),
-            path: config.stripped_path(path).into(),
-            episode_matcher,
-            player_args: database::PlayerArgs::new(),
-        }
-    }
-
     pub fn from_params<S, C>(
         nickname: S,
         id: i32,
         path: C,
         params: SeriesParams,
         config: &Config,
+        db: &Database,
     ) -> Result<Self>
     where
         S: Into<String>,
         C: Into<PathBuf>,
     {
+        if let Some(existing) = Self::exists(db, id) {
+            return Err(Error::SeriesAlreadyExists { name: existing });
+        }
+
         let nickname = nickname.into();
 
         let path = {
@@ -133,10 +118,19 @@ impl SeriesConfig {
 
     /// Applies the supplied `SeriesParams` to the `SeriesConfig`.
     /// Returns a bool indicating whether or not anything was changed.
-    pub fn apply_params(&mut self, params: &SeriesParams, config: &Config) -> Result<bool> {
+    pub fn apply_params(
+        &mut self,
+        params: &SeriesParams,
+        config: &Config,
+        db: &Database,
+    ) -> Result<bool> {
         let mut any_changed = false;
 
         if let Some(id) = params.id {
+            if let Some(existing) = Self::exists(db, id) {
+                return Err(Error::SeriesAlreadyExists { name: existing });
+            }
+
             self.id = id;
             any_changed = true;
         }
