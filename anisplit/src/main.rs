@@ -3,11 +3,12 @@ mod err;
 use anime::local::{EpisodeMatcher, Episodes};
 use anime::remote::anilist::AniList;
 use anime::remote::{RemoteService, SeriesInfo};
-use err::Result;
+use err::{Error, Result};
 use gumdrop::Options;
 use snafu::{ensure, OptionExt, ResultExt};
 use std::borrow::Cow;
 use std::fs;
+use std::io;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -39,8 +40,6 @@ struct CmdOptions {
     hardlink: bool,
     #[options(no_short, help = "link episode files via file moves")]
     move_files: bool,
-    #[options(no_short, help = "show the changes to files that would be made")]
-    preview: bool,
 }
 
 fn main() {
@@ -93,6 +92,36 @@ fn run(args: CmdOptions) -> Result<()> {
     format_sequels(&data, series, &remote)
 }
 
+fn format_sequels(data: &SeriesData, mut info: SeriesInfo, remote: &AniList) -> Result<()> {
+    let mut episode_offset = 0;
+    let mut total_actions = 0;
+
+    while let Some(sequel) = info.sequel {
+        info = remote.search_info_by_id(sequel)?;
+        episode_offset += info.episodes;
+
+        println!("splitting up {}", info.title.preferred);
+
+        let actions = PendingActions::generate(data, &info, episode_offset)?;
+
+        if !actions.confirm_proceed()? {
+            continue;
+        }
+
+        total_actions += actions.execute()?;
+
+        // We don't need to sleep if there isn't another sequel
+        if info.sequel.is_none() {
+            break;
+        }
+
+        thread::sleep(Duration::from_millis(500));
+    }
+
+    println!("\n{} actions performed", total_actions);
+    Ok(())
+}
+
 struct SeriesData {
     episodes: Episodes,
     name_format: NameFormat,
@@ -133,29 +162,27 @@ impl NameFormat {
     }
 }
 
+#[derive(Copy, Clone)]
 enum LinkMethod {
     Symlink,
     Hardlink,
     Move,
-    Preview,
 }
 
 impl LinkMethod {
-    fn from_args(args: &CmdOptions) -> LinkMethod {
+    fn from_args(args: &CmdOptions) -> Self {
         if args.symlink {
-            LinkMethod::Symlink
+            Self::Symlink
         } else if args.hardlink {
-            LinkMethod::Hardlink
+            Self::Hardlink
         } else if args.move_files {
-            LinkMethod::Move
-        } else if args.preview {
-            LinkMethod::Preview
+            Self::Move
         } else {
-            LinkMethod::default()
+            Self::default()
         }
     }
 
-    fn execute<P>(&self, from: P, to: P) -> Result<()>
+    fn execute<P>(self, from: P, to: P) -> Result<()>
     where
         P: AsRef<Path>,
     {
@@ -163,20 +190,20 @@ impl LinkMethod {
         let to = to.as_ref();
 
         let result = match self {
-            LinkMethod::Symlink => symlink(from, to),
-            LinkMethod::Hardlink => fs::hard_link(from, to),
-            LinkMethod::Move => fs::rename(from, to),
-            LinkMethod::Preview => {
-                println!(
-                    "preview: {} -> {}\n",
-                    from.to_string_lossy(),
-                    to.to_string_lossy()
-                );
-                Ok(())
-            }
+            Self::Symlink => symlink(from, to),
+            Self::Hardlink => fs::hard_link(from, to),
+            Self::Move => fs::rename(from, to),
         };
 
         result.context(err::LinkIO { from, to })
+    }
+
+    fn plural_str(self) -> &'static str {
+        match self {
+            Self::Symlink => "symlinks",
+            Self::Hardlink => "hardlinks",
+            Self::Move => "moves",
+        }
     }
 }
 
@@ -186,65 +213,120 @@ impl Default for LinkMethod {
     }
 }
 
-fn format_sequels(data: &SeriesData, mut info: SeriesInfo, remote: &AniList) -> Result<()> {
-    let mut episode_offset = 0;
-
-    while let Some(sequel) = info.sequel {
-        info = remote.search_info_by_id(sequel)?;
-        episode_offset += info.episodes;
-
-        format_series(&data, &info, episode_offset)?;
-
-        // We don't need to sleep if there isn't another sequel
-        if info.sequel.is_none() {
-            break;
-        }
-
-        thread::sleep(Duration::from_millis(500));
-    }
-
-    Ok(())
+struct FormatAction {
+    from: PathBuf,
+    to: PathBuf,
 }
 
-fn format_series(data: &SeriesData, info: &SeriesInfo, episode_offset: u32) -> Result<()> {
-    let out_dir = data.out_dir.join(&info.title.preferred);
-    let mut out_dir_exists = out_dir.exists();
+impl FormatAction {
+    #[inline(always)]
+    fn new<S, O>(from: S, to: O) -> Self
+    where
+        S: Into<PathBuf>,
+        O: Into<PathBuf>,
+    {
+        Self {
+            from: from.into(),
+            to: to.into(),
+        }
+    }
+}
 
-    let mut num_links_created = 0;
+struct PendingActions {
+    actions: Vec<FormatAction>,
+    out_dir: PathBuf,
+    method: LinkMethod,
+}
 
-    for real_ep_num in (1 + episode_offset)..=(episode_offset + info.episodes) {
-        let original_filename = match data.episodes.get(&real_ep_num) {
-            Some(filename) => filename,
-            None => continue,
-        };
+impl PendingActions {
+    fn generate(data: &SeriesData, info: &SeriesInfo, episode_offset: u32) -> Result<Self> {
+        let out_dir = data.out_dir.join(&info.title.preferred);
+        let mut actions = Vec::new();
 
-        // We only want to create the directory for the season if we have any episodes
-        // from it
-        if !out_dir_exists {
-            fs::create_dir_all(&out_dir).context(err::FileIO { path: &out_dir })?;
-            out_dir_exists = true;
+        for real_ep_num in (1 + episode_offset)..=(episode_offset + info.episodes) {
+            let original_filename = match data.episodes.get(&real_ep_num) {
+                Some(filename) => filename,
+                None => continue,
+            };
+
+            let episode_path = data.path.join(original_filename);
+
+            let new_filename = data
+                .name_format
+                .process(&info.title.preferred, real_ep_num - episode_offset);
+
+            let new_path = out_dir.join(new_filename);
+
+            actions.push(FormatAction::new(episode_path, new_path));
         }
 
-        let episode_path = data.path.join(original_filename);
+        Ok(Self {
+            actions,
+            out_dir,
+            method: data.link_method,
+        })
+    }
 
-        let new_filename = data
-            .name_format
-            .process(&info.title.preferred, real_ep_num - episode_offset);
+    fn confirm_proceed(&self) -> Result<bool> {
+        if self.actions.is_empty() {
+            println!("| no actions to be performed");
+            return Ok(true);
+        }
 
-        let link_path = out_dir.join(new_filename);
+        println!(
+            "| the following {} will be executed:",
+            self.method.plural_str()
+        );
 
-        match data.link_method.execute(&episode_path, &link_path) {
-            Ok(()) => num_links_created += 1,
-            Err(err) => eprintln!("{}", err),
+        for action in &self.actions {
+            println!(
+                "{} -> {}",
+                action.from.to_string_lossy(),
+                action.to.to_string_lossy()
+            );
+        }
+
+        println!("| is this okay? (Y/n)");
+
+        let answer = {
+            let mut buffer = String::new();
+            io::stdin().read_line(&mut buffer).context(err::IO)?;
+            buffer.trim_end().to_string()
+        };
+
+        match answer.as_ref() {
+            "n" | "N" => Ok(false),
+            _ => Ok(true),
         }
     }
 
-    println!(
-        "created {} links for {}",
-        num_links_created, info.title.preferred
-    );
+    fn execute(self) -> Result<u32> {
+        if self.actions.is_empty() {
+            return Ok(0);
+        }
 
-    Ok(())
+        if !self.out_dir.exists() {
+            fs::create_dir_all(&self.out_dir).context(err::FileIO {
+                path: &self.out_dir,
+            })?;
+        }
+
+        let mut actions_performed = 0;
+
+        for action in self.actions {
+            match self.method.execute(action.from, action.to) {
+                Ok(_) => actions_performed += 1,
+                Err(Error::LinkIO { source, .. })
+                    if source.kind() == io::ErrorKind::AlreadyExists =>
+                {
+                    actions_performed += 1;
+                }
+                Err(err) => eprintln!("{}", err),
+            }
+        }
+
+        Ok(actions_performed)
+    }
 }
 
 fn parse_path_title<P>(path: P) -> Result<String>
