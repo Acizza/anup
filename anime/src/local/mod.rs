@@ -176,20 +176,71 @@ impl Episode {
     }
 }
 
+type EpisodeMap = HashMap<u32, String>;
+
 /// A mapping between episode numbers and their filename.
 #[derive(Debug, Default)]
-pub struct EpisodeMap(HashMap<u32, String>);
+pub struct Episodes(EpisodeMap);
 
-impl EpisodeMap {
-    /// Detect all episodes in `dir` with the specified `matcher` and return them in a new `EpisodeMap`.
+impl Episodes {
+    #[inline(always)]
+    pub fn new(episodes: EpisodeMap) -> Self {
+        Self(episodes)
+    }
+
+    /// Find all series and episodes in `dir` with the specified `matcher`.
+    pub fn parse_all<P>(dir: P, matcher: &EpisodeMatcher) -> Result<HashMap<String, Self>>
+    where
+        P: AsRef<Path>,
+    {
+        let mut results = HashMap::with_capacity(1);
+
+        Self::parse_eps_in_dir_with(dir, matcher, |episode, filename| {
+            let entry = results
+                .entry(episode.series_name)
+                .or_insert_with(|| Self::new(HashMap::with_capacity(13)));
+
+            entry.0.insert(episode.num, filename);
+            Ok(())
+        })?;
+
+        Ok(results)
+    }
+
+    /// Find the first matching series episodes in `dir` with the specified `matcher`.
     pub fn parse<P>(dir: P, matcher: &EpisodeMatcher) -> Result<Self>
     where
         P: AsRef<Path>,
     {
+        let mut last_title: Option<String> = None;
+        let mut results = HashMap::with_capacity(13);
+
+        Self::parse_eps_in_dir_with(dir, matcher, |episode, filename| {
+            match &mut last_title {
+                Some(last_title) => ensure!(
+                    *last_title == episode.series_name,
+                    err::MultipleTitles {
+                        expecting: last_title.clone(),
+                        found: episode.series_name
+                    }
+                ),
+                None => last_title = Some(episode.series_name.clone()),
+            }
+
+            results.insert(episode.num, filename);
+            Ok(())
+        })?;
+
+        Ok(Self::new(results))
+    }
+
+    fn parse_eps_in_dir_with<P, F>(dir: P, matcher: &EpisodeMatcher, mut inserter: F) -> Result<()>
+    where
+        P: AsRef<Path>,
+        F: FnMut(Episode, String) -> Result<()>,
+    {
         let dir = dir.as_ref();
         let entries = fs::read_dir(dir).context(err::FileIO { path: dir })?;
-        let mut results = HashMap::new();
-        let mut last_title: Option<String> = None;
 
         for entry in entries {
             let entry = entry.context(err::EntryIO { dir })?;
@@ -208,26 +259,14 @@ impl EpisodeMap {
             }
 
             let episode = Episode::parse(filename.as_ref(), matcher)?;
-
-            match &mut last_title {
-                Some(last_title) => ensure!(
-                    *last_title == episode.series_name,
-                    err::MultipleTitles {
-                        expecting: last_title.clone(),
-                        found: episode.series_name
-                    }
-                ),
-                None => last_title = Some(episode.series_name.clone()),
-            }
-
-            results.insert(episode.num, filename.into_owned());
+            inserter(episode, filename.into_owned())?;
         }
 
-        Ok(EpisodeMap(results))
+        Ok(())
     }
 }
 
-impl Deref for EpisodeMap {
+impl Deref for Episodes {
     type Target = HashMap<u32, String>;
 
     fn deref(&self) -> &Self::Target {

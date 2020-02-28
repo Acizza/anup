@@ -1,6 +1,6 @@
 mod err;
 
-use anime::local::{EpisodeMap, EpisodeMatcher};
+use anime::local::{EpisodeMatcher, Episodes};
 use anime::remote::anilist::AniList;
 use anime::remote::{RemoteService, SeriesInfo};
 use err::Result;
@@ -78,7 +78,7 @@ fn run(args: CmdOptions) -> Result<()> {
     };
 
     let data = SeriesData {
-        episodes: EpisodeMap::parse(&path, &matcher)?,
+        episodes: Episodes::parse(&path, &matcher)?,
         name_format,
         link_method: LinkMethod::from_args(&args),
         path,
@@ -94,7 +94,7 @@ fn run(args: CmdOptions) -> Result<()> {
 }
 
 struct SeriesData {
-    episodes: EpisodeMap,
+    episodes: Episodes,
     name_format: NameFormat,
     link_method: LinkMethod,
     path: PathBuf,

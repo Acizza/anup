@@ -6,7 +6,7 @@ use crate::config::Config;
 use crate::database::Database;
 use crate::err::{self, Result};
 use crate::file::SaveDir;
-use anime::local::{EpisodeMap, EpisodeMatcher};
+use anime::local::{EpisodeMatcher, Episodes};
 use anime::remote::{RemoteService, Status};
 use config::SeriesConfig;
 use diesel::prelude::*;
@@ -24,7 +24,7 @@ pub struct Series {
     pub config: SeriesConfig,
     pub info: SeriesInfo,
     pub entry: SeriesEntry,
-    pub episodes: EpisodeMap,
+    pub episodes: Episodes,
 }
 
 impl Series {
@@ -41,7 +41,7 @@ impl Series {
         let sconfig = sconfig.into();
 
         let ep_path = sconfig.full_path(config);
-        let episodes = EpisodeMap::parse(ep_path.as_ref(), &sconfig.episode_matcher)?;
+        let episodes = Episodes::parse(ep_path.as_ref(), &sconfig.episode_matcher)?;
         let entry = SeriesEntry::from_remote(remote, &info)?;
 
         let series = Self {
@@ -77,7 +77,7 @@ impl Series {
         }
 
         let path = self.config.full_path(config);
-        self.episodes = EpisodeMap::parse(path.as_ref(), &self.config.episode_matcher)?;
+        self.episodes = Episodes::parse(path.as_ref(), &self.config.episode_matcher)?;
 
         Ok(())
     }
@@ -102,7 +102,7 @@ impl Series {
         })?;
 
         let path = sconfig.full_path(config);
-        let episodes = EpisodeMap::parse(path.as_ref(), &sconfig.episode_matcher)?;
+        let episodes = Episodes::parse(path.as_ref(), &sconfig.episode_matcher)?;
 
         Ok(Self {
             config: sconfig,
