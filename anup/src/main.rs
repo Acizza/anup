@@ -77,14 +77,6 @@ fn run(args: CmdOptions) -> Result<()> {
     }
 }
 
-fn series_params_from_args(args: &CmdOptions) -> SeriesParams {
-    SeriesParams {
-        id: args.series_id,
-        path: args.path.clone(),
-        matcher: args.matcher.clone(),
-    }
-}
-
 fn init_remote(args: &CmdOptions, can_use_offline: bool) -> Result<Box<dyn RemoteService>> {
     use anime::remote::anilist::AniList;
     use anime::remote::offline::Offline;
@@ -122,7 +114,7 @@ fn prefetch(args: CmdOptions) -> Result<()> {
 
     let config = Config::load_or_create()?;
     let db = Database::open()?;
-    let params = series_params_from_args(&args);
+    let params = SeriesParams::from(&args);
 
     let cfg = match (SeriesConfig::load_by_name(&db, &desired_series), params.id) {
         (Ok(mut cfg), _) => {

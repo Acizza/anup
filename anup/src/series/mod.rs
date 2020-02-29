@@ -6,6 +6,7 @@ use crate::config::Config;
 use crate::database::Database;
 use crate::err::{self, Result};
 use crate::file::SaveDir;
+use crate::CmdOptions;
 use anime::local::{EpisodeMatcher, Episodes};
 use anime::remote::{RemoteService, Status};
 use config::SeriesConfig;
@@ -289,6 +290,16 @@ impl Default for SeriesParams {
             id: None,
             path: None,
             matcher: None,
+        }
+    }
+}
+
+impl From<&CmdOptions> for SeriesParams {
+    fn from(args: &CmdOptions) -> Self {
+        Self {
+            id: args.series_id,
+            path: args.path.clone(),
+            matcher: args.matcher.clone(),
         }
     }
 }
