@@ -100,6 +100,8 @@ fn run(args: CmdOptions) -> Result<()> {
                 find_series_info(&args, title, &remote)?
             };
 
+            println!("processing merged seasons of {}\n", series.title.preferred);
+
             let data = SeriesData {
                 name_format,
                 link_method: LinkMethod::from_args(&args),
@@ -126,7 +128,7 @@ fn split_multiple_titles(
             continue;
         }
 
-        println!("splitting up {}", title);
+        println!("moving {}", title);
 
         let info = find_series_info(args, title, &remote)?;
         let actions = PendingActions::generate(&data, &info, &episodes, 0)?;
@@ -154,9 +156,16 @@ fn format_sequels(
         info = remote.search_info_by_id(sequel)?;
         episode_offset += info.episodes;
 
-        println!("splitting up {}", info.title.preferred);
+        println!("looking for {}", info.title.preferred);
 
-        let actions = PendingActions::generate(&data, &info, &episodes, episode_offset)?;
+        let actions = match PendingActions::generate(&data, &info, &episodes, episode_offset) {
+            Ok(actions) => actions,
+            Err(err @ Error::NoEpisodes) => {
+                println!("| {}", err);
+                return Ok(());
+            }
+            Err(err) => return Err(err),
+        };
 
         if !actions.confirm_proceed()? {
             continue;
@@ -300,10 +309,14 @@ impl PendingActions {
     ) -> Result<Self> {
         let out_dir = data.out_dir.join(&info.title.preferred);
         let mut actions = Vec::new();
+        let mut has_any_episodes = false;
 
         for real_ep_num in (1 + episode_offset)..=(episode_offset + info.episodes) {
             let original_filename = match episodes.get(&real_ep_num) {
-                Some(filename) => filename,
+                Some(filename) => {
+                    has_any_episodes = true;
+                    filename
+                }
                 None => continue,
             };
 
@@ -316,6 +329,10 @@ impl PendingActions {
             let new_path = out_dir.join(new_filename);
 
             actions.push(FormatAction::new(episode_path, new_path));
+        }
+
+        if !has_any_episodes {
+            return Err(Error::NoEpisodes);
         }
 
         Ok(Self {
@@ -332,7 +349,7 @@ impl PendingActions {
         }
 
         println!(
-            "| the following file {} will be executed:",
+            "| the following file {} will be made:",
             self.method.plural_str()
         );
 

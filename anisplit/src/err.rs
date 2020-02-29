@@ -59,6 +59,9 @@ pub enum Error {
         title
     ))]
     UnableToDetectSeries { title: String },
+
+    #[snafu(display("no series episodes found on disk"))]
+    NoEpisodes,
 }
 
 impl From<anime::Error> for Error {
