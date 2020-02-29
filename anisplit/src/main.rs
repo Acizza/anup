@@ -7,6 +7,7 @@ use err::{Error, Result};
 use gumdrop::Options;
 use snafu::{ensure, OptionExt, ResultExt};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::os::unix::fs::symlink;
@@ -76,23 +77,76 @@ fn run(args: CmdOptions) -> Result<()> {
         None => path.parent().context(err::NoDirParent)?.into(),
     };
 
-    let data = SeriesData {
-        episodes: Episodes::parse(&path, &matcher)?,
-        name_format,
-        link_method: LinkMethod::from_args(&args),
-        path,
-        out_dir,
-    };
+    let all_episodes = Episodes::parse_all(&path, &matcher)?;
 
-    let series = {
-        let title = parse_path_title(&data.path)?;
-        find_series_info(&args, title, &remote)?
-    };
+    match all_episodes.len() {
+        len if len > 1 => {
+            println!("found multiple titles in directory.. these will be moved instead\nrerun the tool afterwards to split up merged seasons\n");
 
-    format_sequels(&data, series, &remote)
+            let data = SeriesData {
+                name_format,
+                link_method: LinkMethod::Move,
+                path,
+                out_dir,
+            };
+
+            split_multiple_titles(&args, data, all_episodes, remote)
+        }
+        1 => {
+            let (_, episodes) = all_episodes.into_iter().next().unwrap();
+
+            let series = {
+                let title = parse_path_title(&path)?;
+                find_series_info(&args, title, &remote)?
+            };
+
+            let data = SeriesData {
+                name_format,
+                link_method: LinkMethod::from_args(&args),
+                path,
+                out_dir,
+            };
+
+            format_sequels(data, series, episodes, remote)
+        }
+        _ => Ok(()),
+    }
 }
 
-fn format_sequels(data: &SeriesData, mut info: SeriesInfo, remote: &AniList) -> Result<()> {
+fn split_multiple_titles(
+    args: &CmdOptions,
+    data: SeriesData,
+    all_episodes: HashMap<String, Episodes>,
+    remote: AniList,
+) -> Result<()> {
+    let original_title = parse_path_title(&data.path)?;
+
+    for (title, episodes) in all_episodes {
+        if title == original_title {
+            continue;
+        }
+
+        println!("splitting up {}", title);
+
+        let info = find_series_info(args, title, &remote)?;
+        let actions = PendingActions::generate(&data, &info, &episodes, 0)?;
+
+        if !actions.confirm_proceed()? {
+            continue;
+        }
+
+        actions.execute()?;
+    }
+
+    Ok(())
+}
+
+fn format_sequels(
+    data: SeriesData,
+    mut info: SeriesInfo,
+    episodes: Episodes,
+    remote: AniList,
+) -> Result<()> {
     let mut episode_offset = 0;
     let mut total_actions = 0;
 
@@ -102,7 +156,7 @@ fn format_sequels(data: &SeriesData, mut info: SeriesInfo, remote: &AniList) -> 
 
         println!("splitting up {}", info.title.preferred);
 
-        let actions = PendingActions::generate(data, &info, episode_offset)?;
+        let actions = PendingActions::generate(&data, &info, &episodes, episode_offset)?;
 
         if !actions.confirm_proceed()? {
             continue;
@@ -123,7 +177,6 @@ fn format_sequels(data: &SeriesData, mut info: SeriesInfo, remote: &AniList) -> 
 }
 
 struct SeriesData {
-    episodes: Episodes,
     name_format: NameFormat,
     link_method: LinkMethod,
     path: PathBuf,
@@ -239,12 +292,17 @@ struct PendingActions {
 }
 
 impl PendingActions {
-    fn generate(data: &SeriesData, info: &SeriesInfo, episode_offset: u32) -> Result<Self> {
+    fn generate(
+        data: &SeriesData,
+        info: &SeriesInfo,
+        episodes: &Episodes,
+        episode_offset: u32,
+    ) -> Result<Self> {
         let out_dir = data.out_dir.join(&info.title.preferred);
         let mut actions = Vec::new();
 
         for real_ep_num in (1 + episode_offset)..=(episode_offset + info.episodes) {
-            let original_filename = match data.episodes.get(&real_ep_num) {
+            let original_filename = match episodes.get(&real_ep_num) {
                 Some(filename) => filename,
                 None => continue,
             };
@@ -274,7 +332,7 @@ impl PendingActions {
         }
 
         println!(
-            "| the following {} will be executed:",
+            "| the following file {} will be executed:",
             self.method.plural_str()
         );
 
