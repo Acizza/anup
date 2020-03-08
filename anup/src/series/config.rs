@@ -159,15 +159,3 @@ impl PartialEq<String> for SeriesConfig {
         self.nickname == *nickname
     }
 }
-
-impl<'a> Into<Cow<'a, Self>> for SeriesConfig {
-    fn into(self) -> Cow<'a, Self> {
-        Cow::Owned(self)
-    }
-}
-
-impl<'a> Into<Cow<'a, SeriesConfig>> for &'a SeriesConfig {
-    fn into(self) -> Cow<'a, SeriesConfig> {
-        Cow::Borrowed(self)
-    }
-}
