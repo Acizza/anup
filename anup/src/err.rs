@@ -117,9 +117,6 @@ pub enum Error {
     #[snafu(display("unknown argument: {}", value))]
     UnknownCmdPromptArg { value: String },
 
-    #[snafu(display("missing \"{}\" group for custom episode matcher\nmake sure both {{title}} and {{episode}} are specified", group))]
-    MissingEpisodeMatcherGroup { group: &'static str },
-
     #[snafu(display("series already exists as {}", name))]
     SeriesAlreadyExists { name: String },
 

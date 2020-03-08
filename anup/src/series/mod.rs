@@ -387,13 +387,5 @@ where
         .replace("{title}", "(?P<title>.+)")
         .replace("{episode}", r"(?P<episode>\d+)");
 
-    match EpisodeMatcher::from_pattern(pattern) {
-        Ok(matcher) => Ok(matcher),
-        // We want to use a more specific error message than the one the anime library
-        // provides
-        Err(anime::Error::MissingCustomMatcherGroup { group }) => {
-            Err(err::Error::MissingEpisodeMatcherGroup { group })
-        }
-        Err(err) => Err(err.into()),
-    }
+    EpisodeMatcher::from_pattern(pattern).map_err(Into::into)
 }

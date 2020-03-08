@@ -83,8 +83,13 @@ pub enum Error {
     #[snafu(display("received bad response from AniList (code {}): {}", code, message))]
     BadAniListResponse { code: u16, message: String },
 
-    #[snafu(display("missing group \"{}\" in custom episode matcher", group))]
-    MissingCustomMatcherGroup { group: &'static str },
+    #[snafu(display(
+        "custom episode matcher must specify the episode and (optionally) the title group"
+    ))]
+    MissingMatcherGroups,
+
+    #[snafu(display("title group must be specified to parse episodes"))]
+    NeedTitleGroup,
 
     #[snafu(display("must be authorized to make this request"))]
     NeedAuthentication,

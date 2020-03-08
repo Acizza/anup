@@ -1,4 +1,4 @@
-use crate::err::{self, Result};
+use crate::err::{self, Error, Result};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use snafu::{ensure, OptionExt, ResultExt};
@@ -24,7 +24,10 @@ use {
     derive(AsExpression, FromSqlRow),
     sql_type = "Text"
 )]
-pub struct EpisodeMatcher(Option<Regex>);
+pub struct EpisodeMatcher {
+    matcher: Option<Regex>,
+    has_title: bool,
+}
 
 impl EpisodeMatcher {
     /// The default regex pattern to match episodes in several common formats, such as:
@@ -43,13 +46,16 @@ impl EpisodeMatcher {
     /// Create a new `EpisodeMatcher` with the default matcher.
     #[inline]
     pub fn new() -> Self {
-        Self(None)
+        Self {
+            matcher: None,
+            has_title: true,
+        }
     }
 
     /// Create a new `EpisodeMatcher` with a specified regex pattern.
     ///
-    /// The pattern must have 2 groups named `title` and `episode`. If they
-    /// are not present, a `MissingCustomMatcherGroup` error will be returned.
+    /// The pattern must have a group named `episode` and optional one named `title`. If the episode
+    /// group is not present, a `MissingMatcherGroups` error will be returned.
     ///
     /// # Example
     ///
@@ -68,18 +74,16 @@ impl EpisodeMatcher {
     {
         let pattern = pattern.as_ref();
 
-        ensure!(
-            pattern.contains("(?P<title>"),
-            err::MissingCustomMatcherGroup { group: "title" }
-        );
+        if !pattern.contains("(?P<episode>") {
+            return Err(Error::MissingMatcherGroups);
+        }
 
-        ensure!(
-            pattern.contains("(?P<episode>"),
-            err::MissingCustomMatcherGroup { group: "episode" }
-        );
+        let matcher = Regex::new(pattern).context(err::Regex { pattern })?;
 
-        let regex = Regex::new(pattern).context(err::Regex { pattern })?;
-        Ok(Self(Some(regex)))
+        Ok(Self {
+            matcher: Some(matcher),
+            has_title: pattern.contains("(?P<title>"),
+        })
     }
 
     /// Returns a reference to the inner `Regex` for the `EpisodeMatcher`.
@@ -100,7 +104,7 @@ impl EpisodeMatcher {
         static DEFAULT_MATCHER: Lazy<Regex> =
             Lazy::new(|| Regex::new(EpisodeMatcher::DEFAULT_PATTERN).unwrap());
 
-        match &self.0 {
+        match &self.matcher {
             Some(matcher) => matcher,
             None => &DEFAULT_MATCHER,
         }
@@ -134,7 +138,7 @@ where
     str: ToSql<Text, DB>,
 {
     fn to_sql<W: Write>(&self, out: &mut Output<W, DB>) -> serialize::Result {
-        let value = self.0.as_ref().map(|matcher| matcher.as_str());
+        let value = self.matcher.as_ref().map(|matcher| matcher.as_str());
         value.to_sql(out)
     }
 }
@@ -143,7 +147,7 @@ where
 #[derive(Debug)]
 pub struct Episode {
     /// The detected title of the anime series.
-    pub series_name: String,
+    pub series_name: Option<String>,
     /// The detected episode number.
     pub num: u32,
 }
@@ -160,12 +164,16 @@ impl Episode {
             .captures(name)
             .context(err::NoEpMatches { name })?;
 
-        let series_name = caps
-            .name("title")
-            .context(err::NoEpisodeTitle { name })?
-            .as_str()
-            .trim()
-            .to_string();
+        let series_name = if matcher.has_title {
+            caps.name("title")
+                .context(err::NoEpisodeTitle { name })?
+                .as_str()
+                .trim()
+                .to_string()
+                .into()
+        } else {
+            None
+        };
 
         let num = caps
             .name("episode")
@@ -189,15 +197,19 @@ impl Episodes {
     }
 
     /// Find all series and episodes in `dir` with the specified `matcher`.
+    ///
+    /// The matcher must have the title group specified, or a `NeedTitleGroup` error will be returned.
     pub fn parse_all<P>(dir: P, matcher: &EpisodeMatcher) -> Result<HashMap<String, Self>>
     where
         P: AsRef<Path>,
     {
+        ensure!(matcher.has_title, err::NeedTitleGroup);
+
         let mut results = HashMap::with_capacity(1);
 
         Self::parse_eps_in_dir_with(dir, matcher, |episode, filename| {
             let entry = results
-                .entry(episode.series_name)
+                .entry(episode.series_name.unwrap())
                 .or_insert_with(|| Self::new(HashMap::with_capacity(13)));
 
             entry.0.insert(episode.num, filename);
@@ -216,15 +228,17 @@ impl Episodes {
         let mut results = HashMap::with_capacity(13);
 
         Self::parse_eps_in_dir_with(dir, matcher, |episode, filename| {
-            match &mut last_title {
-                Some(last_title) => ensure!(
-                    *last_title == episode.series_name,
-                    err::MultipleTitles {
-                        expecting: last_title.clone(),
-                        found: episode.series_name
-                    }
-                ),
-                None => last_title = Some(episode.series_name.clone()),
+            if let Some(series_name) = episode.series_name {
+                match &mut last_title {
+                    Some(last_title) => ensure!(
+                        *last_title == series_name,
+                        err::MultipleTitles {
+                            expecting: last_title.clone(),
+                            found: series_name
+                        }
+                    ),
+                    None => last_title = Some(series_name.clone()),
+                }
             }
 
             results.insert(episode.num, filename);
@@ -279,13 +293,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn episode_matcher_default_has_title() {
+        let matcher = EpisodeMatcher::new();
+        assert!(matcher.has_title)
+    }
+
+    #[test]
     #[should_panic]
     fn episode_matcher_detect_no_group() {
         EpisodeMatcher::from_pattern("useless").unwrap();
     }
 
     #[test]
-    #[should_panic]
     fn episode_matcher_detect_no_title_group() {
         EpisodeMatcher::from_pattern(r"(.+?) - (?P<episode>\d+)").unwrap();
     }
