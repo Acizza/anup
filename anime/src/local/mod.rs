@@ -237,7 +237,7 @@ impl Episodes {
                             found: series_name
                         }
                     ),
-                    None => last_title = Some(series_name.clone()),
+                    None => last_title = Some(series_name),
                 }
             }
 
