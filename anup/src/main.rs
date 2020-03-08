@@ -18,7 +18,7 @@ use crate::series::entry::SeriesEntry;
 use crate::series::info::SeriesInfo;
 use crate::series::{LastWatched, Series, SeriesData, SeriesParams};
 use anime::remote::RemoteService;
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use gumdrop::Options;
 use snafu::{ensure, ResultExt};
 use std::path::PathBuf;
@@ -207,14 +207,7 @@ fn play_episode(args: CmdOptions) -> Result<()> {
 
     series.begin_watching(remote, &config, &db)?;
 
-    let progress_time = {
-        let secs_must_watch =
-            (series.data.info.episode_length_mins as f32 * config.episode.pcnt_must_watch) * 60.0;
-        let time_must_watch = Duration::seconds(secs_must_watch as i64);
-
-        Utc::now() + time_must_watch
-    };
-
+    let progress_time = series.data.next_watch_progress_time(&config);
     let next_episode_num = series.data.entry.watched_episodes() + 1;
 
     let status = series

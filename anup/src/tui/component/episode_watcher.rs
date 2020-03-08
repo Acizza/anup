@@ -2,7 +2,7 @@ use super::Component;
 use crate::err::{self, Error};
 use crate::series::LastWatched;
 use crate::tui::{CurrentAction, LogResult, UIState};
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use snafu::ResultExt;
 use std::mem;
 use termion::event::Key;
@@ -81,17 +81,9 @@ impl Component for EpisodeWatcher {
                             episode: next_ep as u32,
                         })?;
 
-                    let progress_time = {
-                        let secs_must_watch = (series.data.info.episode_length_mins as f32
-                            * state.config.episode.pcnt_must_watch)
-                            * 60.0;
-
-                        let time_must_watch = Duration::seconds(secs_must_watch as i64);
-
-                        Utc::now() + time_must_watch
-                    };
-
+                    let progress_time = series.data.next_watch_progress_time(&state.config);
                     state.current_action = CurrentAction::WatchingEpisode(progress_time, child);
+
                     Ok(())
                 })
             }

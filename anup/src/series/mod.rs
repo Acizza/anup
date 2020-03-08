@@ -9,6 +9,7 @@ use crate::file::SaveDir;
 use crate::CmdOptions;
 use anime::local::{EpisodeMatcher, Episodes};
 use anime::remote::{RemoteService, Status};
+use chrono::{DateTime, Duration, Utc};
 use config::SeriesConfig;
 use diesel::prelude::*;
 use entry::SeriesEntry;
@@ -64,6 +65,14 @@ impl SeriesData {
                 self.entry.save(db)
             })
             .map(|_| ())
+    }
+
+    /// Returns the UTC time threshold for an episode should be counted as watched, assuming that the episode was starting to be watched now.
+    pub fn next_watch_progress_time(&self, config: &Config) -> DateTime<Utc> {
+        let secs_must_watch =
+            (self.info.episode_length_mins as f32 * config.episode.pcnt_must_watch) * 60.0;
+
+        Utc::now() + Duration::seconds(secs_must_watch as i64)
     }
 }
 
