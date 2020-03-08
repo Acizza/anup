@@ -7,7 +7,7 @@ use crate::err::{self, Error, Result};
 use crate::file::TomlFile;
 use crate::series::config::SeriesConfig;
 use crate::series::info::{InfoResult, InfoSelector, SeriesInfo};
-use crate::series::{LastWatched, Series, SeriesParams};
+use crate::series::{LastWatched, Series, SeriesData, SeriesParams};
 use crate::try_opt_r;
 use crate::util;
 use crate::CmdOptions;
@@ -22,7 +22,6 @@ use component::prompt::Prompt;
 use component::series_list::SeriesList;
 use component::{Component, Draw};
 use snafu::ResultExt;
-use std::borrow::Cow;
 use std::mem;
 use std::ops::{Index, IndexMut};
 use std::path::PathBuf;
@@ -79,27 +78,17 @@ impl UIState {
         })
     }
 
-    fn add_series(&mut self, config: SeriesConfig, info: SeriesInfo) {
-        let config: Cow<SeriesConfig> = Cow::Owned(config);
+    fn add_series(&mut self, config: SeriesConfig, info: SeriesInfo) -> Result<()> {
+        let data = SeriesData::from_remote(config, info, self.remote.as_ref())?;
+        let series = Series::new(data, &self.config)?;
 
-        let series = Series::from_remote(config.clone(), info, &self.config, self.remote.as_ref())
-            .and_then(|series| {
-                series.save(&self.db)?;
-                Ok(series)
-            });
+        series.save(&self.db)?;
 
-        let status = SeriesStatus::from_series(series, config);
-        let nickname = status.nickname().to_string();
+        let nickname = series.data.config.nickname.clone();
 
-        let existing_position = self.series.iter().position(|s| s.nickname() == nickname);
-
-        if let Some(pos) = existing_position {
-            self.series[pos] = status;
-        } else {
-            self.series.push(status);
-            self.series
-                .sort_unstable_by(|x, y| x.nickname().cmp(y.nickname()));
-        }
+        self.series.push(SeriesStatus::Loaded(series));
+        self.series
+            .sort_unstable_by(|x, y| x.nickname().cmp(y.nickname()));
 
         let selected = self
             .series
@@ -108,25 +97,33 @@ impl UIState {
             .unwrap_or(0);
 
         self.series.set_selected(selected);
+        Ok(())
     }
 
-    fn init_selected_series(&mut self) {
+    fn init_selected_series(&mut self) -> LogResult {
         let selected = match self.series.selected_mut() {
             Some(selected) => selected,
-            None => return,
+            None => return LogResult::Ok,
         };
 
-        selected.ensure_valid(&self.config, &self.db);
+        selected.ensure_loaded(&self.config, &self.db)
     }
 
-    fn delete_selected_series(&mut self) -> Result<()> {
-        let series = try_opt_r!(self.series.remove_selected());
+    fn delete_selected_series(&mut self) -> LogResult {
+        let series = match self.series.remove_selected() {
+            Some(series) => series,
+            None => return LogResult::Ok,
+        };
 
         // Since we changed our selected series, we need to make sure the new one is initialized
-        self.init_selected_series();
+        if let err @ LogResult::Err(_, _) = self.init_selected_series() {
+            return err;
+        }
 
-        Series::delete_by_name(&self.db, series.nickname())?;
-        Ok(())
+        LogResult::capture("deleting series", || {
+            Series::delete_by_name(&self.db, series.nickname())?;
+            Ok(())
+        })
     }
 
     fn process_command(&mut self, command: Command) -> LogResult {
@@ -161,7 +158,7 @@ impl UIState {
                             &self.db,
                         )?;
 
-                        self.add_series(config, info);
+                        self.add_series(config, info)?;
                     }
                     InfoResult::Unconfident(info_list) => {
                         self.current_action =
@@ -193,9 +190,7 @@ impl UIState {
                 self.remote = Box::new(AniList::authenticated(token)?);
                 Ok(())
             }),
-            Command::Delete => {
-                LogResult::capture("deleting series", || self.delete_selected_series())
-            }
+            Command::Delete => self.delete_selected_series(),
             Command::Offline => {
                 use anime::remote::offline::Offline;
                 self.remote = Box::new(Offline::new());
@@ -204,8 +199,9 @@ impl UIState {
             Command::PlayerArgs(args) => LogResult::capture("setting series args", || {
                 let series = try_opt_r!(self.series.valid_selection_mut());
 
-                series.config.player_args = args.into();
-                series.save(&self.db)
+                series.data.config.player_args = args.into();
+                series.save(&self.db)?;
+                Ok(())
             }),
             Command::Progress(direction) => LogResult::capture("forcing watch progress", || {
                 use component::prompt::command::ProgressDirection;
@@ -233,31 +229,13 @@ impl UIState {
                 }
 
                 match status {
-                    SeriesStatus::Valid(series) => {
+                    SeriesStatus::Loaded(series) => {
                         series.apply_params(params, &self.config, &self.db, remote)?;
                         series.save(&self.db)?;
+                        Ok(())
                     }
-                    SeriesStatus::Invalid(cfg, _) => {
-                        cfg.apply_params(&params, &self.config, &self.db)?;
-                        let cfg = Cow::Borrowed(cfg.as_ref());
-
-                        let series = if params.id.is_some() {
-                            let info = SeriesInfo::from_remote_by_id(cfg.id, remote)?;
-                            Series::from_remote(cfg, info, &self.config, remote)
-                        } else {
-                            Series::load(cfg.into_owned(), &self.config, &self.db)
-                        };
-
-                        if let Ok(series) = &series {
-                            series.save(&self.db)?;
-                        }
-
-                        status.update(series);
-                    }
-                    SeriesStatus::Unloaded(_) => (),
+                    SeriesStatus::Unloaded(_) => Ok(()),
                 }
-
-                Ok(())
             }),
             cmd @ Command::SyncFromRemote | cmd @ Command::SyncToRemote => {
                 LogResult::capture("syncing entry to/from remote", || {
@@ -265,12 +243,15 @@ impl UIState {
                     let remote = self.remote.as_ref();
 
                     match cmd {
-                        Command::SyncFromRemote => series.entry.force_sync_from_remote(remote)?,
-                        Command::SyncToRemote => series.entry.force_sync_to_remote(remote)?,
+                        Command::SyncFromRemote => {
+                            series.data.entry.force_sync_from_remote(remote)?
+                        }
+                        Command::SyncToRemote => series.data.entry.force_sync_to_remote(remote)?,
                         _ => unreachable!(),
                     }
 
-                    series.save(&self.db)
+                    series.save(&self.db)?;
+                    Ok(())
                 })
             }
             Command::Score(raw_score) => LogResult::capture("setting score", || {
@@ -284,17 +265,21 @@ impl UIState {
 
                 let remote = self.remote.as_ref();
 
-                series.entry.set_score(score.map(|s| s as i16));
-                series.entry.sync_to_remote(remote)?;
-                series.save(&self.db)
+                series.data.entry.set_score(score.map(|s| s as i16));
+                series.data.entry.sync_to_remote(remote)?;
+                series.save(&self.db)?;
+
+                Ok(())
             }),
             Command::Status(status) => LogResult::capture("setting series status", || {
                 let series = try_opt_r!(self.series.valid_selection_mut());
                 let remote = self.remote.as_ref();
 
-                series.entry.set_status(status, &self.config);
-                series.entry.sync_to_remote(remote)?;
-                series.save(&self.db)
+                series.data.entry.set_status(status, &self.config);
+                series.data.entry.sync_to_remote(remote)?;
+                series.save(&self.db)?;
+
+                Ok(())
             }),
         }
     }
@@ -658,7 +643,7 @@ impl<T> Selection<T> {
 impl Selection<SeriesStatus> {
     #[inline(always)]
     fn valid_selection_mut(&mut self) -> Option<&mut Series> {
-        self.selected_mut().and_then(SeriesStatus::get_valid_mut)
+        self.selected_mut().and_then(SeriesStatus::loaded_mut)
     }
 }
 
@@ -707,69 +692,38 @@ impl LogResult {
     }
 }
 
-type Reason = String;
-
 pub enum SeriesStatus {
-    Valid(Box<Series>),
-    Invalid(Box<SeriesConfig>, Reason),
-    Unloaded(Box<SeriesConfig>),
+    Loaded(Series),
+    Unloaded(SeriesConfig),
 }
 
 impl SeriesStatus {
-    fn from_series(series: Result<Series>, config: Cow<SeriesConfig>) -> Self {
-        match series {
-            Ok(series) => Self::Valid(Box::new(series)),
-            Err(err) => Self::Invalid(Box::new(config.into_owned()), Self::error_reason(err)),
-        }
-    }
-
-    fn ensure_valid(&mut self, config: &Config, db: &Database) {
+    fn ensure_loaded(&mut self, config: &Config, db: &Database) -> LogResult {
         match self {
-            Self::Valid(_) | Self::Invalid(_, _) => (),
+            Self::Loaded(_) => LogResult::Ok,
             Self::Unloaded(cfg) => {
-                let series = Series::load(*cfg.clone(), config, db);
-                self.update(series);
+                let series = match Series::load_from_config(cfg.clone(), config, db) {
+                    Ok(series) => series,
+                    Err(err) => return LogResult::err("loading series", err),
+                };
+
+                *self = Self::Loaded(series);
+                LogResult::Ok
             }
         }
     }
 
-    fn update(&mut self, series: Result<Series>) {
-        use replace_with::replace_with_or_abort;
-
-        replace_with_or_abort(self, |self_| match (self_, series) {
-            (_, Ok(new_series)) => Self::Valid(Box::new(new_series)),
-            (Self::Invalid(cfg, _), Err(err)) | (Self::Unloaded(cfg), Err(err)) => {
-                Self::Invalid(cfg, Self::error_reason(err))
-            }
-            (Self::Valid(series), Err(err)) => {
-                Self::Invalid(Box::new(series.config), Self::error_reason(err))
-            }
-        });
-    }
-
-    /// Get a concise reason for an error message.
-    ///
-    /// This is useful to avoid having error messages that are too verbose when the `SeriesStatus` is `Invalid`.
-    fn error_reason(err: Error) -> String {
-        match err {
-            Error::Anime { source, .. } => format!("{}", source),
-            err => format!("{}", err),
-        }
-    }
-
-    fn get_valid_mut(&mut self) -> Option<&mut Series> {
+    fn loaded_mut(&mut self) -> Option<&mut Series> {
         match self {
-            Self::Valid(series) => Some(series),
-            Self::Invalid(_, _) => None,
+            Self::Loaded(series) => Some(series),
             Self::Unloaded(_) => None,
         }
     }
 
     fn nickname(&self) -> &str {
         match self {
-            Self::Valid(series) => series.config.nickname.as_ref(),
-            Self::Invalid(config, _) => config.nickname.as_ref(),
-            Self::Unloaded(config) => config.nickname.as_ref(),
+            Self::Loaded(series) => series.data.config.nickname.as_ref(),
+            Self::Unloaded(cfg) => cfg.nickname.as_ref(),
         }
     }
 }
@@ -777,8 +731,8 @@ impl SeriesStatus {
 impl PartialEq<i32> for SeriesStatus {
     fn eq(&self, id: &i32) -> bool {
         match self {
-            Self::Valid(series) => series.config.id == *id,
-            Self::Invalid(_, _) | Self::Unloaded(_) => false,
+            Self::Loaded(series) => series.data.config.id == *id,
+            Self::Unloaded(_) => false,
         }
     }
 }

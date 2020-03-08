@@ -64,7 +64,7 @@ impl Component for EpisodeWatcher {
                         None => return Ok(()),
                     };
 
-                    let is_diff_series = self.last_watched.set(&series.config.nickname);
+                    let is_diff_series = self.last_watched.set(&series.data.config.nickname);
 
                     if is_diff_series {
                         self.last_watched.save()?;
@@ -72,7 +72,7 @@ impl Component for EpisodeWatcher {
 
                     series.begin_watching(state.remote.as_ref(), &state.config, &state.db)?;
 
-                    let next_ep = series.entry.watched_episodes() + 1;
+                    let next_ep = series.data.entry.watched_episodes() + 1;
 
                     let child = series
                         .play_episode_cmd(next_ep as u32, &state.config)?
@@ -82,7 +82,7 @@ impl Component for EpisodeWatcher {
                         })?;
 
                     let progress_time = {
-                        let secs_must_watch = (series.info.episode_length_mins as f32
+                        let secs_must_watch = (series.data.info.episode_length_mins as f32
                             * state.config.episode.pcnt_must_watch)
                             * 60.0;
 

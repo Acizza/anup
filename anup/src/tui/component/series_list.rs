@@ -44,8 +44,7 @@ impl Component for SeriesList {
                     _ => unreachable!(),
                 }
 
-                state.init_selected_series();
-                LogResult::Ok
+                state.init_selected_series()
             }
             _ => LogResult::Ok,
         }

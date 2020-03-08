@@ -16,7 +16,7 @@ use crate::file::TomlFile;
 use crate::series::config::SeriesConfig;
 use crate::series::entry::SeriesEntry;
 use crate::series::info::SeriesInfo;
-use crate::series::{LastWatched, Series, SeriesParams};
+use crate::series::{LastWatched, Series, SeriesData, SeriesParams};
 use anime::remote::RemoteService;
 use chrono::{Duration, Utc};
 use gumdrop::Options;
@@ -136,13 +136,14 @@ fn prefetch(args: CmdOptions) -> Result<()> {
     let remote = remote.as_ref();
 
     let info = SeriesInfo::from_remote_by_id(cfg.id, remote)?;
-    let series = Series::from_remote(cfg, info, &config, remote)?;
+    let data = SeriesData::from_remote(cfg, info, remote)?;
+    let series = Series::new(data, &config)?;
 
     series.save(&db)?;
 
     println!(
         "{} was fetched\nyou can now watch this series offline",
-        series.info.title_preferred
+        series.data.info.title_preferred
     );
 
     Ok(())
@@ -197,10 +198,10 @@ fn play_episode(args: CmdOptions) -> Result<()> {
                 name: desired_series.clone(),
             })?;
 
-        Series::load(cfg, &config, &db)?
+        Series::load_from_config(cfg, &config, &db)?
     };
 
-    if last_watched.set(&series.config.nickname) {
+    if last_watched.set(&series.data.config.nickname) {
         last_watched.save()?;
     }
 
@@ -208,13 +209,13 @@ fn play_episode(args: CmdOptions) -> Result<()> {
 
     let progress_time = {
         let secs_must_watch =
-            (series.info.episode_length_mins as f32 * config.episode.pcnt_must_watch) * 60.0;
+            (series.data.info.episode_length_mins as f32 * config.episode.pcnt_must_watch) * 60.0;
         let time_must_watch = Duration::seconds(secs_must_watch as i64);
 
         Utc::now() + time_must_watch
     };
 
-    let next_episode_num = series.entry.watched_episodes() + 1;
+    let next_episode_num = series.data.entry.watched_episodes() + 1;
 
     let status = series
         .play_episode_cmd(next_episode_num as u32, &config)?
@@ -228,14 +229,14 @@ fn play_episode(args: CmdOptions) -> Result<()> {
     if Utc::now() >= progress_time {
         series.episode_completed(remote, &config, &db)?;
 
-        if series.entry.status() == Status::Completed {
-            println!("{} completed!", series.info.title_preferred);
+        if series.data.entry.status() == Status::Completed {
+            println!("{} completed!", series.data.info.title_preferred);
         } else {
             println!(
                 "{}/{} of {} completed",
-                series.entry.watched_episodes(),
-                series.info.episodes,
-                series.info.title_preferred
+                series.data.entry.watched_episodes(),
+                series.data.info.episodes,
+                series.data.info.title_preferred
             );
         }
     } else {

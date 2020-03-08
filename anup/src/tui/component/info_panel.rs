@@ -1,5 +1,4 @@
 use super::{Component, Draw};
-use crate::err::Result;
 use crate::series::config::SeriesConfig;
 use crate::series::info::SeriesInfo;
 use crate::series::Series;
@@ -32,36 +31,37 @@ impl InfoPanel {
 
 impl Component for InfoPanel {
     fn process_key(&mut self, key: Key, state: &mut UIState) -> LogResult {
-        LogResult::capture("selecting series", || match &mut state.current_action {
+        match &mut state.current_action {
             CurrentAction::SelectingSeries(select) => {
-                match self.select_panel.process_key(key, select)? {
-                    SelectInputResult::Continue => Ok(()),
+                match self.select_panel.process_key(key, select) {
+                    SelectInputResult::Continue => LogResult::Ok,
                     SelectInputResult::Finish => {
                         state.current_action.reset();
-                        Ok(())
+                        LogResult::Ok
                     }
                     SelectInputResult::AddSeries(info) => {
-                        let select = match mem::take(&mut state.current_action) {
-                            CurrentAction::SelectingSeries(state) => state,
-                            _ => unreachable!(),
-                        };
+                        LogResult::capture("adding series", || {
+                            let select = match mem::take(&mut state.current_action) {
+                                CurrentAction::SelectingSeries(state) => state,
+                                _ => unreachable!(),
+                            };
 
-                        let config = SeriesConfig::from_params(
-                            select.nickname,
-                            info.id,
-                            select.path,
-                            select.params,
-                            &state.config,
-                            &state.db,
-                        )?;
+                            let config = SeriesConfig::from_params(
+                                select.nickname,
+                                info.id,
+                                select.path,
+                                select.params,
+                                &state.config,
+                                &state.db,
+                            )?;
 
-                        state.add_series(config, info);
-                        Ok(())
+                            state.add_series(config, info)
+                        })
                     }
                 }
             }
-            _ => Ok(()),
-        })
+            _ => LogResult::Ok,
+        }
     }
 }
 
@@ -124,11 +124,8 @@ impl SeriesInfoPanel {
             .split(rect);
 
         match state.series.selected() {
-            Some(SeriesStatus::Valid(series)) => {
+            Some(SeriesStatus::Loaded(series)) => {
                 Self::draw_series_info(state, series, &info_layout, frame)
-            }
-            Some(SeriesStatus::Invalid(_, reason)) => {
-                Self::draw_invalid_series(reason, &info_layout, frame)
             }
             Some(SeriesStatus::Unloaded(_)) => (),
             None => {
@@ -171,8 +168,8 @@ impl SeriesInfoPanel {
     where
         B: Backend,
     {
-        let info = &series.info;
-        let entry = &series.entry;
+        let info = &series.data.info;
+        let entry = &series.data.entry;
 
         // Series title
         {
@@ -286,27 +283,6 @@ impl SeriesInfoPanel {
             }
         }
     }
-
-    fn draw_invalid_series<B>(reason: &str, layout: &[Rect], frame: &mut Frame<B>)
-    where
-        B: Backend,
-    {
-        let header = Text::styled(
-            "Error Processing Series",
-            Style::default().modifier(Modifier::BOLD),
-        );
-
-        Paragraph::new([header].iter())
-            .alignment(Alignment::Center)
-            .render(frame, layout[0]);
-
-        let body = Text::styled(reason, Style::default().fg(Color::Red));
-
-        Paragraph::new([body].iter())
-            .alignment(Alignment::Center)
-            .wrap(true)
-            .render(frame, layout[1]);
-    }
 }
 
 struct SelectSeriesPanel;
@@ -316,30 +292,26 @@ impl SelectSeriesPanel {
         Self {}
     }
 
-    fn process_key(
-        &mut self,
-        key: Key,
-        state: &mut SelectingSeriesState,
-    ) -> Result<SelectInputResult> {
+    fn process_key(&mut self, key: Key, state: &mut SelectingSeriesState) -> SelectInputResult {
         match key {
             Key::Up => {
                 state.series_list.dec_selected();
-                Ok(SelectInputResult::Continue)
+                SelectInputResult::Continue
             }
             Key::Down => {
                 state.series_list.inc_selected();
-                Ok(SelectInputResult::Continue)
+                SelectInputResult::Continue
             }
             Key::Char('\n') => {
                 let info = match state.series_list.swap_remove_selected() {
                     Some(info) => info,
-                    None => return Ok(SelectInputResult::Finish),
+                    None => return SelectInputResult::Finish,
                 };
 
-                Ok(SelectInputResult::AddSeries(info))
+                SelectInputResult::AddSeries(info)
             }
-            Key::Esc => Ok(SelectInputResult::Finish),
-            _ => Ok(SelectInputResult::Continue),
+            Key::Esc => SelectInputResult::Finish,
+            _ => SelectInputResult::Continue,
         }
     }
 
