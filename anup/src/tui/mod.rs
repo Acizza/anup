@@ -121,7 +121,7 @@ impl UIState {
         }
 
         LogResult::capture("deleting series", || {
-            Series::delete_by_name(&self.db, series.nickname())?;
+            series.config().delete(&self.db)?;
             Ok(())
         })
     }
@@ -710,6 +710,13 @@ impl SeriesStatus {
                 *self = Self::Loaded(series);
                 LogResult::Ok
             }
+        }
+    }
+
+    fn config(&self) -> &SeriesConfig {
+        match self {
+            Self::Loaded(series) => &series.data.config,
+            Self::Unloaded(cfg) => cfg,
         }
     }
 

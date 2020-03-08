@@ -123,14 +123,6 @@ impl Series {
         Ok(Self { data, episodes })
     }
 
-    pub fn delete_by_name<S>(db: &Database, nickname: S) -> diesel::QueryResult<usize>
-    where
-        S: AsRef<str>,
-    {
-        // The database is set up to remove all associated series data when we remove its configuration
-        SeriesConfig::delete_by_name(db, nickname)
-    }
-
     pub fn episode_path(&self, episode: u32, config: &Config) -> Option<PathBuf> {
         let episode_filename = self.episodes.get(&episode)?;
         let mut path = self.data.config.full_path(config).into_owned();

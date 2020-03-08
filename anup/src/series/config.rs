@@ -63,17 +63,6 @@ impl SeriesConfig {
             .execute(db.conn())
     }
 
-    pub fn delete_by_name<S>(db: &Database, name: S) -> diesel::QueryResult<usize>
-    where
-        S: AsRef<str>,
-    {
-        use crate::database::schema::series_configs::dsl::*;
-
-        let name = name.as_ref();
-
-        diesel::delete(series_configs.filter(nickname.eq(name))).execute(db.conn())
-    }
-
     pub fn load_all(db: &Database) -> diesel::QueryResult<Vec<Self>> {
         use crate::database::schema::series_configs::dsl::*;
 
@@ -89,6 +78,15 @@ impl SeriesConfig {
         series_configs
             .filter(nickname.eq(name.as_ref()))
             .get_result(db.conn())
+    }
+
+    /// Delete the series configuration from the database.
+    ///
+    /// This will also remove the series info and entry, if it exists.
+    pub fn delete(&self, db: &Database) -> diesel::QueryResult<usize> {
+        use crate::database::schema::series_configs::dsl::*;
+
+        diesel::delete(series_configs.filter(id.eq(self.id))).execute(db.conn())
     }
 
     pub fn exists(db: &Database, config_id: i32) -> Option<String> {
