@@ -5,7 +5,7 @@ authors = ["Acizza <jgit@tuta.io>"]
 edition = "2018"
 
 [dependencies]
-base64 = "~0.11.0"
+base64 = "~0.12.0"
 once_cell = "~1.3.0"
 serde = "~1.0.0"
 serde_derive = "~1.0.0"

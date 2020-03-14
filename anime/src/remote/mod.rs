@@ -228,12 +228,12 @@ pub struct AccessToken {
 impl AccessToken {
     /// Encode a new `AccessToken`.
     #[inline]
-    pub fn encode<S>(token: S) -> AccessToken
+    pub fn encode<S>(token: S) -> Self
     where
-        S: AsRef<str>,
+        S: AsRef<[u8]>,
     {
-        AccessToken {
-            encoded_token: base64::encode(token.as_ref()),
+        Self {
+            encoded_token: base64::encode(token),
         }
     }
 
