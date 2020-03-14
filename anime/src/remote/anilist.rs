@@ -73,8 +73,8 @@ impl AniList {
     /// When unauthenticated, you can only search for series info by name and by ID.
     /// Trying to make any other request will return a `NeedAuthentication` error.
     #[inline]
-    pub fn unauthenticated() -> AniList {
-        AniList { auth: None }
+    pub fn unauthenticated() -> Self {
+        Self { auth: None }
     }
 
     /// Create a new authenticated `AniList` instance with the specified user `token`.
@@ -83,14 +83,14 @@ impl AniList {
     /// To get a user's token, they will need to visit the URL provided by
     /// the `auth_url` function and provide it to you. The token should then be
     /// stored as it is only visible once.
-    pub fn authenticated(token: AccessToken) -> Result<AniList> {
+    pub fn authenticated(token: AccessToken) -> Result<Self> {
         let user = query!(Some(&token), "user", {}, "data" => "Viewer")?;
         let auth = Auth::new(user, token);
 
-        Ok(AniList { auth: Some(auth) })
+        Ok(Self { auth: Some(auth) })
     }
 
-    fn get_score_format(&self) -> ScoreFormat {
+    fn score_format(&self) -> ScoreFormat {
         match &self.auth {
             Some(auth) => auth.user.options.score_format,
             None => ScoreFormat::default(),
@@ -162,33 +162,11 @@ impl RemoteService for AniList {
 
 impl ScoreParser for AniList {
     fn parse_score(&self, score: &str) -> Option<u8> {
-        let raw_score = match self.get_score_format() {
-            ScoreFormat::Point100 => score.parse().ok()?,
-            ScoreFormat::Point10Decimal => {
-                let score = score.parse::<f32>().ok()?;
-                (score * 10.0).round() as u8
-            }
-            ScoreFormat::Point10 => {
-                let score = score.parse::<u8>().ok()?;
-                score.saturating_mul(10)
-            }
-            ScoreFormat::Point5 => {
-                let score = score.parse::<u8>().ok()?;
-                score.saturating_mul(20)
-            }
-            ScoreFormat::Point3 => match score {
-                ":(" => 33,
-                ":|" => 50, // When set to 66, AniList interprets this as the ":)" rating
-                ":)" => 100,
-                _ => return None,
-            },
-        };
-
-        Some(raw_score.min(100))
+        self.score_format().points_value(score)
     }
 
     fn score_to_str(&self, score: u8) -> Cow<str> {
-        match self.get_score_format() {
+        match self.score_format() {
             ScoreFormat::Point100 => score.to_string().into(),
             ScoreFormat::Point10 => (score / 10).to_string().into(),
             ScoreFormat::Point10Decimal => format!("{:.1}", f32::from(score) / 10.0).into(),
@@ -218,8 +196,8 @@ pub struct Auth {
 }
 
 impl Auth {
-    fn new(user: User, token: AccessToken) -> Auth {
-        Auth { user, token }
+    fn new(user: User, token: AccessToken) -> Self {
+        Self { user, token }
     }
 }
 
@@ -267,6 +245,39 @@ pub enum ScoreFormat {
     /// | 67 - 100 | :)   |
     #[serde(rename = "POINT_3")]
     Point3,
+}
+
+impl ScoreFormat {
+    fn points_value<S>(self, score: S) -> Option<u8>
+    where
+        S: AsRef<str>,
+    {
+        let score = score.as_ref();
+
+        let raw_score = match self {
+            Self::Point100 => score.parse().ok()?,
+            Self::Point10Decimal => {
+                let score = score.parse::<f32>().ok()?;
+                (score * 10.0).round() as u8
+            }
+            Self::Point10 => {
+                let score = score.parse::<u8>().ok()?;
+                score.saturating_mul(10)
+            }
+            Self::Point5 => {
+                let score = score.parse::<u8>().ok()?;
+                score.saturating_mul(20)
+            }
+            Self::Point3 => match score {
+                ":(" => 33,
+                ":|" => 50, // When set to 66, AniList interprets this as the ":)" rating
+                ":)" => 100,
+                _ => return None,
+            },
+        };
+
+        Some(raw_score.min(100))
+    }
 }
 
 impl Default for ScoreFormat {
@@ -472,25 +483,25 @@ enum MediaStatus {
 impl Into<Status> for MediaStatus {
     fn into(self) -> Status {
         match self {
-            MediaStatus::Current => Status::Watching,
-            MediaStatus::Completed => Status::Completed,
-            MediaStatus::Paused => Status::OnHold,
-            MediaStatus::Dropped => Status::Dropped,
-            MediaStatus::Planning => Status::PlanToWatch,
-            MediaStatus::Repeating => Status::Rewatching,
+            Self::Current => Status::Watching,
+            Self::Completed => Status::Completed,
+            Self::Paused => Status::OnHold,
+            Self::Dropped => Status::Dropped,
+            Self::Planning => Status::PlanToWatch,
+            Self::Repeating => Status::Rewatching,
         }
     }
 }
 
 impl From<Status> for MediaStatus {
-    fn from(status: Status) -> MediaStatus {
+    fn from(status: Status) -> Self {
         match status {
-            Status::Watching => MediaStatus::Current,
-            Status::Completed => MediaStatus::Completed,
-            Status::OnHold => MediaStatus::Paused,
-            Status::Dropped => MediaStatus::Dropped,
-            Status::PlanToWatch => MediaStatus::Planning,
-            Status::Rewatching => MediaStatus::Repeating,
+            Status::Watching => Self::Current,
+            Status::Completed => Self::Completed,
+            Status::OnHold => Self::Paused,
+            Status::Dropped => Self::Dropped,
+            Status::PlanToWatch => Self::Planning,
+            Status::Rewatching => Self::Repeating,
         }
     }
 }
@@ -514,8 +525,8 @@ impl TryInto<NaiveDate> for MediaDate {
 }
 
 impl From<&NaiveDate> for MediaDate {
-    fn from(date: &NaiveDate) -> MediaDate {
-        MediaDate {
+    fn from(date: &NaiveDate) -> Self {
+        Self {
             year: Some(date.year()),
             month: Some(date.month()),
             day: Some(date.day()),
