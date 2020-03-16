@@ -93,9 +93,6 @@ pub enum Error {
     #[snafu(display("failed to play episode {}: {}", episode, source))]
     FailedToPlayEpisode { episode: u32, source: io::Error },
 
-    #[snafu(display("video player didn't exit normally"))]
-    AbnormalPlayerExit,
-
     #[snafu(display("episode {} not found", episode))]
     EpisodeNotFound { episode: u32 },
 

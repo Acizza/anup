@@ -210,14 +210,12 @@ fn play_episode(args: CmdOptions) -> Result<()> {
     let progress_time = series.data.next_watch_progress_time(&config);
     let next_episode_num = series.data.entry.watched_episodes() + 1;
 
-    let status = series
+    series
         .play_episode_cmd(next_episode_num as u32, &config)?
         .status()
         .context(err::FailedToPlayEpisode {
             episode: next_episode_num as u32,
         })?;
-
-    ensure!(status.success(), err::AbnormalPlayerExit);
 
     if Utc::now() >= progress_time {
         series.episode_completed(remote, &config, &db)?;

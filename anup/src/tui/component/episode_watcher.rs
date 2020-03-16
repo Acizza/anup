@@ -1,5 +1,5 @@
 use super::Component;
-use crate::err::{self, Error};
+use crate::err;
 use crate::series::LastWatched;
 use crate::tui::{CurrentAction, LogResult, UIState};
 use chrono::Utc;
@@ -22,11 +22,11 @@ impl Component for EpisodeWatcher {
         LogResult::capture("processing episode", || {
             match &mut state.current_action {
                 CurrentAction::WatchingEpisode(_, child) => {
-                    let status = match child.try_wait().context(err::IO) {
-                        Ok(Some(status)) => status,
+                    match child.try_wait().context(err::IO) {
+                        Ok(Some(_)) => (),
                         Ok(None) => return Ok(()),
                         Err(err) => return Err(err),
-                    };
+                    }
 
                     // We should reset the current action immediately so we can't end up in a loop if an error occurs ahead
                     let progress_time = match mem::take(&mut state.current_action) {
@@ -38,10 +38,6 @@ impl Component for EpisodeWatcher {
                         Some(series) => series,
                         None => return Ok(()),
                     };
-
-                    if !status.success() {
-                        return Err(Error::AbnormalPlayerExit);
-                    }
 
                     if Utc::now() >= progress_time {
                         let remote = state.remote.as_ref();
