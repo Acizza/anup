@@ -41,7 +41,7 @@ impl EpisodeMatcher {
     /// * Series Name - 01.mkv
     /// * Series_Name_-_01.mkv
     /// * Series.Name.-.01.mkv
-    pub const DEFAULT_PATTERN: &'static str = r"(?:\[.+?\](?:_+|\.+|\s*))?(?P<title>.+)(?:\s*|_*|\.*)(?:-|\.|_).*?(?P<episode>\d+)(?:\s*?\(|\s*?\[|\.mkv|\.mp4|\.avi)";
+    pub const DEFAULT_PATTERN: &'static str = r"(?:\[.+?\](?:_+|\.+|\s*))?(?P<title>.+)(?:\s*|_*|\.*)(?:-|\.|_).*?(?P<episode>\d+)(?:\s*?\(|\s*?\[|\.mkv|\.mp4|\.mpv|\.avi)";
 
     /// Create a new `EpisodeMatcher` with the default matcher.
     #[inline]
