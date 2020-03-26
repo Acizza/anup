@@ -303,7 +303,7 @@ pub enum Command {
 impl_command_matching!(Command, 11,
     Add(_) => {
         name: "add",
-        usage: "<nickname> [id=value] [path=\"value\"] [matcher=\"regex with {title} and {episode}\"]",
+        usage: "<nickname> [id=value] [path=\"value\"] [matcher=\"regex with {episode} value\"]",
         min_args: 1,
         fn: |args: &[&str]| {
             let params = if args.len() > 1 {
@@ -364,7 +364,7 @@ impl_command_matching!(Command, 11,
     },
     Set(_) => {
         name: "set",
-        usage: "[id=value] [path=\"value\"] [matcher=\"regex with {title} and {episode}\"]",
+        usage: "[id=value] [path=\"value\"] [matcher=\"regex with {episode} value\"]",
         min_args: 1,
         fn: |args: &[&str]| {
             let params = SeriesParams::from_name_value_list(args)?;
