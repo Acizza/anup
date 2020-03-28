@@ -91,4 +91,34 @@ You can combine multiple options from the sections above in any order when using
 
 The above command will add `Cowboy Bebop` to the series list, look for episodes matching `EP{episode}` at the path `/media/anime/Cowboy Bebop`, and list the series in the program as `toradora`.
 
+## Watching a Series
+
+Once at least one series has been added, you can play the next episode of one by selecting the series with the up and down arrow keys and pressing enter. This will play the episode with the player set in your config file.
+
+Once you start playing an episode, you should see a timer counting down in the `Info` panel. This represents the time needed until the episode will be considered watched. You can change how much of an episode you need to watch by modifying the `percent_watched_to_progress` field in the `[episode]` section of your config file. This field can be set to `0.0` if you do not wish to use this feature.
+
+If you do not see a timer when you start playing an episode, please make sure that the video player / script used to launch your video player does **not** exit immediately after starting to play something. If this is something that can't be fixed, you can use the `progress f` command to manually increment the watched episode count.
+
+Once the timer disappears, the watched episodes of the series will be increased and synced to AniList (unless offline) when you exit your video player.
+
+### Automatic Status & Date Management
+
+The status of the series and its start/end date are also automatically managed by the program. The table below shows the various status transitions that occur, where the `From` column is the status before watching an episode, and the `To` column is the status after watching one:
+
+| From          | To         | Notes         |
+| ------------- | ---------- | ------------- |
+| Plan To Watch | Watching   | **[1]**       |
+| Completed     | Rewatching | **[2]**       |
+| Rewatching    | Completed  | **[3][4][6]** |
+| Dropped       | Watching   | **[5]**       |
+| On Hold       | Watching   |               |
+| Watching      | Completed  | **[4][6]**    |
+
+* **[1]** The start date will also be set for the series.
+* **[2]** If `reset_dates_on_rewatch` is set to `true` in your config file, the start & end dates will be reset.
+* **[3]** The series rewatch count will also be increased.
+* **[4]** The end date will also be set for the series if it is not already present.
+* **[5]** The number of watched episodes will be reset to 0.
+* **[6]** This transition will only happen when all episodes have been watched.
+
 ## TODO
