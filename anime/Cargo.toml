@@ -24,7 +24,7 @@ default-features = false
 features = [ "sqlite" ]
 
 [dependencies.ureq]
-version = "~0.12.0"
+version = "~1.0.0"
 features = [ "json" ]
 
 [features]
