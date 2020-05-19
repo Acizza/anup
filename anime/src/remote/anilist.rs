@@ -196,6 +196,7 @@ pub struct Auth {
 }
 
 impl Auth {
+    #[inline(always)]
     fn new(user: User, token: AccessToken) -> Self {
         Self { user, token }
     }
@@ -335,6 +336,7 @@ where
 }
 
 // TODO: convert to const fn when mutable references can be used
+#[inline(always)]
 fn minimize_query<S>(value: S) -> String
 where
     S: Into<String>,
@@ -413,6 +415,7 @@ struct MediaEdge {
 }
 
 impl MediaEdge {
+    #[inline(always)]
     fn is_sequel(&self) -> bool {
         self.relation == MediaRelationType::Sequel
     }
