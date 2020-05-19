@@ -13,7 +13,7 @@ use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::{Color, Modifier, Style};
 use tui::terminal::Frame;
-use tui::widgets::{Block, Borders, Paragraph, SelectableList, Text, Widget};
+use tui::widgets::{Block, Borders, List, ListState, Paragraph, Text};
 
 pub struct InfoPanel {
     info_panel: SeriesInfoPanel,
@@ -105,10 +105,8 @@ impl SeriesInfoPanel {
     where
         B: Backend,
     {
-        Block::default()
-            .title("Info")
-            .borders(Borders::ALL)
-            .render(frame, rect);
+        let info_block = Block::default().title("Info").borders(Borders::ALL);
+        frame.render_widget(info_block, rect);
 
         let info_layout = Layout::default()
             .direction(Direction::Vertical)
@@ -129,14 +127,15 @@ impl SeriesInfoPanel {
             }
             Some(SeriesStatus::Unloaded(_)) => (),
             None => {
-                let header =
-                    Text::styled("No Series Found", Style::default().modifier(Modifier::BOLD));
+                let header = [Text::styled(
+                    "No Series Found",
+                    Style::default().modifier(Modifier::BOLD),
+                )];
 
-                Paragraph::new([header].iter())
-                    .alignment(Alignment::Center)
-                    .render(frame, info_layout[0]);
+                let header_pg = Paragraph::new(header.iter()).alignment(Alignment::Center);
+                frame.render_widget(header_pg, info_layout[0]);
 
-                let body = Text::raw(
+                let body = [Text::raw(
                     "Add one by pressing ':' and using the 'add' command \
 
                     \n\nThe command requires a nickname for the series \
@@ -154,12 +153,12 @@ impl SeriesInfoPanel {
                     \nYou can also manually specify the path to a series by appending \
                     \n'path=\"<value>\"' to the 'add' command when adding a new series, \
                     \nor the 'set' command when modifying an existing one.",
-                );
+                )];
 
-                Paragraph::new([body].iter())
+                let body_pg = Paragraph::new(body.iter())
                     .alignment(Alignment::Center)
-                    .wrap(true)
-                    .render(frame, info_layout[1]);
+                    .wrap(true);
+                frame.render_widget(body_pg, info_layout[1]);
             }
         }
     }
@@ -191,9 +190,8 @@ impl SeriesInfoPanel {
                 items
             };
 
-            Paragraph::new(text_items.iter())
-                .alignment(Alignment::Center)
-                .render(frame, layout[0]);
+            let widget = Paragraph::new(text_items.iter()).alignment(Alignment::Center);
+            frame.render_widget(widget, layout[0]);
         }
 
         // Items in panel
@@ -224,9 +222,8 @@ impl SeriesInfoPanel {
                 "Episode Length" => format!("{}M", info.episode_length_mins)
             );
 
-            Paragraph::new(left_items.iter())
-                .alignment(Alignment::Center)
-                .render(frame, stat_layout[0]);
+            let widget = Paragraph::new(left_items.iter()).alignment(Alignment::Center);
+            frame.render_widget(widget, stat_layout[0]);
         }
 
         {
@@ -239,9 +236,8 @@ impl SeriesInfoPanel {
                 "Status" => entry.status()
             );
 
-            Paragraph::new(center_items.iter())
-                .alignment(Alignment::Center)
-                .render(frame, stat_layout[1]);
+            let widget = Paragraph::new(center_items.iter()).alignment(Alignment::Center);
+            frame.render_widget(widget, stat_layout[1]);
         }
 
         {
@@ -257,9 +253,8 @@ impl SeriesInfoPanel {
                 "Rewatched" => entry.times_rewatched()
             );
 
-            Paragraph::new(right_items.iter())
-                .alignment(Alignment::Center)
-                .render(frame, stat_layout[2]);
+            let widget = Paragraph::new(right_items.iter()).alignment(Alignment::Center);
+            frame.render_widget(widget, stat_layout[2]);
         }
 
         // Watch time needed indicator at bottom
@@ -275,21 +270,27 @@ impl SeriesInfoPanel {
                     util::ms_from_mins(remaining_mins)
                 );
 
-                let text = Text::styled(text_str, Style::default().modifier(Modifier::BOLD));
+                let text = [Text::styled(
+                    text_str,
+                    Style::default().modifier(Modifier::BOLD),
+                )];
 
-                Paragraph::new([text].iter())
-                    .alignment(Alignment::Center)
-                    .render(frame, layout[2]);
+                let widget = Paragraph::new(text.iter()).alignment(Alignment::Center);
+                frame.render_widget(widget, layout[2]);
             }
         }
     }
 }
 
-struct SelectSeriesPanel;
+struct SelectSeriesPanel {
+    list_state: ListState,
+}
 
 impl SelectSeriesPanel {
     fn new() -> Self {
-        Self {}
+        Self {
+            list_state: ListState::default(),
+        }
     }
 
     fn process_key(&mut self, key: Key, state: &mut SelectingSeriesState) -> SelectInputResult {
@@ -315,28 +316,28 @@ impl SelectSeriesPanel {
         }
     }
 
-    fn draw<B>(&self, state: &SelectingSeriesState, rect: Rect, frame: &mut Frame<B>)
+    fn draw<B>(&mut self, state: &SelectingSeriesState, rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
     {
         let names = state
             .series_list
             .iter()
-            .map(|info| &info.title_preferred)
-            .collect::<Vec<_>>();
+            .map(|info| Text::raw(&info.title_preferred));
 
-        SelectableList::default()
+        let items = List::new(names)
             .block(
                 Block::default()
                     .title("Select a series from the list")
                     .borders(Borders::ALL),
             )
-            .items(&names)
-            .select(Some(state.series_list.index()))
             .style(Style::default().fg(Color::White))
             .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC))
-            .highlight_symbol(">")
-            .render(frame, rect);
+            .highlight_symbol(">");
+
+        self.list_state.select(Some(state.series_list.index()));
+
+        frame.render_stateful_widget(items, rect, &mut self.list_state);
     }
 }
 

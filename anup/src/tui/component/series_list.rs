@@ -2,15 +2,16 @@ use super::{Component, Draw};
 use crate::series::LastWatched;
 use crate::tui::{LogResult, UIState};
 use crate::CmdOptions;
-use smallvec::SmallVec;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::{Color, Modifier, Style};
 use tui::terminal::Frame;
-use tui::widgets::{Block, Borders, SelectableList, Widget};
+use tui::widgets::{Block, Borders, List, ListState, Text};
 
-pub struct SeriesList;
+pub struct SeriesList {
+    list_state: ListState,
+}
 
 impl SeriesList {
     pub fn init(args: &CmdOptions, state: &mut UIState, last_watched: &LastWatched) -> Self {
@@ -30,7 +31,9 @@ impl SeriesList {
         state.series.set_selected(selected);
         state.init_selected_series();
 
-        Self {}
+        Self {
+            list_state: ListState::default(),
+        }
     }
 }
 
@@ -59,17 +62,16 @@ where
         let series_names = state
             .series
             .iter()
-            .map(|series| series.nickname())
-            .collect::<SmallVec<[_; 8]>>();
+            .map(|series| Text::raw(series.nickname()));
 
-        let mut series_list = SelectableList::default()
+        let series_list = List::new(series_names)
             .block(Block::default().title("Series").borders(Borders::ALL))
-            .items(&series_names)
-            .select(Some(state.series.index()))
             .style(Style::default().fg(Color::White))
             .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC))
             .highlight_symbol(">");
 
-        series_list.render(frame, rect);
+        self.list_state.select(Some(state.series.index()));
+
+        frame.render_stateful_widget(series_list, rect, &mut self.list_state);
     }
 }

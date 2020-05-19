@@ -5,7 +5,7 @@ use std::fmt;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::{Color, Style};
-use tui::widgets::{Block, Borders, Paragraph, Text, Widget};
+use tui::widgets::{Block, Borders, Paragraph, Text};
 use tui::Frame;
 
 /// A scrolling log to display messages along with their status.
@@ -70,17 +70,14 @@ impl<'a> StatusLog<'a> {
     {
         self.adjust_to_size(rect, true);
 
-        Paragraph::new(self.draw_items.iter())
-            .block(
-                Block::default()
-                    .title(&format!(
-                        "Status ['{}'] for command entry",
-                        super::COMMAND_KEY
-                    ))
-                    .borders(Borders::ALL),
-            )
-            .wrap(true)
-            .render(frame, rect);
+        // TODO: use concat! macro if/when it can accept constants, or when a similiar crate doesn't require nightly
+        let title = format!("Status ['{}'] for command entry", super::COMMAND_KEY);
+
+        let draw_item = Paragraph::new(self.draw_items.iter())
+            .block(Block::default().title(&title).borders(Borders::ALL))
+            .wrap(true);
+
+        frame.render_widget(draw_item, rect);
     }
 }
 

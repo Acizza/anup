@@ -8,7 +8,7 @@ use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::{Color, Style};
-use tui::widgets::{Block, Borders, Paragraph, Text, Widget};
+use tui::widgets::{Block, Borders, Paragraph, Text};
 use tui::Frame;
 use unicode_width::UnicodeWidthChar;
 
@@ -116,14 +116,17 @@ impl CommandPrompt {
     where
         B: Backend,
     {
-        Paragraph::new(self.draw_items().iter())
+        let draw_items = self.draw_items();
+
+        let widget = Paragraph::new(draw_items.iter())
             .block(
                 Block::default()
                     .title("Enter Command")
                     .borders(Borders::ALL),
             )
-            .wrap(true)
-            .render(frame, rect);
+            .wrap(true);
+
+        frame.render_widget(widget, rect);
     }
 }
 
