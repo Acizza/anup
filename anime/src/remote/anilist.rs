@@ -360,7 +360,7 @@ impl Media {
         let relations = self.relations.as_ref()?;
 
         let is_direct_sequel =
-            |edge: &&MediaEdge| edge.is_sequel() && edge.node.format == self.format;
+            |edge: &&MediaEdge| edge.is_sequel() && edge.matches_format(&self.format);
 
         relations
             .edges
@@ -416,6 +416,17 @@ impl MediaEdge {
     fn is_sequel(&self) -> bool {
         self.relation == MediaRelationType::Sequel
     }
+
+    fn matches_format<S>(&self, format: S) -> bool
+    where
+        S: AsRef<str>,
+    {
+        self.node
+            .format
+            .as_ref()
+            .map(|fmt| fmt == format.as_ref())
+            .unwrap_or(false)
+    }
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -429,7 +440,7 @@ enum MediaRelationType {
 #[derive(Debug, Deserialize)]
 struct MediaNode {
     id: u32,
-    format: String,
+    format: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
