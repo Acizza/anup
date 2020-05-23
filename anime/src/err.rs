@@ -61,14 +61,14 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("failed to parse episode title: {}", name))]
-    NoEpisodeTitle { name: String },
+    #[snafu(display("failed to parse episode title: {}", filename))]
+    NoEpisodeTitle { filename: String },
 
-    #[snafu(display("expected episode number for file: {}", name))]
-    ExpectedEpNumber { name: String },
+    #[snafu(display("expected episode number for file: {}", filename))]
+    ExpectedEpNumber { filename: String },
 
-    #[snafu(display("no title or episode found while parsing episode: {}", name))]
-    NoEpMatches { name: String },
+    #[snafu(display("failed to parse episode: {}", filename))]
+    EpisodeParseFailed { filename: String },
 
     #[snafu(display(
         "found different episode titles:\n\texpecting: {}\n\tfound: {}",
