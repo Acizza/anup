@@ -1,6 +1,6 @@
 mod err;
 
-use anime::local::{EpisodeMatcher, Episodes};
+use anime::local::{EpisodeParser, Episodes};
 use anime::remote::anilist::AniList;
 use anime::remote::{RemoteService, SeriesInfo};
 use err::{Error, Result};
@@ -14,6 +14,9 @@ use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
+
+const PARSER_TITLE_REP: &str = "{title}";
+const PARSER_EPISODE_REP: &str = "{episode}";
 
 #[derive(Options)]
 struct CmdOptions {
@@ -59,17 +62,14 @@ fn run(args: CmdOptions) -> Result<()> {
 
     let name_format = match &args.name_format {
         Some(format) => NameFormat::new(format)?,
-        None => NameFormat::new("{title} - {episode}.mkv")?,
+        None => NameFormat::new(format!("{} - {}.mkv", PARSER_TITLE_REP, PARSER_EPISODE_REP))?,
     };
 
     let matcher = match &args.matcher {
         Some(pattern) => {
-            let pattern = pattern
-                .replace("{title}", "(?P<title>.+)")
-                .replace("{episode}", r"(?P<episode>\d+)");
-            EpisodeMatcher::from_pattern(pattern)?
+            EpisodeParser::custom_with_replacements(pattern, PARSER_TITLE_REP, PARSER_EPISODE_REP)?
         }
-        None => EpisodeMatcher::new(),
+        None => EpisodeParser::default(),
     };
 
     let out_dir = match &args.out_dir {
@@ -202,12 +202,12 @@ impl NameFormat {
         let format = format.into();
 
         ensure!(
-            format.contains("{title}"),
+            format.contains(PARSER_TITLE_REP),
             err::MissingFormatGroup { group: "title" }
         );
 
         ensure!(
-            format.contains("{episode}"),
+            format.contains(PARSER_EPISODE_REP),
             err::MissingFormatGroup { group: "episode" }
         );
 
@@ -219,8 +219,8 @@ impl NameFormat {
         S: AsRef<str>,
     {
         self.0
-            .replace("{title}", name.as_ref())
-            .replace("{episode}", &format!("{:02}", episode))
+            .replace(PARSER_TITLE_REP, name.as_ref())
+            .replace(PARSER_EPISODE_REP, &format!("{:02}", episode))
     }
 }
 
@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn name_format_detect_no_title_group() {
-        let result = NameFormat::new("missing_title - {episode}.mkv");
+        let result = NameFormat::new(format!("missing_title - {}.mkv", PARSER_EPISODE_REP));
 
         match result {
             Err(err::Error::MissingFormatGroup { group }) if group == "title" => (),
@@ -461,7 +461,7 @@ mod tests {
 
     #[test]
     fn name_format_detect_no_episode_group() {
-        let result = NameFormat::new("{title} - missing_episode.mkv");
+        let result = NameFormat::new(format!("{} - missing_episode.mkv", PARSER_TITLE_REP));
 
         match result {
             Err(err::Error::MissingFormatGroup { group }) if group == "episode" => (),
