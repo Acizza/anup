@@ -3,17 +3,20 @@ use crate::config::Config;
 use crate::database::schema::series_configs;
 use crate::database::{self, Database};
 use crate::err::{Error, Result};
-use anime::local::EpisodeMatcher;
+use anime::local::EpisodeParser;
 use diesel::prelude::*;
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
+
+const PARSER_TITLE_REP: &str = "{title}";
+const PARSER_EPISODE_REP: &str = "{episode}";
 
 #[derive(Clone, Debug, Queryable, Insertable)]
 pub struct SeriesConfig {
     pub id: i32,
     pub nickname: String,
     path: database::Path,
-    pub episode_matcher: EpisodeMatcher,
+    pub episode_parser: EpisodeParser,
     pub player_args: database::PlayerArgs,
 }
 
@@ -41,16 +44,20 @@ impl SeriesConfig {
             config.stripped_path(source)
         };
 
-        let episode_matcher = match params.matcher {
-            Some(pattern) => super::episode_matcher_with_pattern(pattern)?,
-            None => EpisodeMatcher::default(),
+        let episode_parser = match params.episode_parser {
+            Some(pattern) => EpisodeParser::custom_with_replacements(
+                pattern,
+                PARSER_TITLE_REP,
+                PARSER_EPISODE_REP,
+            )?,
+            None => EpisodeParser::default(),
         };
 
         Ok(Self {
             id,
             nickname,
             path: path.into(),
-            episode_matcher,
+            episode_parser,
             player_args: database::PlayerArgs::new(),
         })
     }
@@ -138,11 +145,15 @@ impl SeriesConfig {
             any_changed = true;
         }
 
-        if let Some(pattern) = &params.matcher {
-            self.episode_matcher = if !pattern.is_empty() {
-                super::episode_matcher_with_pattern(pattern)?
+        if let Some(pattern) = &params.episode_parser {
+            self.episode_parser = if !pattern.is_empty() {
+                EpisodeParser::custom_with_replacements(
+                    pattern,
+                    PARSER_TITLE_REP,
+                    PARSER_EPISODE_REP,
+                )?
             } else {
-                EpisodeMatcher::default()
+                EpisodeParser::default()
             };
 
             any_changed = true;

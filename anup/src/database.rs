@@ -16,7 +16,9 @@ pub mod schema {
             id -> Integer,
             nickname -> Text,
             path -> Text,
-            episode_matcher -> Nullable<Text>,
+            // TODO: this should be migrated
+            #[sql_name = "episode_matcher"]
+            episode_parser -> Nullable<Text>,
             player_args -> Nullable<Text>,
         }
     }

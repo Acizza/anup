@@ -7,7 +7,7 @@ use crate::database::Database;
 use crate::err::{self, Result};
 use crate::file::SaveDir;
 use crate::CmdOptions;
-use anime::local::{EpisodeMatcher, Episodes};
+use anime::local::Episodes;
 use anime::remote::{RemoteService, Status};
 use chrono::{DateTime, Duration, Utc};
 use config::SeriesConfig;
@@ -85,7 +85,7 @@ pub struct Series {
 impl Series {
     pub fn new(data: SeriesData, config: &Config) -> Result<Self> {
         let ep_path = data.config.full_path(config);
-        let episodes = Episodes::parse(ep_path.as_ref(), &data.config.episode_matcher)?;
+        let episodes = Episodes::parse(ep_path.as_ref(), &data.config.episode_parser)?;
 
         Ok(Self { data, episodes })
     }
@@ -113,7 +113,7 @@ impl Series {
         }
 
         let path = self.data.config.full_path(config);
-        self.episodes = Episodes::parse(path.as_ref(), &self.data.config.episode_matcher)?;
+        self.episodes = Episodes::parse(path.as_ref(), &self.data.config.episode_parser)?;
 
         Ok(())
     }
@@ -127,7 +127,7 @@ impl Series {
         let data = SeriesData::load_from_config(db, sconfig)?;
 
         let path = data.config.full_path(config);
-        let episodes = Episodes::parse(path.as_ref(), &data.config.episode_matcher)?;
+        let episodes = Episodes::parse(path.as_ref(), &data.config.episode_parser)?;
 
         Ok(Self { data, episodes })
     }
@@ -260,7 +260,7 @@ impl Series {
 pub struct SeriesParams {
     pub id: Option<i32>,
     pub path: Option<PathBuf>,
-    pub matcher: Option<String>,
+    pub episode_parser: Option<String>,
 }
 
 impl SeriesParams {
@@ -275,7 +275,7 @@ impl SeriesParams {
                     ensure!(path.is_dir(), err::NotADirectory);
                     params.path = Some(path);
                 }
-                "matcher" => params.matcher = Some(value.to_string()),
+                "matcher" => params.episode_parser = Some(value.to_string()),
                 _ => (),
             }
         }
@@ -308,7 +308,7 @@ impl Default for SeriesParams {
         Self {
             id: None,
             path: None,
-            matcher: None,
+            episode_parser: None,
         }
     }
 }
@@ -318,7 +318,7 @@ impl From<&CmdOptions> for SeriesParams {
         Self {
             id: args.series_id,
             path: args.path.clone(),
-            matcher: args.matcher.clone(),
+            episode_parser: args.matcher.clone(),
         }
     }
 }
@@ -376,16 +376,4 @@ impl LastWatched {
         path.push("last_watched");
         Ok(path)
     }
-}
-
-pub fn episode_matcher_with_pattern<S>(pattern: S) -> Result<EpisodeMatcher>
-where
-    S: AsRef<str>,
-{
-    let pattern = pattern
-        .as_ref()
-        .replace("{title}", "(?P<title>.+)")
-        .replace("{episode}", r"(?P<episode>\d+)");
-
-    EpisodeMatcher::from_pattern(pattern).map_err(Into::into)
 }
