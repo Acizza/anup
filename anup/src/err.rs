@@ -11,7 +11,7 @@ pub type Result<T> = result::Result<T, Error>;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
-    #[snafu(display("anime lib error: {}", source))]
+    #[snafu(display("{}", source))]
     Anime {
         source: anime::Error,
         backtrace: Backtrace,
