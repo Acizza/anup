@@ -2,15 +2,16 @@ pub mod command;
 pub mod log;
 
 use super::{Component, Draw};
-use crate::tui::{CurrentAction, LogResult, UIBackend, UIState};
-use command::{CommandPrompt, InputResult};
+use crate::err::Result;
+use crate::tui::{UIBackend, UIState};
+use command::{Command, CommandPrompt, InputResult};
 use log::StatusLog;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::terminal::Frame;
 
-const COMMAND_KEY: char = ':';
+pub const COMMAND_KEY: char = ':';
 
 pub struct Prompt<'a> {
     pub log: StatusLog<'a>,
@@ -29,37 +30,36 @@ impl<'a> Prompt<'a> {
         }
     }
 
-    fn reset(&mut self, state: &mut UIState) {
+    fn reset(&mut self) {
         self.state = PromptState::default();
         self.command.reset();
-        state.current_action.reset();
+    }
+
+    pub fn switch_to_command_entry(&mut self) {
+        self.state = PromptState::Command;
     }
 }
 
 impl<'a> Component for Prompt<'a> {
-    fn process_key(&mut self, key: Key, state: &mut UIState) -> LogResult {
-        if let Key::Char(COMMAND_KEY) = key {
-            self.state = PromptState::Command;
-            state.current_action = CurrentAction::EnteringCommand;
+    type TickResult = ();
+    type KeyResult = KeyResult;
 
-            return LogResult::Ok;
-        }
-
+    fn process_key(&mut self, key: Key, _: &mut UIState) -> Result<Self::KeyResult> {
         match &mut self.state {
-            PromptState::Log => LogResult::Ok,
+            PromptState::Log => Ok(KeyResult::Ok),
             PromptState::Command => match self.command.process_key(key) {
                 Ok(InputResult::Done) => {
-                    self.reset(state);
-                    LogResult::Ok
+                    self.reset();
+                    Ok(KeyResult::Reset)
                 }
                 Ok(InputResult::Command(cmd)) => {
-                    self.reset(state);
-                    state.process_command(cmd)
+                    self.reset();
+                    Ok(KeyResult::HasCommand(cmd))
                 }
-                Ok(InputResult::Continue) => LogResult::Ok,
+                Ok(InputResult::Continue) => Ok(KeyResult::Ok),
                 Err(err) => {
-                    self.reset(state);
-                    LogResult::err("processing command key", err)
+                    self.reset();
+                    Err(err)
                 }
             },
         }
@@ -95,6 +95,18 @@ where
             }
             PromptState::Command | PromptState::Log => (),
         }
+    }
+}
+
+pub enum KeyResult {
+    Ok,
+    HasCommand(Command),
+    Reset,
+}
+
+impl Default for KeyResult {
+    fn default() -> Self {
+        Self::Ok
     }
 }
 

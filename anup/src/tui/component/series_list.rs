@@ -1,6 +1,7 @@
 use super::{Component, Draw};
+use crate::err::Result;
 use crate::series::LastWatched;
-use crate::tui::{LogResult, UIState};
+use crate::tui::UIState;
 use crate::CmdOptions;
 use termion::event::Key;
 use tui::backend::Backend;
@@ -29,7 +30,7 @@ impl SeriesList {
         };
 
         state.series.set_selected(selected);
-        state.init_selected_series();
+        state.init_selected_series().ok();
 
         Self {
             list_state: ListState::default(),
@@ -38,7 +39,10 @@ impl SeriesList {
 }
 
 impl Component for SeriesList {
-    fn process_key(&mut self, key: Key, state: &mut UIState) -> LogResult {
+    type TickResult = ();
+    type KeyResult = ();
+
+    fn process_key(&mut self, key: Key, state: &mut UIState) -> Result<Self::KeyResult> {
         match key {
             Key::Up | Key::Down => {
                 match key {
@@ -49,7 +53,7 @@ impl Component for SeriesList {
 
                 state.init_selected_series()
             }
-            _ => LogResult::Ok,
+            _ => Ok(()),
         }
     }
 }

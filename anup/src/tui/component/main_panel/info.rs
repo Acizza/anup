@@ -1,83 +1,16 @@
-use super::{Component, Draw};
-use crate::series::config::SeriesConfig;
-use crate::series::info::SeriesInfo;
 use crate::series::Series;
-use crate::tui::{CurrentAction, LogResult, SelectingSeriesState, SeriesStatus, UIState};
+use crate::tui::{CurrentAction, SeriesStatus, UIState};
 use crate::util;
 use chrono::Utc;
 use smallvec::SmallVec;
 use std::borrow::Cow;
-use std::mem;
-use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
-use tui::style::{Color, Modifier, Style};
+use tui::style::{Modifier, Style};
 use tui::terminal::Frame;
-use tui::widgets::{Block, Borders, List, ListState, Paragraph, Text};
+use tui::widgets::{Block, Borders, Paragraph, Text};
 
-pub struct InfoPanel {
-    info_panel: SeriesInfoPanel,
-    select_panel: SelectSeriesPanel,
-}
-
-impl InfoPanel {
-    pub fn new() -> Self {
-        Self {
-            info_panel: SeriesInfoPanel::new(),
-            select_panel: SelectSeriesPanel::new(),
-        }
-    }
-}
-
-impl Component for InfoPanel {
-    fn process_key(&mut self, key: Key, state: &mut UIState) -> LogResult {
-        match &mut state.current_action {
-            CurrentAction::SelectingSeries(select) => {
-                match self.select_panel.process_key(key, select) {
-                    SelectInputResult::Continue => LogResult::Ok,
-                    SelectInputResult::Finish => {
-                        state.current_action.reset();
-                        LogResult::Ok
-                    }
-                    SelectInputResult::AddSeries(info) => {
-                        LogResult::capture("adding series", || {
-                            let select = match mem::take(&mut state.current_action) {
-                                CurrentAction::SelectingSeries(state) => state,
-                                _ => unreachable!(),
-                            };
-
-                            let config = SeriesConfig::from_params(
-                                select.nickname,
-                                info.id,
-                                select.path,
-                                select.params,
-                                &state.config,
-                                &state.db,
-                            )?;
-
-                            state.add_series(config, info)
-                        })
-                    }
-                }
-            }
-            _ => LogResult::Ok,
-        }
-    }
-}
-
-impl<B> Draw<B> for InfoPanel
-where
-    B: Backend,
-{
-    fn draw(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>) {
-        match &state.current_action {
-            CurrentAction::SelectingSeries(state) => self.select_panel.draw(state, rect, frame),
-            _ => self.info_panel.draw(state, rect, frame),
-        }
-    }
-}
-
-struct SeriesInfoPanel;
+pub struct SeriesInfoPanel;
 
 macro_rules! create_stat_list {
     ($($header:expr => $value:expr),+) => {
@@ -97,11 +30,11 @@ macro_rules! create_stat_list {
 }
 
 impl SeriesInfoPanel {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {}
     }
 
-    fn draw<B>(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>)
+    pub fn draw<B>(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
     {
@@ -258,7 +191,7 @@ impl SeriesInfoPanel {
         }
 
         // Watch time needed indicator at bottom
-        if let CurrentAction::WatchingEpisode(progress_time, _) = state.current_action {
+        if let CurrentAction::WatchingEpisode(progress_time) = state.current_action {
             let watch_time = progress_time - Utc::now();
             let watch_secs = watch_time.num_seconds();
 
@@ -280,69 +213,4 @@ impl SeriesInfoPanel {
             }
         }
     }
-}
-
-struct SelectSeriesPanel {
-    list_state: ListState,
-}
-
-impl SelectSeriesPanel {
-    fn new() -> Self {
-        Self {
-            list_state: ListState::default(),
-        }
-    }
-
-    fn process_key(&mut self, key: Key, state: &mut SelectingSeriesState) -> SelectInputResult {
-        match key {
-            Key::Up => {
-                state.series_list.dec_selected();
-                SelectInputResult::Continue
-            }
-            Key::Down => {
-                state.series_list.inc_selected();
-                SelectInputResult::Continue
-            }
-            Key::Char('\n') => {
-                let info = match state.series_list.swap_remove_selected() {
-                    Some(info) => info,
-                    None => return SelectInputResult::Finish,
-                };
-
-                SelectInputResult::AddSeries(info)
-            }
-            Key::Esc => SelectInputResult::Finish,
-            _ => SelectInputResult::Continue,
-        }
-    }
-
-    fn draw<B>(&mut self, state: &SelectingSeriesState, rect: Rect, frame: &mut Frame<B>)
-    where
-        B: Backend,
-    {
-        let names = state
-            .series_list
-            .iter()
-            .map(|info| Text::raw(&info.title_preferred));
-
-        let items = List::new(names)
-            .block(
-                Block::default()
-                    .title("Select a series from the list")
-                    .borders(Borders::ALL),
-            )
-            .style(Style::default().fg(Color::White))
-            .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC))
-            .highlight_symbol(">");
-
-        self.list_state.select(Some(state.series_list.index()));
-
-        frame.render_stateful_widget(items, rect, &mut self.list_state);
-    }
-}
-
-enum SelectInputResult {
-    Continue,
-    Finish,
-    AddSeries(SeriesInfo),
 }

@@ -7,25 +7,23 @@ use crate::err::{self, Error, Result};
 use crate::file::TomlFile;
 use crate::series::config::SeriesConfig;
 use crate::series::info::{InfoResult, InfoSelector, SeriesInfo};
-use crate::series::{LastWatched, Series, SeriesData, SeriesParams};
+use crate::series::{LastWatched, Series, SeriesData};
 use crate::try_opt_r;
 use crate::util;
 use crate::CmdOptions;
 use anime::remote::RemoteService;
 use backend::{TermionBackend, UIBackend, UIEvent, UIEvents};
-use chrono::{DateTime, Duration, Utc};
-use component::episode_watcher::EpisodeWatcher;
-use component::info_panel::InfoPanel;
+use chrono::Duration;
+use component::episode_watcher::{EpisodeWatcher, ProgressTime};
+use component::main_panel::MainPanel;
 use component::prompt::command::Command;
 use component::prompt::log::{LogItem, StatusLog};
-use component::prompt::Prompt;
+use component::prompt::{KeyResult, Prompt, COMMAND_KEY};
 use component::series_list::SeriesList;
-use component::{Component, Draw};
+use component::{Component, Draw, ShouldReset};
 use snafu::ResultExt;
 use std::mem;
 use std::ops::{Index, IndexMut};
-use std::path::PathBuf;
-use std::process;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::{Constraint, Direction, Layout};
@@ -100,188 +98,26 @@ impl UIState {
         Ok(())
     }
 
-    fn init_selected_series(&mut self) -> LogResult {
+    fn init_selected_series(&mut self) -> Result<()> {
         let selected = match self.series.selected_mut() {
             Some(selected) => selected,
-            None => return LogResult::Ok,
+            None => return Ok(()),
         };
 
         selected.ensure_loaded(&self.config, &self.db)
     }
 
-    fn delete_selected_series(&mut self) -> LogResult {
+    fn delete_selected_series(&mut self) -> Result<()> {
         let series = match self.series.remove_selected() {
             Some(series) => series,
-            None => return LogResult::Ok,
+            None => return Ok(()),
         };
 
         // Since we changed our selected series, we need to make sure the new one is initialized
-        if let err @ LogResult::Err(_, _) = self.init_selected_series() {
-            return err;
-        }
+        self.init_selected_series()?;
 
-        LogResult::capture("deleting series", || {
-            series.config().delete(&self.db)?;
-            Ok(())
-        })
-    }
-
-    fn process_command(&mut self, command: Command) -> LogResult {
-        match command {
-            Command::Add(nickname, params) => LogResult::capture("adding series", || {
-                if self.remote.is_offline() {
-                    return Err(Error::MustRunOnline);
-                }
-
-                let path = match &params.path {
-                    Some(path) => path.clone(),
-                    None => util::closest_matching_dir(&self.config.series_dir, &nickname)?,
-                };
-
-                let info = {
-                    let sel = params.id.map_or_else(
-                        || InfoSelector::from_path_or_name(&path, &nickname, &self.config),
-                        InfoSelector::ID,
-                    );
-
-                    SeriesInfo::from_remote(sel, self.remote.as_ref())?
-                };
-
-                match info {
-                    InfoResult::Confident(info) => {
-                        let config = SeriesConfig::from_params(
-                            nickname,
-                            info.id,
-                            path,
-                            params,
-                            &self.config,
-                            &self.db,
-                        )?;
-
-                        self.add_series(config, info)?;
-                    }
-                    InfoResult::Unconfident(info_list) => {
-                        self.current_action =
-                            CurrentAction::select_series(info_list, params, path, nickname);
-                    }
-                }
-
-                Ok(())
-            }),
-            Command::AniList(token) => LogResult::capture("logging in to AniList", || {
-                use anime::remote::anilist::AniList;
-                use anime::remote::AccessToken;
-
-                let token = match token {
-                    Some(token) => {
-                        let token = AccessToken::encode(token);
-                        token.save()?;
-                        token
-                    }
-                    None => match AccessToken::load() {
-                        Ok(token) => token,
-                        Err(err) if err.is_file_nonexistant() => {
-                            return Err(Error::NeedAniListToken)
-                        }
-                        Err(err) => return Err(err),
-                    },
-                };
-
-                self.remote = Box::new(AniList::authenticated(token)?);
-                Ok(())
-            }),
-            Command::Delete => self.delete_selected_series(),
-            Command::Offline => {
-                use anime::remote::offline::Offline;
-                self.remote = Box::new(Offline::new());
-                LogResult::Ok
-            }
-            Command::PlayerArgs(args) => LogResult::capture("setting series args", || {
-                let series = try_opt_r!(self.series.valid_selection_mut());
-
-                series.data.config.player_args = args.into();
-                series.save(&self.db)?;
-                Ok(())
-            }),
-            Command::Progress(direction) => LogResult::capture("forcing watch progress", || {
-                use component::prompt::command::ProgressDirection;
-
-                let series = try_opt_r!(self.series.valid_selection_mut());
-                let remote = self.remote.as_ref();
-
-                match direction {
-                    ProgressDirection::Forwards => {
-                        series.episode_completed(remote, &self.config, &self.db)
-                    }
-                    ProgressDirection::Backwards => {
-                        series.episode_regressed(remote, &self.config, &self.db)
-                    }
-                }
-            }),
-            Command::Set(params) => LogResult::capture("applying series parameters", || {
-                let status = try_opt_r!(self.series.selected_mut());
-                let remote = self.remote.as_ref();
-
-                if params.id.is_some() && remote.is_offline() {
-                    return Err(Error::MustBeOnlineTo {
-                        reason: "set a new series id".into(),
-                    });
-                }
-
-                match status {
-                    SeriesStatus::Loaded(series) => {
-                        series.apply_params(params, &self.config, &self.db, remote)?;
-                        series.save(&self.db)?;
-                        Ok(())
-                    }
-                    SeriesStatus::Unloaded(_) => Ok(()),
-                }
-            }),
-            cmd @ Command::SyncFromRemote | cmd @ Command::SyncToRemote => {
-                LogResult::capture("syncing entry to/from remote", || {
-                    let series = try_opt_r!(self.series.valid_selection_mut());
-                    let remote = self.remote.as_ref();
-
-                    match cmd {
-                        Command::SyncFromRemote => {
-                            series.data.entry.force_sync_from_remote(remote)?
-                        }
-                        Command::SyncToRemote => series.data.entry.force_sync_to_remote(remote)?,
-                        _ => unreachable!(),
-                    }
-
-                    series.save(&self.db)?;
-                    Ok(())
-                })
-            }
-            Command::Score(raw_score) => LogResult::capture("setting score", || {
-                let series = try_opt_r!(self.series.valid_selection_mut());
-
-                let score = match self.remote.parse_score(&raw_score) {
-                    Some(score) if score == 0 => None,
-                    Some(score) => Some(score),
-                    None => return Err(Error::InvalidScore),
-                };
-
-                let remote = self.remote.as_ref();
-
-                series.data.entry.set_score(score.map(|s| s as i16));
-                series.data.entry.sync_to_remote(remote)?;
-                series.save(&self.db)?;
-
-                Ok(())
-            }),
-            Command::Status(status) => LogResult::capture("setting series status", || {
-                let series = try_opt_r!(self.series.valid_selection_mut());
-                let remote = self.remote.as_ref();
-
-                series.data.entry.set_status(status, &self.config);
-                series.data.entry.sync_to_remote(remote)?;
-                series.save(&self.db)?;
-
-                Ok(())
-            }),
-        }
+        series.config().delete(&self.db)?;
+        Ok(())
     }
 }
 
@@ -290,37 +126,28 @@ struct UIWorld<'a, B: Backend> {
     state: UIState,
     prompt: Prompt<'a>,
     series_list: SeriesList,
-    info_panel: InfoPanel,
+    main_panel: MainPanel,
     episode_watcher: EpisodeWatcher,
 }
 
-macro_rules! impl_ui_component_fns {
-    ($($comp_var:ident),+) => {
-        impl<'a, B> UIWorld<'a, B> where B: Backend {
-            fn tick_components(&mut self) -> LogResult {
-                $(
-                    if let err @ LogResult::Err(_, _) = self.$comp_var.tick(&mut self.state) {
-                        return err;
-                    }
-                )+
+macro_rules! capture_err {
+    ($self:ident, $result:expr, $some:expr) => {
+        match $result {
+            Ok(val) => $some(val),
+            Err(err) => $self.prompt.log.push(format!("{}", err)),
+        }
+    };
 
-                LogResult::Ok
-            }
-
-            fn process_key_for_components(&mut self, key: Key) -> LogResult {
-                $(
-                    if let err @ LogResult::Err(_, _) = self.$comp_var.process_key(key, &mut self.state) {
-                        return err;
-                    }
-                )+
-
-                LogResult::Ok
+    ($self:ident, $result:expr) => {
+        match $result {
+            value @ Ok(_) => value,
+            Err(err) => {
+                $self.prompt.log.push(format!("{}", err));
+                Err(err)
             }
         }
     };
 }
-
-impl_ui_component_fns!(prompt, series_list, info_panel, episode_watcher);
 
 impl<'a, B> UIWorld<'a, B>
 where
@@ -340,7 +167,7 @@ where
             state,
             prompt,
             series_list,
-            info_panel: InfoPanel::new(),
+            main_panel: MainPanel::new(),
             episode_watcher: EpisodeWatcher::new(last_watched),
         })
     }
@@ -382,12 +209,22 @@ where
     }
 
     fn tick(&mut self) {
-        match self.tick_components() {
-            LogResult::Ok => (),
-            LogResult::Err(desc, err) => {
-                self.prompt.log.push(LogItem::failed(desc, Some(err)));
-            }
+        macro_rules! tick {
+            ($($component:ident),+) => {
+                $(capture_err!(self, self.$component.tick(&mut self.state)).ok();)+
+            };
         }
+
+        tick!(prompt, series_list, main_panel);
+
+        capture_err!(
+            self,
+            self.episode_watcher.tick(&mut self.state),
+            |result| match result {
+                ShouldReset::Yes => self.state.current_action.reset(),
+                ShouldReset::No => (),
+            }
+        );
     }
 
     fn draw_internal(&mut self) -> Result<()> {
@@ -411,7 +248,7 @@ where
                 .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
                 .split(horiz_splitter[1]);
 
-            self.info_panel
+            self.main_panel
                 .draw(&self.state, info_panel_splitter[0], &mut frame);
 
             self.prompt
@@ -424,7 +261,7 @@ where
         self.draw_internal()?;
 
         self.prompt.after_draw(&mut self.backend);
-        self.info_panel.after_draw(&mut self.backend);
+        self.main_panel.after_draw(&mut self.backend);
 
         Ok(())
     }
@@ -433,44 +270,215 @@ where
     ///
     /// Returns true if the program should exit.
     fn process_key(&mut self, key: Key) -> bool {
-        if let Key::Char('q') = key {
-            return true;
+        macro_rules! capture {
+            ($result:expr) => {
+                match capture_err!(self, $result) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        self.state.current_action.reset();
+                        return false;
+                    }
+                }
+            };
         }
 
         match &self.state.current_action {
-            CurrentAction::Idle => (),
-            CurrentAction::WatchingEpisode(_, _) => return false,
-            action @ CurrentAction::SelectingSeries(_)
-            | action @ CurrentAction::EnteringCommand => {
-                let component: &mut dyn Component = match action {
-                    CurrentAction::SelectingSeries(_) => &mut self.info_panel,
-                    CurrentAction::EnteringCommand => &mut self.prompt,
-                    _ => unreachable!(),
-                };
+            CurrentAction::Idle => match key {
+                Key::Char('q') => return true,
+                Key::Char(key) if key == self.state.config.tui.keys.play_next_episode => {
+                    let prog_time =
+                        capture!(self.episode_watcher.begin_watching_episode(&mut self.state));
 
-                if let LogResult::Err(desc, err) = component.process_key(key, &mut self.state) {
-                    self.prompt.log.push(LogItem::failed(desc, err));
+                    if let Some(prog_time) = prog_time {
+                        self.state.current_action = CurrentAction::WatchingEpisode(prog_time);
+                    }
                 }
+                Key::Char(COMMAND_KEY) => {
+                    self.state.current_action = CurrentAction::EnteringCommand;
+                    self.prompt.switch_to_command_entry();
+                }
+                key => {
+                    capture!(self.series_list.process_key(key, &mut self.state));
+                }
+            },
+            CurrentAction::WatchingEpisode(_) => (),
+            CurrentAction::SelectingSeries => {
+                let result = capture!(self.main_panel.process_key(key, &mut self.state));
 
-                return false;
+                if let ShouldReset::Yes = result {
+                    self.state.current_action.reset();
+                }
             }
-        }
-
-        if let LogResult::Err(desc, err) = self.process_key_for_components(key) {
-            self.prompt.log.push(LogItem::failed(desc, err));
+            CurrentAction::EnteringCommand => {
+                match capture!(self.prompt.process_key(key, &mut self.state)) {
+                    KeyResult::Ok => (),
+                    KeyResult::HasCommand(cmd) => {
+                        capture!(self.process_command(cmd));
+                        self.state.current_action.reset();
+                    }
+                    KeyResult::Reset => self.state.current_action.reset(),
+                }
+            }
         }
 
         false
     }
-}
 
-type ProgressTime = DateTime<Utc>;
+    fn process_command(&mut self, command: Command) -> Result<()> {
+        let remote = &mut self.state.remote;
+        let config = &self.state.config;
+        let db = &self.state.db;
+
+        match command {
+            Command::Add(nickname, params) => {
+                if remote.is_offline() {
+                    return Err(Error::MustRunOnline);
+                }
+
+                let path = match &params.path {
+                    Some(path) => path.clone(),
+                    None => util::closest_matching_dir(&config.series_dir, &nickname)?,
+                };
+
+                let info = {
+                    let sel = params.id.map_or_else(
+                        || InfoSelector::from_path_or_name(&path, &nickname, config),
+                        InfoSelector::ID,
+                    );
+
+                    SeriesInfo::from_remote(sel, remote.as_ref())?
+                };
+
+                match info {
+                    InfoResult::Confident(info) => {
+                        let config =
+                            SeriesConfig::from_params(nickname, info.id, path, params, config, db)?;
+
+                        self.state.add_series(config, info)?;
+                    }
+                    InfoResult::Unconfident(info_list) => {
+                        self.state.current_action = CurrentAction::SelectingSeries;
+                        self.main_panel
+                            .switch_to_select_series(info_list, params, path, nickname);
+                    }
+                }
+
+                Ok(())
+            }
+            Command::AniList(token) => {
+                use anime::remote::anilist::AniList;
+                use anime::remote::AccessToken;
+
+                let token = match token {
+                    Some(token) => {
+                        let token = AccessToken::encode(token);
+                        token.save()?;
+                        token
+                    }
+                    None => match AccessToken::load() {
+                        Ok(token) => token,
+                        Err(err) if err.is_file_nonexistant() => {
+                            return Err(Error::NeedAniListToken)
+                        }
+                        Err(err) => return Err(err),
+                    },
+                };
+
+                *remote = Box::new(AniList::authenticated(token)?);
+                Ok(())
+            }
+            Command::Delete => self.state.delete_selected_series(),
+            Command::Offline => {
+                use anime::remote::offline::Offline;
+                *remote = Box::new(Offline::new());
+                Ok(())
+            }
+            Command::PlayerArgs(args) => {
+                let series = try_opt_r!(self.state.series.valid_selection_mut());
+
+                series.data.config.player_args = args.into();
+                series.save(db)?;
+                Ok(())
+            }
+            Command::Progress(direction) => {
+                use component::prompt::command::ProgressDirection;
+
+                let series = try_opt_r!(self.state.series.valid_selection_mut());
+                let remote = remote.as_ref();
+
+                match direction {
+                    ProgressDirection::Forwards => series.episode_completed(remote, config, db),
+                    ProgressDirection::Backwards => series.episode_regressed(remote, config, db),
+                }
+            }
+            Command::Set(params) => {
+                let status = try_opt_r!(self.state.series.selected_mut());
+                let remote = remote.as_ref();
+
+                if params.id.is_some() && remote.is_offline() {
+                    return Err(Error::MustBeOnlineTo {
+                        reason: "set a new series id".into(),
+                    });
+                }
+
+                match status {
+                    SeriesStatus::Loaded(series) => {
+                        series.apply_params(params, config, db, remote)?;
+                        series.save(db)?;
+                        Ok(())
+                    }
+                    SeriesStatus::Unloaded(_) => Ok(()),
+                }
+            }
+            cmd @ Command::SyncFromRemote | cmd @ Command::SyncToRemote => {
+                let series = try_opt_r!(self.state.series.valid_selection_mut());
+                let remote = remote.as_ref();
+
+                match cmd {
+                    Command::SyncFromRemote => series.data.entry.force_sync_from_remote(remote)?,
+                    Command::SyncToRemote => series.data.entry.force_sync_to_remote(remote)?,
+                    _ => unreachable!(),
+                }
+
+                series.save(db)?;
+                Ok(())
+            }
+            Command::Score(raw_score) => {
+                let series = try_opt_r!(self.state.series.valid_selection_mut());
+
+                let score = match remote.parse_score(&raw_score) {
+                    Some(score) if score == 0 => None,
+                    Some(score) => Some(score),
+                    None => return Err(Error::InvalidScore),
+                };
+
+                let remote = remote.as_ref();
+
+                series.data.entry.set_score(score.map(|s| s as i16));
+                series.data.entry.sync_to_remote(remote)?;
+                series.save(db)?;
+
+                Ok(())
+            }
+            Command::Status(status) => {
+                let series = try_opt_r!(self.state.series.valid_selection_mut());
+                let remote = remote.as_ref();
+
+                series.data.entry.set_status(status, config);
+                series.data.entry.sync_to_remote(remote)?;
+                series.save(db)?;
+
+                Ok(())
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum CurrentAction {
     Idle,
-    WatchingEpisode(ProgressTime, process::Child),
-    SelectingSeries(SelectingSeriesState),
+    WatchingEpisode(ProgressTime),
+    SelectingSeries,
     EnteringCommand,
 }
 
@@ -478,15 +486,6 @@ impl CurrentAction {
     #[inline(always)]
     fn reset(&mut self) {
         *self = Self::default();
-    }
-
-    fn select_series<I, S>(series_list: I, params: SeriesParams, path: PathBuf, nickname: S) -> Self
-    where
-        I: Into<Selection<SeriesInfo>>,
-        S: Into<String>,
-    {
-        let state = SelectingSeriesState::new(series_list, params, path, nickname);
-        Self::SelectingSeries(state)
     }
 }
 
@@ -499,29 +498,6 @@ impl Default for CurrentAction {
 impl PartialEq for CurrentAction {
     fn eq(&self, other: &Self) -> bool {
         mem::discriminant(self) == mem::discriminant(other)
-    }
-}
-
-#[derive(Debug)]
-pub struct SelectingSeriesState {
-    pub series_list: Selection<SeriesInfo>,
-    pub params: SeriesParams,
-    pub path: PathBuf,
-    pub nickname: String,
-}
-
-impl SelectingSeriesState {
-    fn new<I, S>(series_list: I, params: SeriesParams, path: PathBuf, nickname: S) -> Self
-    where
-        I: Into<Selection<SeriesInfo>>,
-        S: Into<String>,
-    {
-        Self {
-            series_list: series_list.into(),
-            params,
-            path,
-            nickname: nickname.into(),
-        }
     }
 }
 
@@ -667,48 +643,19 @@ impl<T> From<Vec<T>> for Selection<T> {
     }
 }
 
-pub enum LogResult {
-    Ok,
-    Err(String, Error),
-}
-
-impl LogResult {
-    fn err<S>(desc: S, err: Error) -> Self
-    where
-        S: Into<String>,
-    {
-        Self::Err(desc.into(), err)
-    }
-
-    fn capture<S, F>(context: S, func: F) -> Self
-    where
-        S: Into<String>,
-        F: FnOnce() -> Result<()>,
-    {
-        match func() {
-            Ok(_) => Self::Ok,
-            Err(err) => Self::Err(context.into(), err),
-        }
-    }
-}
-
 pub enum SeriesStatus {
     Loaded(Series),
     Unloaded(SeriesConfig),
 }
 
 impl SeriesStatus {
-    fn ensure_loaded(&mut self, config: &Config, db: &Database) -> LogResult {
+    fn ensure_loaded(&mut self, config: &Config, db: &Database) -> Result<()> {
         match self {
-            Self::Loaded(_) => LogResult::Ok,
+            Self::Loaded(_) => Ok(()),
             Self::Unloaded(cfg) => {
-                let series = match Series::load_from_config(cfg.clone(), config, db) {
-                    Ok(series) => series,
-                    Err(err) => return LogResult::err("loading series", err),
-                };
-
+                let series = Series::load_from_config(cfg.clone(), config, db)?;
                 *self = Self::Loaded(series);
-                LogResult::Ok
+                Ok(())
             }
         }
     }
