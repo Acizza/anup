@@ -17,7 +17,7 @@ use chrono::Duration;
 use component::episode_watcher::{EpisodeWatcher, ProgressTime};
 use component::main_panel::MainPanel;
 use component::prompt::command::Command;
-use component::prompt::log::{LogItem, StatusLog};
+use component::prompt::log::Log;
 use component::prompt::{KeyResult, Prompt, COMMAND_KEY};
 use component::series_list::SeriesList;
 use component::{Component, Draw, ShouldReset};
@@ -172,7 +172,7 @@ where
         })
     }
 
-    fn init_remote(args: &CmdOptions, log: &mut StatusLog) -> Box<dyn RemoteService> {
+    fn init_remote(args: &CmdOptions, log: &mut Log) -> Box<dyn RemoteService> {
         use anime::remote::anilist;
         use anime::remote::offline::Offline;
 
@@ -181,24 +181,23 @@ where
             Err(err) => {
                 match err {
                     Error::NeedAniListToken => {
-                        log.push(format!(
-                            "No access token found. Go to {} \
+                        log.push_error(format!(
+                            "no access token found. Go to {} \
                              and set your token with the 'anilist' command",
                             anilist::auth_url(crate::ANILIST_CLIENT_ID)
                         ));
                     }
                     _ => {
-                        log.push(LogItem::failed("Logging in", err));
-                        log.push(format!(
-                            "If you need a new token, go to {} \
+                        log.push(err);
+                        log.push_context(format!(
+                            "if you need a new token, go to {} \
                              and set it with the 'anilist' command",
                             anilist::auth_url(crate::ANILIST_CLIENT_ID)
                         ));
                     }
                 }
 
-                log.push("Continuing in offline mode");
-
+                log.push_info("continuing in offline mode");
                 Box::new(Offline::new())
             }
         }
@@ -385,6 +384,8 @@ where
                 };
 
                 *remote = Box::new(AniList::authenticated(token)?);
+                self.prompt.log.push_info("logged in to AniList");
+
                 Ok(())
             }
             Command::Delete => self.state.delete_selected_series(),

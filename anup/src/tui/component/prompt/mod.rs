@@ -5,7 +5,7 @@ use super::{Component, Draw};
 use crate::err::Result;
 use crate::tui::{UIBackend, UIState};
 use command::{Command, CommandPrompt, InputResult};
-use log::StatusLog;
+use log::Log;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
@@ -14,7 +14,7 @@ use tui::terminal::Frame;
 pub const COMMAND_KEY: char = ':';
 
 pub struct Prompt<'a> {
-    pub log: StatusLog<'a>,
+    pub log: Log<'a>,
     command: CommandPrompt,
     state: PromptState,
     draw_rect: Rect,
@@ -23,7 +23,7 @@ pub struct Prompt<'a> {
 impl<'a> Prompt<'a> {
     pub fn new() -> Self {
         Self {
-            log: StatusLog::new(),
+            log: Log::new(),
             command: CommandPrompt::new(),
             state: PromptState::default(),
             draw_rect: Rect::default(),

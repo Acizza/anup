@@ -1,21 +1,19 @@
-use crate::err;
-use smallvec::{smallvec, SmallVec};
+use crate::err::Error;
 use std::collections::VecDeque;
-use std::fmt;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::{Color, Style};
 use tui::widgets::{Block, Borders, Paragraph, Text};
 use tui::Frame;
 
-/// A scrolling log to display messages along with their status.
-pub struct StatusLog<'a> {
+/// A scrolling status log.
+pub struct Log<'a> {
     items: VecDeque<LogItem<'a>>,
     draw_items: VecDeque<Text<'a>>,
     max_items: u16,
 }
 
-impl<'a> StatusLog<'a> {
+impl<'a> Log<'a> {
     pub fn new() -> Self {
         Self {
             items: VecDeque::new(),
@@ -24,7 +22,7 @@ impl<'a> StatusLog<'a> {
         }
     }
 
-    /// Trims the `StatusLog` so all items fit within `size`.
+    /// Trims the `Log` so all items fit within `size`.
     ///
     /// Assumes there is both a top and bottom border if `with_border` is true.
     pub fn adjust_to_size(&mut self, size: Rect, with_border: bool) {
@@ -50,6 +48,27 @@ impl<'a> StatusLog<'a> {
         self.items.push_back(item);
     }
 
+    pub fn push_error<S>(&mut self, error: S)
+    where
+        S: AsRef<str>,
+    {
+        self.push(LogItem::error(error))
+    }
+
+    pub fn push_context<S>(&mut self, context: S)
+    where
+        S: AsRef<str>,
+    {
+        self.push(LogItem::context(context))
+    }
+
+    pub fn push_info<S>(&mut self, info: S)
+    where
+        S: AsRef<str>,
+    {
+        self.push(LogItem::info(info))
+    }
+
     /// Removes the first `LogItem` from the `StatusLog` if it exists.
     pub fn pop_front(&mut self) {
         let item = match self.items.pop_front() {
@@ -71,7 +90,10 @@ impl<'a> StatusLog<'a> {
         self.adjust_to_size(rect, true);
 
         // TODO: use concat! macro if/when it can accept constants, or when a similiar crate doesn't require nightly
-        let title = format!("Status ['{}'] for command entry", super::COMMAND_KEY);
+        let title = format!(
+            "Error Log [press '{}' for command entry]",
+            super::COMMAND_KEY
+        );
 
         let draw_item = Paragraph::new(self.draw_items.iter())
             .block(Block::default().title(&title).borders(Borders::ALL))
@@ -82,115 +104,58 @@ impl<'a> StatusLog<'a> {
 }
 
 /// A log entry meant to be used with `StatusLog`.
-pub struct LogItem<'a>(SmallVec<[Text<'a>; 3]>);
+pub struct LogItem<'a>([Text<'a>; 2]);
 
 impl<'a> LogItem<'a> {
-    /// Create a LogItem with the specified description and status.
-    pub fn with_status<S>(desc: S, status: LogItemStatus) -> LogItem<'a>
+    pub fn error<S>(desc: S) -> Self
     where
-        S: Into<String>,
+        S: AsRef<str>,
     {
-        let text_items = LogItem::create_text_items(desc, status);
-        LogItem(text_items)
+        let header = Text::styled("error: ", Style::default().fg(Color::Red));
+        let desc = Text::raw(format!("{}\n", desc.as_ref()));
+
+        Self([header, desc])
     }
 
-    /// Create a LogItem with its status set to `LogItemStatus::Pending`.
-    pub fn pending<S>(desc: S) -> LogItem<'a>
+    pub fn context<S>(context: S) -> Self
     where
-        S: Into<String>,
+        S: AsRef<str>,
     {
-        LogItem::with_status(desc, LogItemStatus::Pending)
+        let header = Text::styled("^ ", Style::default().fg(Color::Yellow));
+        let context = Text::raw(format!("{}\n", context.as_ref()));
+
+        Self([header, context])
     }
 
-    /// Create a LogItem with its status set to `LogItemStatus::Failed`.
-    pub fn failed<S, O>(desc: S, err: O) -> LogItem<'a>
+    pub fn info<S>(info: S) -> Self
     where
-        S: Into<String>,
-        O: Into<Option<err::Error>>,
+        S: AsRef<str>,
     {
-        LogItem::with_status(desc, LogItemStatus::Failed(err.into()))
-    }
+        let header = Text::styled("info: ", Style::default().fg(Color::Green));
+        let info = Text::raw(format!("{}\n", info.as_ref()));
 
-    fn create_text_items<S>(desc: S, status: LogItemStatus) -> SmallVec<[Text<'a>; 3]>
-    where
-        S: Into<String>,
-    {
-        let desc_text = if status.is_resolved() {
-            Text::raw(format!("{}... ", desc.into()))
-        } else {
-            Text::raw(format!("{}...\n", desc.into()))
-        };
-
-        let mut text_items = smallvec![desc_text];
-
-        // Beyond this point, we only need to resolve the status (if we have it)
-        if !status.is_resolved() {
-            return text_items;
-        }
-
-        let status_text = {
-            let color = match status {
-                LogItemStatus::Pending => Color::Yellow,
-                LogItemStatus::Failed(_) => Color::Red,
-            };
-
-            Text::styled(format!("{}\n", status), Style::default().fg(color))
-        };
-
-        text_items.push(status_text);
-
-        if let LogItemStatus::Failed(Some(err)) = &status {
-            let err_text = Text::styled(format!(".. {}\n", err), Style::default().fg(Color::Red));
-            text_items.push(err_text);
-        }
-
-        text_items
+        Self([header, info])
     }
 
     /// Returns a reference to all of the internal text elements.
     ///
     /// This method is useful for drawing the `LogItem`.
-    pub fn text_items(&self) -> &SmallVec<[Text<'a>; 3]> {
+    pub fn text_items(&self) -> &[Text<'a>; 2] {
         &self.0
     }
 }
 
 impl<'a, T> From<T> for LogItem<'a>
 where
-    T: Into<String>,
+    T: AsRef<str>,
 {
     fn from(value: T) -> Self {
-        LogItem::pending(value)
+        Self::info(value)
     }
 }
 
-/// The result of a log event. Meant to be used with `LogItem`.
-pub enum LogItemStatus {
-    Pending,
-    Failed(Option<err::Error>),
-}
-
-impl LogItemStatus {
-    /// Returns true if the status indicates that it's not waiting for the result of an operation.
-    pub fn is_resolved(&self) -> bool {
-        match self {
-            LogItemStatus::Failed(_) => true,
-            LogItemStatus::Pending => false,
-        }
-    }
-}
-
-impl From<err::Error> for LogItemStatus {
-    fn from(value: err::Error) -> Self {
-        Self::Failed(Some(value))
-    }
-}
-
-impl fmt::Display for LogItemStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LogItemStatus::Pending => write!(f, "pending"),
-            LogItemStatus::Failed(_) => write!(f, "failed"),
-        }
+impl<'a> From<Error> for LogItem<'a> {
+    fn from(value: Error) -> Self {
+        Self::error(format!("{}", value))
     }
 }
