@@ -11,33 +11,22 @@ use tui::layout::Rect;
 use tui::terminal::Frame;
 
 pub trait Component {
-    type TickResult: Default;
-    type KeyResult: Default;
+    type State;
+    type KeyResult;
 
-    fn tick(&mut self, _: &mut UIState) -> Result<Self::TickResult> {
-        Ok(Self::TickResult::default())
+    fn tick(&mut self, _: &mut UIState) -> Result<()> {
+        Ok(())
     }
 
-    fn process_key(&mut self, _: Key, _: &mut UIState) -> Result<Self::KeyResult> {
-        Ok(Self::KeyResult::default())
-    }
+    fn process_key(&mut self, _: Key, _: &mut Self::State) -> Self::KeyResult;
 }
 
 pub trait Draw<B>
 where
     B: Backend,
 {
-    fn draw(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>);
-    fn after_draw(&mut self, _: &mut UIBackend<B>) {}
-}
+    type State;
 
-pub enum ShouldReset {
-    No,
-    Yes,
-}
-
-impl Default for ShouldReset {
-    fn default() -> Self {
-        Self::No
-    }
+    fn draw(&mut self, state: &Self::State, rect: Rect, frame: &mut Frame<B>);
+    fn after_draw(&mut self, _: &mut UIBackend<B>, _: &Self::State) {}
 }

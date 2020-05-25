@@ -10,7 +10,7 @@ use tui::style::{Modifier, Style};
 use tui::terminal::Frame;
 use tui::widgets::{Block, Borders, Paragraph, Text};
 
-pub struct SeriesInfoPanel;
+pub struct InfoPanel;
 
 macro_rules! create_stat_list {
     ($($header:expr => $value:expr),+) => {
@@ -29,7 +29,7 @@ macro_rules! create_stat_list {
     };
 }
 
-impl SeriesInfoPanel {
+impl InfoPanel {
     pub fn new() -> Self {
         Self {}
     }
@@ -191,7 +191,7 @@ impl SeriesInfoPanel {
         }
 
         // Watch time needed indicator at bottom
-        if let CurrentAction::WatchingEpisode(progress_time) = state.current_action {
+        if let CurrentAction::WatchingEpisode(progress_time, _) = state.current_action {
             let watch_time = progress_time - Utc::now();
             let watch_secs = watch_time.num_seconds();
 

@@ -3,13 +3,11 @@ use crate::config::Config;
 use crate::database::schema::series_configs;
 use crate::database::{self, Database};
 use crate::err::{Error, Result};
+use crate::{SERIES_EPISODE_REP, SERIES_TITLE_REP};
 use anime::local::EpisodeParser;
 use diesel::prelude::*;
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
-
-const PARSER_TITLE_REP: &str = "{title}";
-const PARSER_EPISODE_REP: &str = "{episode}";
 
 #[derive(Clone, Debug, Queryable, Insertable)]
 pub struct SeriesConfig {
@@ -47,8 +45,8 @@ impl SeriesConfig {
         let episode_parser = match params.episode_parser {
             Some(pattern) => EpisodeParser::custom_with_replacements(
                 pattern,
-                PARSER_TITLE_REP,
-                PARSER_EPISODE_REP,
+                SERIES_TITLE_REP,
+                SERIES_EPISODE_REP,
             )?,
             None => EpisodeParser::default(),
         };
@@ -149,8 +147,8 @@ impl SeriesConfig {
             self.episode_parser = if !pattern.is_empty() {
                 EpisodeParser::custom_with_replacements(
                     pattern,
-                    PARSER_TITLE_REP,
-                    PARSER_EPISODE_REP,
+                    SERIES_TITLE_REP,
+                    SERIES_EPISODE_REP,
                 )?
             } else {
                 EpisodeParser::default()

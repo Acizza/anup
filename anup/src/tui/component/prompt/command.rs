@@ -1,5 +1,6 @@
-use crate::err::{self, Result};
+use crate::err::{self, Error};
 use crate::series::SeriesParams;
+use crate::tui::component::{Component, Draw};
 use smallvec::{smallvec, SmallVec};
 use snafu::ensure;
 use std::convert::TryFrom;
@@ -28,22 +29,16 @@ impl CommandPrompt {
         }
     }
 
-    /// Process a key for the `CommandPrompt`.
-    ///
-    /// Returns a `InputResult` representing the state of the prompt based off of `key`.
-    /// Example return values are given below:
-    ///
-    /// | `key`             | `InputResult`                   |
-    /// | ----------------- | ------------------------------- |
-    /// | `Key::Char('a')`  | `InputResult::Continue`    |
-    /// | `Key::Esc`        | `InputResult::Done`       |
-    /// | `Key::Char('\n')` | `InputResult::Command(_)` |
-    pub fn process_key(&mut self, key: Key) -> Result<InputResult> {
+    fn process_key(&mut self, key: Key) -> InputResult {
         match key {
             Key::Char('\n') => {
-                let command = Command::try_from(self.buffer.as_ref())?;
+                let command = match Command::try_from(self.buffer.as_ref()) {
+                    Ok(cmd) => cmd,
+                    Err(err) => return InputResult::Error(err),
+                };
+
                 self.reset();
-                return Ok(InputResult::Command(command));
+                return InputResult::Command(command);
             }
             Key::Char('\t') => {
                 if let Some(hint_cmd) = &self.hint_cmd {
@@ -79,12 +74,12 @@ impl CommandPrompt {
             }
             Key::Esc => {
                 self.reset();
-                return Ok(InputResult::Done);
+                return InputResult::Done;
             }
             _ => (),
         }
 
-        Ok(InputResult::Continue)
+        InputResult::Continue
     }
 
     pub fn reset(&mut self) {
@@ -111,11 +106,24 @@ impl CommandPrompt {
 
         text
     }
+}
 
-    pub fn draw<B>(&mut self, rect: Rect, frame: &mut Frame<B>)
-    where
-        B: Backend,
-    {
+impl Component for CommandPrompt {
+    type State = ();
+    type KeyResult = InputResult;
+
+    fn process_key(&mut self, key: Key, _: &mut Self::State) -> Self::KeyResult {
+        self.process_key(key)
+    }
+}
+
+impl<B> Draw<B> for CommandPrompt
+where
+    B: Backend,
+{
+    type State = ();
+
+    fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
         let draw_items = self.draw_items();
 
         let widget = Paragraph::new(draw_items.iter())
@@ -169,6 +177,7 @@ pub enum InputResult {
     Done,
     /// More input is needed.
     Continue,
+    Error(Error),
 }
 
 /// Split `string` into shell words.
@@ -472,10 +481,10 @@ mod tests {
         let mut enter_command = |name: &str| {
             for ch in name.chars() {
                 match prompt.process_key(Key::Char(ch)) {
-                    Ok(InputResult::Continue) => (),
-                    Ok(InputResult::Done) => panic!("expected {} command, got nothing", name),
-                    Ok(InputResult::Command(cmd)) => return cmd,
-                    Err(err) => panic!("error processing command: {}", err),
+                    InputResult::Continue => (),
+                    InputResult::Done => panic!("expected {} command, got nothing", name),
+                    InputResult::Command(cmd) => return cmd,
+                    InputResult::Error(err) => panic!("error processing command: {}", err),
                 }
             }
 

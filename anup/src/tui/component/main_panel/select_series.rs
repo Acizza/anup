@@ -1,5 +1,6 @@
 use crate::series::info::SeriesInfo;
 use crate::series::SeriesParams;
+use crate::tui::component::{Component, Draw};
 use crate::tui::Selection;
 use std::path::PathBuf;
 use termion::event::Key;
@@ -14,40 +15,50 @@ pub struct SelectSeriesPanel {
 }
 
 impl SelectSeriesPanel {
+    #[inline(always)]
     pub fn new() -> Self {
         Self {
             list_state: ListState::default(),
         }
     }
+}
 
-    pub fn process_key(&mut self, key: Key, state: &mut SelectState) -> SelectInputResult {
+impl Component for SelectSeriesPanel {
+    type State = SelectState;
+    type KeyResult = KeyResult;
+
+    fn process_key(&mut self, key: Key, select: &mut Self::State) -> Self::KeyResult {
         match key {
             Key::Up => {
-                state.series_list.dec_selected();
-                SelectInputResult::Continue
+                select.series_list.dec_selected();
+                KeyResult::Ok
             }
             Key::Down => {
-                state.series_list.inc_selected();
-                SelectInputResult::Continue
+                select.series_list.inc_selected();
+                KeyResult::Ok
             }
             Key::Char('\n') => {
-                let info = match state.series_list.swap_remove_selected() {
+                let info = match select.series_list.swap_remove_selected() {
                     Some(info) => info,
-                    None => return SelectInputResult::Finish,
+                    None => return KeyResult::Reset,
                 };
 
-                SelectInputResult::AddSeries(info)
+                KeyResult::AddSeries(info)
             }
-            Key::Esc => SelectInputResult::Finish,
-            _ => SelectInputResult::Continue,
+            Key::Esc => KeyResult::Reset,
+            _ => KeyResult::Ok,
         }
     }
+}
 
-    pub fn draw<B>(&mut self, state: &SelectState, rect: Rect, frame: &mut Frame<B>)
-    where
-        B: Backend,
-    {
-        let names = state
+impl<B> Draw<B> for SelectSeriesPanel
+where
+    B: Backend,
+{
+    type State = SelectState;
+
+    fn draw(&mut self, select: &Self::State, rect: Rect, frame: &mut Frame<B>) {
+        let names = select
             .series_list
             .iter()
             .map(|info| Text::raw(&info.title_preferred));
@@ -62,16 +73,10 @@ impl SelectSeriesPanel {
             .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC))
             .highlight_symbol(">");
 
-        self.list_state.select(Some(state.series_list.index()));
+        self.list_state.select(Some(select.series_list.index()));
 
         frame.render_stateful_widget(items, rect, &mut self.list_state);
     }
-}
-
-pub enum SelectInputResult {
-    Continue,
-    Finish,
-    AddSeries(SeriesInfo),
 }
 
 #[derive(Debug)]
@@ -95,4 +100,10 @@ impl SelectState {
             nickname: nickname.into(),
         }
     }
+}
+
+pub enum KeyResult {
+    Ok,
+    AddSeries(SeriesInfo),
+    Reset,
 }

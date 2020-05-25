@@ -1,4 +1,5 @@
 use crate::err::Error;
+use crate::tui::component::Draw;
 use std::collections::VecDeque;
 use tui::backend::Backend;
 use tui::layout::Rect;
@@ -82,11 +83,15 @@ impl<'a> Log<'a> {
             self.draw_items.pop_front();
         }
     }
+}
 
-    pub fn draw<B>(&mut self, rect: Rect, frame: &mut Frame<B>)
-    where
-        B: Backend,
-    {
+impl<'a, B> Draw<B> for Log<'a>
+where
+    B: Backend,
+{
+    type State = ();
+
+    fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
         self.adjust_to_size(rect, true);
 
         // TODO: use concat! macro if/when it can accept constants, or when a similiar crate doesn't require nightly
@@ -156,6 +161,12 @@ where
 
 impl<'a> From<Error> for LogItem<'a> {
     fn from(value: Error) -> Self {
+        Self::error(format!("{}", value))
+    }
+}
+
+impl<'a> From<&Error> for LogItem<'a> {
+    fn from(value: &Error) -> Self {
         Self::error(format!("{}", value))
     }
 }

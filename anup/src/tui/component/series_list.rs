@@ -39,10 +39,10 @@ impl SeriesList {
 }
 
 impl Component for SeriesList {
-    type TickResult = ();
-    type KeyResult = ();
+    type State = UIState;
+    type KeyResult = Result<()>;
 
-    fn process_key(&mut self, key: Key, state: &mut UIState) -> Result<Self::KeyResult> {
+    fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
         match key {
             Key::Up | Key::Down => {
                 match key {
@@ -62,7 +62,9 @@ impl<B> Draw<B> for SeriesList
 where
     B: Backend,
 {
-    fn draw(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>) {
+    type State = UIState;
+
+    fn draw(&mut self, state: &Self::State, rect: Rect, frame: &mut Frame<B>) {
         let series_names = state
             .series
             .iter()

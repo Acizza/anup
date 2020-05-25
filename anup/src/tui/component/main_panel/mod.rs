@@ -1,84 +1,84 @@
 mod info;
-mod select_series;
+pub mod select_series;
 
-use super::{Component, Draw, ShouldReset};
+use super::{Component, Draw};
 use crate::err::Result;
 use crate::series::config::SeriesConfig;
 use crate::series::info::SeriesInfo;
-use crate::series::SeriesParams;
-use crate::tui::{Selection, UIState};
-use info::SeriesInfoPanel;
-use select_series::{SelectInputResult, SelectSeriesPanel, SelectState};
+use crate::tui::{CurrentAction, UIBackend, UIState};
+use info::InfoPanel;
+use select_series::KeyResult;
+use select_series::SelectSeriesPanel;
+use select_series::SelectState;
 use std::mem;
-use std::path::PathBuf;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::terminal::Frame;
 
-impl Default for Panel {
-    fn default() -> Self {
-        Self::info()
-    }
-}
-
 pub struct MainPanel {
-    selected: Panel,
+    current: Panel,
+    cursor_needs_hiding: bool,
 }
 
 impl MainPanel {
     pub fn new() -> Self {
         Self {
-            selected: Panel::Info(SeriesInfoPanel::new()),
+            current: Panel::default(),
+            cursor_needs_hiding: false,
         }
     }
 
-    pub fn switch_to_select_series<I, S>(
-        &mut self,
-        series_list: I,
-        params: SeriesParams,
-        path: PathBuf,
-        nickname: S,
-    ) where
-        I: Into<Selection<SeriesInfo>>,
-        S: Into<String>,
-    {
-        let state = SelectState::new(series_list, params, path, nickname);
-        self.selected = Panel::select_series(state);
+    pub fn switch_to_select_series(&mut self, select: SelectState, state: &mut UIState) {
+        self.current = Panel::select_series(select);
+        state.current_action = CurrentAction::FocusedOnMainPanel;
+    }
+
+    fn add_series(&mut self, info: SeriesInfo, state: &mut UIState) -> Result<()> {
+        let select = match mem::take(&mut self.current) {
+            Panel::SelectSeries(_, select) => select,
+            _ => return Ok(()),
+        };
+
+        state.current_action.reset();
+
+        let config = SeriesConfig::from_params(
+            select.nickname,
+            info.id,
+            select.path,
+            select.params,
+            &state.config,
+            &state.db,
+        )?;
+
+        state.add_series(config, info)
+    }
+
+    fn reset(&mut self, state: &mut UIState) {
+        self.current = Panel::default();
+        state.current_action.reset();
     }
 }
 
 impl Component for MainPanel {
-    type TickResult = ();
-    type KeyResult = ShouldReset;
+    type State = UIState;
+    type KeyResult = Result<()>;
 
-    fn process_key(&mut self, key: Key, state: &mut UIState) -> Result<Self::KeyResult> {
-        match &mut self.selected {
-            Panel::Info(_) => Ok(ShouldReset::No),
-            Panel::SelectSeries(select, select_state) => {
-                match select.process_key(key, select_state) {
-                    SelectInputResult::Continue => Ok(ShouldReset::No),
-                    SelectInputResult::Finish => Ok(ShouldReset::Yes),
-                    SelectInputResult::AddSeries(info) => {
-                        let select = match mem::take(&mut self.selected) {
-                            Panel::SelectSeries(_, state) => state,
-                            _ => unreachable!(),
-                        };
-
-                        let config = SeriesConfig::from_params(
-                            select.nickname,
-                            info.id,
-                            select.path,
-                            select.params,
-                            &state.config,
-                            &state.db,
-                        )?;
-
-                        state.add_series(config, info)?;
-                        Ok(ShouldReset::Yes)
-                    }
+    fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
+        match &mut self.current {
+            Panel::Info(_) => Ok(()),
+            Panel::SelectSeries(panel, select) => match panel.process_key(key, select) {
+                KeyResult::Ok => Ok(()),
+                KeyResult::AddSeries(info) => {
+                    let result = self.add_series(info, state);
+                    self.reset(state);
+                    result
                 }
-            }
+                KeyResult::Reset => {
+                    self.reset(state);
+                    Ok(())
+                }
+            },
         }
     }
 }
@@ -87,25 +87,42 @@ impl<B> Draw<B> for MainPanel
 where
     B: Backend,
 {
-    fn draw(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>) {
-        match &mut self.selected {
+    type State = UIState;
+
+    fn draw(&mut self, state: &Self::State, rect: Rect, frame: &mut Frame<B>) {
+        match &mut self.current {
             Panel::Info(info) => info.draw(state, rect, frame),
-            Panel::SelectSeries(select, select_state) => select.draw(select_state, rect, frame),
+            Panel::SelectSeries(panel, select) => panel.draw(select, rect, frame),
+        }
+    }
+
+    fn after_draw(&mut self, backend: &mut UIBackend<B>, _: &Self::State) {
+        if self.cursor_needs_hiding {
+            backend.hide_cursor().ok();
+            self.cursor_needs_hiding = false;
         }
     }
 }
 
 enum Panel {
-    Info(SeriesInfoPanel),
+    Info(InfoPanel),
     SelectSeries(SelectSeriesPanel, SelectState),
 }
 
 impl Panel {
+    #[inline(always)]
     fn info() -> Self {
-        Self::Info(SeriesInfoPanel::new())
+        Self::Info(InfoPanel::new())
     }
 
-    fn select_series(state: SelectState) -> Self {
-        Self::SelectSeries(SelectSeriesPanel::new(), state)
+    #[inline(always)]
+    fn select_series(select: SelectState) -> Self {
+        Self::SelectSeries(SelectSeriesPanel::new(), select)
+    }
+}
+
+impl Default for Panel {
+    fn default() -> Self {
+        Self::info()
     }
 }

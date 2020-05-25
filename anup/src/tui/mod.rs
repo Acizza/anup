@@ -15,15 +15,17 @@ use anime::remote::RemoteService;
 use backend::{TermionBackend, UIBackend, UIEvent, UIEvents};
 use chrono::Duration;
 use component::episode_watcher::{EpisodeWatcher, ProgressTime};
+use component::main_panel::select_series::SelectState;
 use component::main_panel::MainPanel;
 use component::prompt::command::Command;
 use component::prompt::log::Log;
-use component::prompt::{KeyResult, Prompt, COMMAND_KEY};
+use component::prompt::{Prompt, PromptResult, COMMAND_KEY};
 use component::series_list::SeriesList;
-use component::{Component, Draw, ShouldReset};
+use component::{Component, Draw};
 use snafu::ResultExt;
 use std::mem;
 use std::ops::{Index, IndexMut};
+use std::process;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::{Constraint, Direction, Layout};
@@ -121,6 +123,33 @@ impl UIState {
     }
 }
 
+#[derive(Debug)]
+pub enum CurrentAction {
+    Idle,
+    WatchingEpisode(ProgressTime, process::Child),
+    FocusedOnMainPanel,
+    EnteringCommand,
+}
+
+impl CurrentAction {
+    #[inline(always)]
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
+impl Default for CurrentAction {
+    fn default() -> Self {
+        Self::Idle
+    }
+}
+
+impl PartialEq for CurrentAction {
+    fn eq(&self, other: &Self) -> bool {
+        mem::discriminant(self) == mem::discriminant(other)
+    }
+}
+
 struct UIWorld<'a, B: Backend> {
     backend: UIBackend<B>,
     state: UIState,
@@ -131,18 +160,11 @@ struct UIWorld<'a, B: Backend> {
 }
 
 macro_rules! capture_err {
-    ($self:ident, $result:expr, $some:expr) => {
-        match $result {
-            Ok(val) => $some(val),
-            Err(err) => $self.prompt.log.push(format!("{}", err)),
-        }
-    };
-
     ($self:ident, $result:expr) => {
         match $result {
             value @ Ok(_) => value,
             Err(err) => {
-                $self.prompt.log.push(format!("{}", err));
+                $self.prompt.log.push(&err);
                 Err(err)
             }
         }
@@ -208,22 +230,19 @@ where
     }
 
     fn tick(&mut self) {
-        macro_rules! tick {
-            ($($component:ident),+) => {
-                $(capture_err!(self, self.$component.tick(&mut self.state)).ok();)+
+        macro_rules! capture {
+            ($result:expr) => {
+                capture_err!(self, $result)
             };
         }
 
-        tick!(prompt, series_list, main_panel);
+        macro_rules! tick {
+            ($($component:ident),+) => {
+                $(capture!(self.$component.tick(&mut self.state)).ok();)+
+            };
+        }
 
-        capture_err!(
-            self,
-            self.episode_watcher.tick(&mut self.state),
-            |result| match result {
-                ShouldReset::Yes => self.state.current_action.reset(),
-                ShouldReset::No => (),
-            }
-        );
+        tick!(prompt, series_list, main_panel, episode_watcher);
     }
 
     fn draw_internal(&mut self) -> Result<()> {
@@ -259,8 +278,9 @@ where
     fn draw(&mut self) -> Result<()> {
         self.draw_internal()?;
 
-        self.prompt.after_draw(&mut self.backend);
-        self.main_panel.after_draw(&mut self.backend);
+        self.prompt.after_draw(&mut self.backend, &self.state);
+        self.series_list.after_draw(&mut self.backend, &self.state);
+        self.main_panel.after_draw(&mut self.backend, &self.state);
 
         Ok(())
     }
@@ -273,11 +293,14 @@ where
             ($result:expr) => {
                 match capture_err!(self, $result) {
                     Ok(value) => value,
-                    Err(_) => {
-                        self.state.current_action.reset();
-                        return false;
-                    }
+                    Err(_) => return false,
                 }
+            };
+        }
+
+        macro_rules! process_key {
+            ($component:ident) => {
+                capture!(self.$component.process_key(key, &mut self.state))
             };
         }
 
@@ -285,39 +308,23 @@ where
             CurrentAction::Idle => match key {
                 Key::Char('q') => return true,
                 Key::Char(key) if key == self.state.config.tui.keys.play_next_episode => {
-                    let prog_time =
-                        capture!(self.episode_watcher.begin_watching_episode(&mut self.state));
-
-                    if let Some(prog_time) = prog_time {
-                        self.state.current_action = CurrentAction::WatchingEpisode(prog_time);
-                    }
+                    capture!(self.episode_watcher.begin_watching_episode(&mut self.state))
                 }
                 Key::Char(COMMAND_KEY) => {
-                    self.state.current_action = CurrentAction::EnteringCommand;
-                    self.prompt.switch_to_command_entry();
+                    self.state.current_action = CurrentAction::EnteringCommand
                 }
-                key => {
-                    capture!(self.series_list.process_key(key, &mut self.state));
+                _ => process_key!(series_list),
+            },
+            CurrentAction::WatchingEpisode(_, _) => (),
+            CurrentAction::FocusedOnMainPanel => process_key!(main_panel),
+            CurrentAction::EnteringCommand => match self.prompt.process_key(key, &mut self.state) {
+                PromptResult::Ok => (),
+                PromptResult::HasCommand(cmd) => capture!(self.process_command(cmd)),
+                PromptResult::Error(err) => {
+                    self.prompt.log.push(err);
+                    return false;
                 }
             },
-            CurrentAction::WatchingEpisode(_) => (),
-            CurrentAction::SelectingSeries => {
-                let result = capture!(self.main_panel.process_key(key, &mut self.state));
-
-                if let ShouldReset::Yes = result {
-                    self.state.current_action.reset();
-                }
-            }
-            CurrentAction::EnteringCommand => {
-                match capture!(self.prompt.process_key(key, &mut self.state)) {
-                    KeyResult::Ok => (),
-                    KeyResult::HasCommand(cmd) => {
-                        capture!(self.process_command(cmd));
-                        self.state.current_action.reset();
-                    }
-                    KeyResult::Reset => self.state.current_action.reset(),
-                }
-            }
         }
 
         false
@@ -356,9 +363,9 @@ where
                         self.state.add_series(config, info)?;
                     }
                     InfoResult::Unconfident(info_list) => {
-                        self.state.current_action = CurrentAction::SelectingSeries;
+                        let select = SelectState::new(info_list, params, path, nickname);
                         self.main_panel
-                            .switch_to_select_series(info_list, params, path, nickname);
+                            .switch_to_select_series(select, &mut self.state);
                     }
                 }
 
@@ -472,33 +479,6 @@ where
                 Ok(())
             }
         }
-    }
-}
-
-#[derive(Debug)]
-pub enum CurrentAction {
-    Idle,
-    WatchingEpisode(ProgressTime),
-    SelectingSeries,
-    EnteringCommand,
-}
-
-impl CurrentAction {
-    #[inline(always)]
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
-}
-
-impl Default for CurrentAction {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
-
-impl PartialEq for CurrentAction {
-    fn eq(&self, other: &Self) -> bool {
-        mem::discriminant(self) == mem::discriminant(other)
     }
 }
 
