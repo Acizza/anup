@@ -306,6 +306,18 @@ impl PartialEq for EpisodeParser {
     }
 }
 
+impl<'a> Into<Cow<'a, Self>> for EpisodeParser {
+    fn into(self) -> Cow<'a, Self> {
+        Cow::Owned(self)
+    }
+}
+
+impl<'a> Into<Cow<'a, EpisodeParser>> for &'a EpisodeParser {
+    fn into(self) -> Cow<'a, EpisodeParser> {
+        Cow::Borrowed(self)
+    }
+}
+
 #[cfg(feature = "diesel-support")]
 impl<DB> FromSql<Nullable<Text>, DB> for EpisodeParser
 where
