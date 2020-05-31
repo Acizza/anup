@@ -16,7 +16,7 @@ use crate::file::TomlFile;
 use crate::series::config::SeriesConfig;
 use crate::series::entry::SeriesEntry;
 use crate::series::info::SeriesInfo;
-use crate::series::{LastWatched, Series, SeriesData, SeriesParams};
+use crate::series::{LastWatched, Series};
 use anime::remote::RemoteService;
 use chrono::Utc;
 use gumdrop::Options;
@@ -49,11 +49,6 @@ pub struct CmdOptions {
     pub matcher: Option<String>,
     #[options(no_short, help = "the path to the series")]
     pub path: Option<PathBuf>,
-    #[options(
-        no_short,
-        help = "fetch series info from AniList for use with offline mode"
-    )]
-    pub prefetch: bool,
     #[options(no_short, help = "syncronize changes made while offline to AniList")]
     pub sync: bool,
 }
@@ -70,8 +65,6 @@ fn main() {
 fn run(args: CmdOptions) -> Result<()> {
     if args.single {
         play_episode(args)
-    } else if args.prefetch {
-        prefetch(args)
     } else if args.sync {
         sync(args)
     } else {
@@ -106,49 +99,6 @@ fn init_remote(args: &CmdOptions, can_use_offline: bool) -> Result<Box<dyn Remot
         let anilist = AniList::authenticated(token)?;
         Ok(Box::new(anilist))
     }
-}
-
-fn prefetch(args: CmdOptions) -> Result<()> {
-    let desired_series = match &args.series {
-        Some(desired_series) => desired_series,
-        None => return Err(Error::MustSpecifySeriesName),
-    };
-
-    let config = Config::load_or_create()?;
-    let db = Database::open()?;
-    let params = SeriesParams::from(&args);
-
-    let cfg = match (SeriesConfig::load_by_name(&db, &desired_series), params.id) {
-        (Ok(mut cfg), _) => {
-            cfg.apply_params(&params, &config, &db)?;
-            cfg
-        }
-        (Err(_), Some(id)) => {
-            let path = match &params.path {
-                Some(path) => path.clone(),
-                None => util::closest_matching_dir(&config.series_dir, &desired_series)?,
-            };
-
-            SeriesConfig::from_params(desired_series, id, path, params, &config, &db)?
-        }
-        (Err(_), None) => return Err(Error::NewSeriesNeedsID),
-    };
-
-    let remote = init_remote(&args, false)?;
-    let remote = remote.as_ref();
-
-    let info = SeriesInfo::from_remote_by_id(cfg.id, remote)?;
-    let data = SeriesData::from_remote(cfg, info, remote)?;
-    let series = Series::new(data, &config)?;
-
-    series.save(&db)?;
-
-    println!(
-        "{} was fetched\nyou can now watch this series offline",
-        series.data.info.title_preferred
-    );
-
-    Ok(())
 }
 
 fn sync(args: CmdOptions) -> Result<()> {
