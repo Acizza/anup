@@ -1,6 +1,7 @@
 use super::Component;
 use crate::err::{self, Result};
 use crate::series::LastWatched;
+use crate::try_opt_r;
 use crate::tui::{CurrentAction, UIState};
 use chrono::{DateTime, Utc};
 use snafu::ResultExt;
@@ -20,11 +21,7 @@ impl EpisodeWatcher {
     }
 
     pub fn begin_watching_episode(&mut self, state: &mut UIState) -> Result<()> {
-        let series = match state.series.valid_selection_mut() {
-            Some(series) => series,
-            None => return Ok(()),
-        };
-
+        let series = try_opt_r!(state.series.valid_selection_mut());
         let is_diff_series = self.last_watched.set(&series.data.config.nickname);
 
         if is_diff_series {

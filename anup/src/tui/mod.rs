@@ -9,7 +9,6 @@ use crate::series::config::SeriesConfig;
 use crate::series::info::{InfoResult, InfoSelector, SeriesInfo};
 use crate::series::{LastWatched, Series, SeriesData};
 use crate::try_opt_r;
-use crate::util;
 use crate::CmdOptions;
 use anime::remote::RemoteService;
 use backend::{TermionBackend, UIBackend, UIEvent, UIEvents};
@@ -101,19 +100,12 @@ impl UIState {
     }
 
     fn init_selected_series(&mut self) -> Result<()> {
-        let selected = match self.series.selected_mut() {
-            Some(selected) => selected,
-            None => return Ok(()),
-        };
-
+        let selected = try_opt_r!(self.series.selected_mut());
         selected.ensure_loaded(&self.config, &self.db)
     }
 
     fn delete_selected_series(&mut self) -> Result<()> {
-        let series = match self.series.remove_selected() {
-            Some(series) => series,
-            None => return Ok(()),
-        };
+        let series = try_opt_r!(self.series.remove_selected());
 
         // Since we changed our selected series, we need to make sure the new one is initialized
         self.init_selected_series()?;
