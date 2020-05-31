@@ -2,7 +2,6 @@ use crate::series::info::SeriesInfo;
 use crate::series::SeriesParams;
 use crate::tui::component::{Component, Draw};
 use crate::tui::Selection;
-use std::path::PathBuf;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
@@ -12,33 +11,40 @@ use tui::widgets::{Block, Borders, List, ListState, Text};
 
 pub struct SelectSeriesPanel {
     list_state: ListState,
+    state: SelectState,
 }
 
 impl SelectSeriesPanel {
     #[inline(always)]
-    pub fn new() -> Self {
+    pub fn new(state: SelectState) -> Self {
         Self {
             list_state: ListState::default(),
+            state,
         }
+    }
+
+    #[inline(always)]
+    pub fn take_params(self) -> SeriesParams {
+        self.state.params
     }
 }
 
 impl Component for SelectSeriesPanel {
-    type State = SelectState;
+    type State = ();
     type KeyResult = KeyResult;
 
-    fn process_key(&mut self, key: Key, select: &mut Self::State) -> Self::KeyResult {
+    fn process_key(&mut self, key: Key, _: &mut Self::State) -> Self::KeyResult {
         match key {
             Key::Up => {
-                select.series_list.dec_selected();
+                self.state.series_list.dec_selected();
                 KeyResult::Ok
             }
             Key::Down => {
-                select.series_list.inc_selected();
+                self.state.series_list.inc_selected();
                 KeyResult::Ok
             }
             Key::Char('\n') => {
-                let info = match select.series_list.swap_remove_selected() {
+                let info = match self.state.series_list.swap_remove_selected() {
                     Some(info) => info,
                     None => return KeyResult::Reset,
                 };
@@ -55,10 +61,11 @@ impl<B> Draw<B> for SelectSeriesPanel
 where
     B: Backend,
 {
-    type State = SelectState;
+    type State = ();
 
-    fn draw(&mut self, select: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        let names = select
+    fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
+        let names = self
+            .state
             .series_list
             .iter()
             .map(|info| Text::raw(&info.title_preferred));
@@ -73,7 +80,7 @@ where
             .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC))
             .highlight_symbol(">");
 
-        self.list_state.select(Some(select.series_list.index()));
+        self.list_state.select(Some(self.state.series_list.index()));
 
         frame.render_stateful_widget(items, rect, &mut self.list_state);
     }
@@ -83,21 +90,16 @@ where
 pub struct SelectState {
     pub series_list: Selection<SeriesInfo>,
     pub params: SeriesParams,
-    pub path: PathBuf,
-    pub nickname: String,
 }
 
 impl SelectState {
-    pub fn new<I, S>(series_list: I, params: SeriesParams, path: PathBuf, nickname: S) -> Self
+    pub fn new<I>(series_list: I, params: SeriesParams) -> Self
     where
         I: Into<Selection<SeriesInfo>>,
-        S: Into<String>,
     {
         Self {
             series_list: series_list.into(),
             params,
-            path,
-            nickname: nickname.into(),
         }
     }
 }

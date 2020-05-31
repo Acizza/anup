@@ -1,8 +1,11 @@
-use crate::err::{self, Error};
-use crate::series::SeriesParams;
+use crate::config::Config;
+use crate::err::{self, Error, Result};
+use crate::series::UpdateParams;
 use crate::tui::component::{Component, Draw};
+use crate::tui::UIState;
 use smallvec::{smallvec, SmallVec};
 use snafu::ensure;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::result;
 use termion::event::Key;
@@ -29,10 +32,10 @@ impl CommandPrompt {
         }
     }
 
-    fn process_key(&mut self, key: Key) -> InputResult {
+    fn process_key(&mut self, key: Key, config: &Config) -> InputResult {
         match key {
             Key::Char('\n') => {
-                let command = match Command::try_from(self.buffer.as_ref()) {
+                let command = match Command::from_str(self.buffer.as_ref(), config) {
                     Ok(cmd) => cmd,
                     Err(err) => return InputResult::Error(err),
                 };
@@ -109,11 +112,11 @@ impl CommandPrompt {
 }
 
 impl Component for CommandPrompt {
-    type State = ();
+    type State = UIState;
     type KeyResult = InputResult;
 
-    fn process_key(&mut self, key: Key, _: &mut Self::State) -> Self::KeyResult {
-        self.process_key(key)
+    fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
+        self.process_key(key, &state.config)
     }
 }
 
@@ -235,6 +238,24 @@ fn split_shell_words<'a>(string: &'a str) -> SmallVec<[&'a str; 3]> {
     slices
 }
 
+fn parse_name_value_pairs<'a, I>(pairs: I) -> HashMap<String, String>
+where
+    I: IntoIterator<Item = &'a &'a str>,
+{
+    let is_quote = |c| c == '\"' || c == '\'';
+
+    pairs
+        .into_iter()
+        .filter_map(|pair| {
+            let idx = pair.find('=')?;
+            let (name, value) = pair.split_at(idx);
+            let value = value[1..].trim_matches(is_quote);
+            Some((name, value))
+        })
+        .map(|(name, value)| (name.into(), value.into()))
+        .collect()
+}
+
 macro_rules! impl_command_matching {
     ($enum_name:ident, $num_cmds:expr, $($field:pat => { name: $name:expr, usage: $usage:expr, min_args: $min_args:expr, fn: $parse_fn:expr, },)+) => {
         impl $enum_name {
@@ -244,12 +265,8 @@ macro_rules! impl_command_matching {
                     name_and_usage: concat!($name, " ", $usage),
                 },)+
             ];
-        }
 
-        impl TryFrom<&str> for $enum_name {
-            type Error = err::Error;
-
-            fn try_from(value: &str) -> result::Result<Self, Self::Error> {
+            pub fn from_str(value: &str, config: &Config) -> Result<Self> {
                 let fragments = split_shell_words(value);
 
                 ensure!(!fragments.is_empty(), err::NoCommandSpecified);
@@ -274,7 +291,7 @@ macro_rules! impl_command_matching {
                             }
                         );
 
-                        $parse_fn(args)
+                        $parse_fn(args, config)
                     },)+
                     _ => Err(err::Error::CommandNotFound {
                         command: value.into(),
@@ -288,8 +305,6 @@ macro_rules! impl_command_matching {
 /// A parsed command with its arguments.
 #[derive(Debug, Clone)]
 pub enum Command {
-    /// Add a new series with the specified nickname and series parameters.
-    Add(String, SeriesParams),
     /// Set the current remote to AniList with an optional login token.
     AniList(Option<String>),
     /// Remove the selected series from the program.
@@ -301,7 +316,7 @@ pub enum Command {
     /// Increment / decrement the watched episodes of the selected season.
     Progress(ProgressDirection),
     /// Set the parameters for the selected series.
-    Set(SeriesParams),
+    Set(UpdateParams),
     /// Syncronize the selected season to the remote service.
     SyncFromRemote,
     /// Syncronize the selected season from the remote service.
@@ -312,26 +327,12 @@ pub enum Command {
     Status(anime::remote::Status),
 }
 
-impl_command_matching!(Command, 11,
-    Add(_) => {
-        name: "add",
-        usage: "<nickname> [id=value] [path=\"value\"] [matcher=\"regex with {episode} value\"]",
-        min_args: 1,
-        fn: |args: &[&str]| {
-            let params = if args.len() > 1 {
-                SeriesParams::from_name_value_list(&args[1..])?
-            } else {
-                SeriesParams::default()
-            };
-
-            Ok(Command::Add(args[0].into(), params))
-        },
-    },
+impl_command_matching!(Command, 10,
     AniList(_) => {
         name: "anilist",
         usage: "[login token]",
         min_args: 0,
-        fn: |args: &[&str]| {
+        fn: |args: &[&str], _| {
             let token = if !args.is_empty() {
                 Some(args.join(" "))
             } else {
@@ -345,19 +346,19 @@ impl_command_matching!(Command, 11,
         name: "delete",
         usage: "",
         min_args: 0,
-        fn: |_| Ok(Command::Delete),
+        fn: |_, _| Ok(Command::Delete),
     },
     Offline => {
         name: "offline",
         usage: "",
         min_args: 0,
-        fn: |_| Ok(Command::Offline),
+        fn: |_, _| Ok(Command::Offline),
     },
     PlayerArgs(_) => {
         name: "args",
         usage: "<player args>",
         min_args: 0,
-        fn: |args: &[&str]| {
+        fn: |args: &[&str], _| {
             let args = args.iter()
                 .map(|&frag| frag.to_string())
                 .collect();
@@ -369,7 +370,7 @@ impl_command_matching!(Command, 11,
         name: "progress",
         usage: "<f, forward | b, backward>",
         min_args: 1,
-        fn: |args: &[&str]| {
+        fn: |args: &[&str], _| {
             let dir = ProgressDirection::try_from(args[0])?;
             Ok(Command::Progress(dir))
         },
@@ -378,8 +379,9 @@ impl_command_matching!(Command, 11,
         name: "set",
         usage: "[id=value] [path=\"value\"] [matcher=\"regex with {episode} value\"]",
         min_args: 1,
-        fn: |args: &[&str]| {
-            let params = SeriesParams::from_name_value_list(args)?;
+        fn: |args: &[&str], config| {
+            let mut pairs = parse_name_value_pairs(args);
+            let params = UpdateParams::from_strings(pairs.remove("id"), pairs.remove("path"), pairs.remove("matcher"), config)?;
             Ok(Command::Set(params))
         },
     },
@@ -387,19 +389,19 @@ impl_command_matching!(Command, 11,
         name: "syncfromremote",
         usage: "",
         min_args: 0,
-        fn: |_| Ok(Command::SyncFromRemote),
+        fn: |_, _| Ok(Command::SyncFromRemote),
     },
     SyncToRemote => {
         name: "synctoremote",
         usage: "",
         min_args: 0,
-        fn: |_| Ok(Command::SyncToRemote),
+        fn: |_, _| Ok(Command::SyncToRemote),
     },
     Score(_) => {
         name: "rate",
         usage: "<0-100>",
         min_args: 1,
-        fn: |args: &[&str]| {
+        fn: |args: &[&str], _| {
             let score = args[0].into();
             Ok(Command::Score(score))
         },
@@ -408,7 +410,7 @@ impl_command_matching!(Command, 11,
         name: "status",
         usage: "<w, watching | c, completed | h, hold | d, drop | p, plan | r, rewatch>",
         min_args: 1,
-        fn: |args: &[&str]| {
+        fn: |args: &[&str], _| {
             use anime::remote::Status;
 
             let status = match args[0].to_ascii_lowercase().as_ref() {
@@ -480,7 +482,7 @@ mod tests {
 
         let mut enter_command = |name: &str| {
             for ch in name.chars() {
-                match prompt.process_key(Key::Char(ch)) {
+                match prompt.process_key(Key::Char(ch), &Config::default()) {
                     InputResult::Continue => (),
                     InputResult::Done => panic!("expected {} command, got nothing", name),
                     InputResult::Command(cmd) => return cmd,

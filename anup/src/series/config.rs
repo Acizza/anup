@@ -1,63 +1,52 @@
-use super::SeriesParams;
-use crate::config::Config;
+use super::{SeriesParams, SeriesPath, UpdateParams};
 use crate::database::schema::series_configs;
 use crate::database::{self, Database};
 use crate::err::{Error, Result};
-use crate::{SERIES_EPISODE_REP, SERIES_TITLE_REP};
 use anime::local::EpisodeParser;
 use diesel::prelude::*;
-use std::borrow::Cow;
-use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Queryable, Insertable)]
 pub struct SeriesConfig {
     pub id: i32,
     pub nickname: String,
-    path: database::Path,
+    pub path: SeriesPath,
     pub episode_parser: EpisodeParser,
     pub player_args: database::PlayerArgs,
 }
 
 impl SeriesConfig {
-    pub fn from_params<S, C>(
-        nickname: S,
-        id: i32,
-        path: C,
-        params: SeriesParams,
-        config: &Config,
-        db: &Database,
-    ) -> Result<Self>
-    where
-        S: Into<String>,
-        C: Into<PathBuf>,
-    {
+    pub fn new(id: i32, params: SeriesParams, db: &Database) -> Result<Self> {
         if let Some(existing) = Self::exists(db, id) {
             return Err(Error::SeriesAlreadyExists { name: existing });
         }
 
-        let nickname = nickname.into();
-
-        let path = {
-            let source = params.path.unwrap_or_else(|| path.into());
-            config.stripped_path(source)
-        };
-
-        let episode_parser = match params.episode_parser {
-            Some(pattern) => EpisodeParser::custom_with_replacements(
-                pattern,
-                SERIES_TITLE_REP,
-                SERIES_EPISODE_REP,
-            )?,
-            None => EpisodeParser::default(),
-        };
-
         Ok(Self {
             id,
-            nickname,
-            path: path.into(),
-            episode_parser,
+            nickname: params.name,
+            path: params.path,
+            episode_parser: params.parser,
             player_args: database::PlayerArgs::new(),
         })
+    }
+
+    pub fn update(&mut self, params: UpdateParams, db: &Database) -> Result<()> {
+        if let Some(id) = params.id {
+            if let Some(existing) = Self::exists(db, id) {
+                return Err(Error::SeriesAlreadyExists { name: existing });
+            }
+
+            self.id = id;
+        }
+
+        if let Some(path) = params.path {
+            self.path = path;
+        }
+
+        if let Some(parser) = params.parser {
+            self.episode_parser = parser;
+        }
+
+        Ok(())
     }
 
     pub fn save(&self, db: &Database) -> diesel::QueryResult<usize> {
@@ -102,62 +91,6 @@ impl SeriesConfig {
             .select(nickname)
             .get_result(db.conn())
             .ok()
-    }
-
-    pub fn full_path(&self, config: &Config) -> Cow<PathBuf> {
-        if self.path.is_relative() {
-            Cow::Owned(config.series_dir.join(self.path.as_ref()))
-        } else {
-            Cow::Borrowed(&self.path)
-        }
-    }
-
-    pub fn set_path<'a, P>(&mut self, path: P, config: &Config)
-    where
-        P: Into<Cow<'a, Path>>,
-    {
-        self.path = config.stripped_path(path).into();
-    }
-
-    /// Applies the supplied `SeriesParams` to the `SeriesConfig`.
-    /// Returns a bool indicating whether or not anything was changed.
-    pub fn apply_params(
-        &mut self,
-        params: &SeriesParams,
-        config: &Config,
-        db: &Database,
-    ) -> Result<bool> {
-        let mut any_changed = false;
-
-        if let Some(id) = params.id {
-            if let Some(existing) = Self::exists(db, id) {
-                return Err(Error::SeriesAlreadyExists { name: existing });
-            }
-
-            self.id = id;
-            any_changed = true;
-        }
-
-        if let Some(path) = &params.path {
-            self.set_path(path, config);
-            any_changed = true;
-        }
-
-        if let Some(pattern) = &params.episode_parser {
-            self.episode_parser = if !pattern.is_empty() {
-                EpisodeParser::custom_with_replacements(
-                    pattern,
-                    SERIES_TITLE_REP,
-                    SERIES_EPISODE_REP,
-                )?
-            } else {
-                EpisodeParser::default()
-            };
-
-            any_changed = true;
-        }
-
-        Ok(any_changed)
     }
 }
 

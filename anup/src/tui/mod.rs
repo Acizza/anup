@@ -6,15 +6,15 @@ use crate::database::Database;
 use crate::err::{self, Error, Result};
 use crate::file::TomlFile;
 use crate::series::config::SeriesConfig;
-use crate::series::info::{InfoResult, InfoSelector, SeriesInfo};
+use crate::series::info::SeriesInfo;
 use crate::series::{LastWatched, Series, SeriesData};
 use crate::try_opt_r;
 use crate::CmdOptions;
+use anime::local::Episodes;
 use anime::remote::RemoteService;
 use backend::{TermionBackend, UIBackend, UIEvent, UIEvents};
 use chrono::Duration;
 use component::episode_watcher::{EpisodeWatcher, ProgressTime};
-use component::main_panel::select_series::SelectState;
 use component::main_panel::MainPanel;
 use component::prompt::command::Command;
 use component::prompt::log::Log;
@@ -77,9 +77,16 @@ impl UIState {
         })
     }
 
-    fn add_series(&mut self, config: SeriesConfig, info: SeriesInfo) -> Result<()> {
+    fn add_series<E>(&mut self, config: SeriesConfig, info: SeriesInfo, episodes: E) -> Result<()>
+    where
+        E: Into<Option<Episodes>>,
+    {
         let data = SeriesData::from_remote(config, info, self.remote.as_ref())?;
-        let series = Series::new(data, &self.config)?;
+
+        let series = match episodes.into() {
+            Some(episodes) => Series::with_episodes(data, episodes),
+            None => Series::new(data, &self.config)?,
+        };
 
         series.save(&self.db)?;
 
@@ -302,6 +309,7 @@ where
                 Key::Char(key) if key == self.state.config.tui.keys.play_next_episode => {
                     capture!(self.episode_watcher.begin_watching_episode(&mut self.state))
                 }
+                Key::Char('a') => capture!(self.main_panel.switch_to_add_series(&mut self.state)),
                 Key::Char(COMMAND_KEY) => {
                     self.state.current_action = CurrentAction::EnteringCommand
                 }
@@ -328,41 +336,6 @@ where
         let db = &self.state.db;
 
         match command {
-            Command::Add(nickname, params) => {
-                if remote.is_offline() {
-                    return Err(Error::MustRunOnline);
-                }
-
-                let path = match &params.path {
-                    Some(path) => path.clone(),
-                    None => util::closest_matching_dir(&config.series_dir, &nickname)?,
-                };
-
-                let info = {
-                    let sel = params.id.map_or_else(
-                        || InfoSelector::from_path_or_name(&path, &nickname, config),
-                        InfoSelector::ID,
-                    );
-
-                    SeriesInfo::from_remote(sel, remote.as_ref())?
-                };
-
-                match info {
-                    InfoResult::Confident(info) => {
-                        let config =
-                            SeriesConfig::from_params(nickname, info.id, path, params, config, db)?;
-
-                        self.state.add_series(config, info)?;
-                    }
-                    InfoResult::Unconfident(info_list) => {
-                        let select = SelectState::new(info_list, params, path, nickname);
-                        self.main_panel
-                            .switch_to_select_series(select, &mut self.state);
-                    }
-                }
-
-                Ok(())
-            }
             Command::AniList(token) => {
                 use anime::remote::anilist::AniList;
                 use anime::remote::AccessToken;
@@ -415,15 +388,9 @@ where
                 let status = try_opt_r!(self.state.series.selected_mut());
                 let remote = remote.as_ref();
 
-                if params.id.is_some() && remote.is_offline() {
-                    return Err(Error::MustBeOnlineTo {
-                        reason: "set a new series id".into(),
-                    });
-                }
-
                 match status {
                     SeriesStatus::Loaded(series) => {
-                        series.apply_params(params, config, db, remote)?;
+                        series.update(params, config, db, remote)?;
                         series.save(db)?;
                         Ok(())
                     }

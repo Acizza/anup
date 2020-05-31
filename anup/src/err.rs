@@ -118,7 +118,7 @@ pub enum Error {
     SeriesAlreadyExists { name: String },
 
     #[snafu(display("must be online to {}", reason))]
-    MustBeOnlineTo { reason: String },
+    MustBeOnlineTo { reason: &'static str },
 
     #[snafu(display("invalid score"))]
     InvalidScore,

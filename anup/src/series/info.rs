@@ -1,11 +1,10 @@
-use crate::config::Config;
+use super::SeriesPath;
 use crate::database::schema::series_info;
 use crate::database::Database;
 use crate::err::Result;
 use anime::remote::RemoteService;
 use diesel::prelude::*;
 use std::borrow::Cow;
-use std::path::Path;
 
 #[derive(Clone, Debug, Queryable, Insertable)]
 #[table_name = "series_info"]
@@ -94,14 +93,14 @@ pub enum InfoSelector {
 }
 
 impl InfoSelector {
-    pub fn from_path_or_name<'a, P, S>(path: P, name: S, config: &Config) -> Self
+    pub fn from_path_or_name<'a, P, S>(path: P, name: S) -> Self
     where
-        P: Into<Cow<'a, Path>>,
+        P: Into<Cow<'a, SeriesPath>>,
         S: Into<String>,
     {
-        let stripped = config.stripped_path(path);
+        let path = path.into();
 
-        detect::dir::parse_title(stripped.to_string_lossy())
+        detect::dir::parse_title(path.get().to_string_lossy())
             .map_or_else(|| Self::Name(name.into()), Self::Name)
     }
 }

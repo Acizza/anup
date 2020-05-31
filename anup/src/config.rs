@@ -17,20 +17,18 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new<P>(series_dir: P) -> Config
+    pub fn new<P>(series_dir: P) -> Self
     where
         P: Into<PathBuf>,
     {
-        Config {
+        Self {
             series_dir: series_dir.into(),
-            reset_dates_on_rewatch: false,
-            episode: EpisodeConfig::default(),
-            tui: TuiConfig::default(),
+            ..Default::default()
         }
     }
 
-    pub fn load_or_create() -> Result<Config> {
-        match Config::load() {
+    pub fn load_or_create() -> Result<Self> {
+        match Self::load() {
             Ok(config) => Ok(config),
             Err(ref err) if err.is_file_nonexistant() => {
                 // Fallback path is ~/anime/
@@ -55,6 +53,21 @@ impl Config {
         match path.strip_prefix(&self.series_dir) {
             Ok(stripped) => stripped.into(),
             Err(_) => path.into_owned(),
+        }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        // Default series dir is ~/anime/
+        let mut series_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("~/"));
+        series_dir.push("anime");
+
+        Self {
+            series_dir,
+            reset_dates_on_rewatch: false,
+            episode: EpisodeConfig::default(),
+            tui: TuiConfig::default(),
         }
     }
 }

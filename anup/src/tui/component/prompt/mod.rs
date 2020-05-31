@@ -40,7 +40,7 @@ impl<'a> Component for Prompt<'a> {
 
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
         match &mut state.current_action {
-            CurrentAction::EnteringCommand => match self.command.process_key(key, &mut ()) {
+            CurrentAction::EnteringCommand => match self.command.process_key(key, state) {
                 InputResult::Done => {
                     self.reset(state);
                     PromptResult::Ok

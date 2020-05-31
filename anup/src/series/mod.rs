@@ -4,21 +4,24 @@ pub mod info;
 
 use crate::config::Config;
 use crate::database::Database;
-use crate::err::{self, Result};
+use crate::err::{self, Error, Result};
 use crate::file::SaveDir;
-use crate::{try_opt_r, util, CmdOptions};
+use crate::{try_opt_r, util, SERIES_EPISODE_REP, SERIES_TITLE_REP};
 use anime::local::{EpisodeParser, Episodes};
 use anime::remote::{RemoteService, Status};
 use chrono::{DateTime, Duration, Utc};
 use config::SeriesConfig;
+use diesel::deserialize::{self, FromSql};
 use diesel::prelude::*;
+use diesel::serialize::{self, Output, ToSql};
+use diesel::sql_types::Text;
 use entry::SeriesEntry;
 use info::SeriesInfo;
-use smallvec::SmallVec;
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::{OptionExt, ResultExt};
 use std::borrow::Cow;
 use std::fs;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{self, Path, PathBuf};
 use std::process::{Command, Stdio};
 
 #[derive(Debug)]
@@ -84,16 +87,19 @@ pub struct Series {
 
 impl Series {
     pub fn new(data: SeriesData, config: &Config) -> Result<Self> {
-        let ep_path = data.config.full_path(config);
-        let episodes = Episodes::parse(ep_path.as_ref(), &data.config.episode_parser)?;
+        let episodes = Self::scan_episodes(&data, config)?;
+        Ok(Self::with_episodes(data, episodes))
+    }
 
-        Ok(Self { data, episodes })
+    #[inline(always)]
+    pub fn with_episodes(data: SeriesData, episodes: Episodes) -> Self {
+        Self { data, episodes }
     }
 
     /// Sets the specified parameters on the series and reloads any neccessary state.
-    pub fn apply_params<R>(
+    pub fn update<R>(
         &mut self,
-        params: SeriesParams,
+        params: UpdateParams,
         config: &Config,
         db: &Database,
         remote: &R,
@@ -101,21 +107,31 @@ impl Series {
     where
         R: RemoteService + ?Sized,
     {
-        let any_changed = self.data.config.apply_params(&params, config, db)?;
+        let id = params.id;
 
-        if !any_changed {
-            return Ok(());
+        if id.is_some() && remote.is_offline() {
+            return Err(Error::MustBeOnlineTo {
+                reason: "set a new series id",
+            });
         }
 
-        if let Some(id) = params.id {
-            self.data.info = SeriesInfo::from_remote_by_id(id, remote)?;
-            self.data.entry = SeriesEntry::from_remote(remote, &self.data.info)?;
+        self.data.config.update(params, db)?;
+
+        if let Some(id) = id {
+            let info = SeriesInfo::from_remote_by_id(id, remote)?;
+            let entry = SeriesEntry::from_remote(remote, &info)?;
+
+            self.data.info = info;
+            self.data.entry = entry;
         }
 
-        let path = self.data.config.full_path(config);
-        self.episodes = Episodes::parse(path.as_ref(), &self.data.config.episode_parser)?;
-
+        self.episodes = Self::scan_episodes(&self.data, config)?;
         Ok(())
+    }
+
+    fn scan_episodes(data: &SeriesData, config: &Config) -> Result<Episodes> {
+        let path = data.config.path.absolute(config);
+        Episodes::parse(path, &data.config.episode_parser).map_err(Into::into)
     }
 
     #[inline(always)]
@@ -125,16 +141,12 @@ impl Series {
 
     pub fn load_from_config(sconfig: SeriesConfig, config: &Config, db: &Database) -> Result<Self> {
         let data = SeriesData::load_from_config(db, sconfig)?;
-
-        let path = data.config.full_path(config);
-        let episodes = Episodes::parse(path.as_ref(), &data.config.episode_parser)?;
-
-        Ok(Self { data, episodes })
+        Self::new(data, config)
     }
 
     pub fn episode_path(&self, episode: u32, config: &Config) -> Option<PathBuf> {
         let episode_filename = self.episodes.get(&episode)?;
-        let mut path = self.data.config.full_path(config).into_owned();
+        let mut path = self.data.config.path.absolute(config).into_owned();
         path.push(episode_filename);
         path.canonicalize().ok()
     }
@@ -258,68 +270,85 @@ impl Series {
 
 #[derive(Clone, Debug)]
 pub struct SeriesParams {
-    pub id: Option<i32>,
-    pub path: Option<PathBuf>,
-    pub episode_parser: Option<String>,
+    pub name: String,
+    pub path: SeriesPath,
+    pub parser: EpisodeParser,
 }
 
 impl SeriesParams {
-    pub fn from_name_value_pairs(pairs: &[(&str, &str)]) -> Result<Self> {
-        let mut params = Self::default();
-
-        for &(name, value) in pairs {
-            match name.to_ascii_lowercase().as_ref() {
-                "id" => params.id = Some(value.parse()?),
-                "path" => {
-                    let path = PathBuf::from(value).canonicalize().context(err::IO)?;
-                    ensure!(path.is_dir(), err::NotADirectory);
-                    params.path = Some(path);
-                }
-                "matcher" => params.episode_parser = Some(value.to_string()),
-                _ => (),
-            }
-        }
-
-        Ok(params)
-    }
-
-    pub fn from_name_value_list<'a, I>(pairs: I) -> Result<Self>
+    pub fn new<S, P>(name: S, path: P, parser: EpisodeParser) -> Self
     where
-        I: IntoIterator<Item = &'a &'a str>,
+        S: Into<String>,
+        P: Into<SeriesPath>,
     {
-        let char_is_quote = |c| c == '\"' || c == '\'';
+        Self {
+            name: name.into(),
+            path: path.into(),
+            parser,
+        }
+    }
 
-        let pairs = pairs
-            .into_iter()
-            .filter_map(|pair| {
-                let idx = pair.find('=')?;
-                let (name, value) = pair.split_at(idx);
-                let value = value[1..].trim_matches(char_is_quote);
-                Some((name, value))
-            })
-            .collect::<SmallVec<[_; 1]>>();
+    pub fn update<'a, S, P, E>(&mut self, name: S, path: P, parser: E)
+    where
+        S: Into<Cow<'a, str>>,
+        P: Into<Cow<'a, SeriesPath>>,
+        E: Into<Cow<'a, EpisodeParser>>,
+    {
+        macro_rules! update_fields {
+            ($($field:ident)+) => {
+                $(
+                let $field = $field.into();
 
-        Self::from_name_value_pairs(&pairs)
+                if self.$field != *$field {
+                    self.$field = $field.into_owned();
+                }
+                )+
+            };
+        }
+
+        update_fields!(name path parser);
     }
 }
 
-impl Default for SeriesParams {
-    fn default() -> Self {
-        Self {
-            id: None,
-            path: None,
-            episode_parser: None,
-        }
-    }
+#[derive(Clone, Debug)]
+pub struct UpdateParams {
+    pub id: Option<i32>,
+    pub path: Option<SeriesPath>,
+    pub parser: Option<EpisodeParser>,
 }
 
-impl From<&CmdOptions> for SeriesParams {
-    fn from(args: &CmdOptions) -> Self {
-        Self {
-            id: args.series_id,
-            path: args.path.clone(),
-            episode_parser: args.matcher.clone(),
-        }
+impl UpdateParams {
+    pub fn from_strings(
+        id: Option<String>,
+        path: Option<String>,
+        parser: Option<String>,
+        config: &Config,
+    ) -> Result<Self> {
+        let id = match id {
+            Some(id) => Some(id.parse::<i32>()?),
+            None => None,
+        };
+
+        let parser = match parser {
+            Some(pattern) => {
+                let parser = if pattern.is_empty() {
+                    EpisodeParser::default()
+                } else {
+                    EpisodeParser::custom_with_replacements(
+                        pattern,
+                        SERIES_TITLE_REP,
+                        SERIES_EPISODE_REP,
+                    )?
+                };
+
+                Some(parser)
+            }
+            None => None,
+        };
+
+        let path = path.map(|path| SeriesPath::new(PathBuf::from(path), config));
+
+        Ok(Self { id, path, parser })
     }
 }
 
@@ -362,11 +391,7 @@ impl LastWatched {
     }
 
     pub fn save(&self) -> Result<()> {
-        let contents = match &self.0 {
-            Some(contents) => contents,
-            None => return Ok(()),
-        };
-
+        let contents = try_opt_r!(&self.0);
         let path = Self::validated_path()?;
         fs::write(&path, contents).context(err::FileIO { path })
     }
@@ -375,5 +400,92 @@ impl LastWatched {
         let mut path = SaveDir::LocalData.validated_dir_path()?.to_path_buf();
         path.push("last_watched");
         Ok(path)
+    }
+}
+
+#[derive(Clone, Debug, AsExpression, FromSqlRow)]
+#[sql_type = "Text"]
+pub struct SeriesPath(PathBuf);
+
+impl SeriesPath {
+    pub fn new<'a, P>(path: P, config: &Config) -> Self
+    where
+        P: Into<Cow<'a, Path>>,
+    {
+        let path = config.stripped_path(path);
+        Self(path)
+    }
+
+    pub fn absolute(&self, config: &Config) -> Cow<Path> {
+        if self.0.is_relative() {
+            Cow::Owned(config.series_dir.join(&self.0))
+        } else {
+            Cow::Borrowed(&self.0)
+        }
+    }
+
+    pub fn closest_matching<S>(name: S, config: &Config) -> Result<Self>
+    where
+        S: AsRef<str>,
+    {
+        util::closest_matching_dir(&config.series_dir, name).map(|path| Self::new(path, config))
+    }
+
+    #[inline(always)]
+    pub fn get(&self) -> &PathBuf {
+        &self.0
+    }
+
+    #[inline(always)]
+    pub fn set<'a, P>(&mut self, path: P, config: &Config)
+    where
+        P: Into<Cow<'a, Path>>,
+    {
+        self.0 = config.stripped_path(path);
+    }
+
+    #[inline(always)]
+    pub fn display(&self) -> path::Display {
+        self.0.display()
+    }
+}
+
+impl<'a> Into<Cow<'a, Self>> for SeriesPath {
+    fn into(self) -> Cow<'a, Self> {
+        Cow::Owned(self)
+    }
+}
+
+impl<'a> Into<Cow<'a, SeriesPath>> for &'a SeriesPath {
+    fn into(self) -> Cow<'a, SeriesPath> {
+        Cow::Borrowed(self)
+    }
+}
+
+impl PartialEq for SeriesPath {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<DB> FromSql<Text, DB> for SeriesPath
+where
+    DB: diesel::backend::Backend,
+    String: FromSql<Text, DB>,
+{
+    fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
+        let path = String::from_sql(bytes)?.into();
+        Ok(Self(path))
+    }
+}
+
+impl<DB> ToSql<Text, DB> for SeriesPath
+where
+    DB: diesel::backend::Backend,
+    str: ToSql<Text, DB>,
+{
+    fn to_sql<W: Write>(&self, out: &mut Output<W, DB>) -> serialize::Result {
+        let value = self.0.to_string_lossy();
+        value.to_sql(out)
     }
 }

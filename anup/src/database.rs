@@ -78,52 +78,6 @@ impl Drop for Database {
     }
 }
 
-#[derive(Clone, Debug, AsExpression, FromSqlRow)]
-#[sql_type = "Text"]
-pub struct Path(PathBuf);
-
-impl<DB> FromSql<Text, DB> for Path
-where
-    DB: diesel::backend::Backend,
-    String: FromSql<Text, DB>,
-{
-    fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
-        let path = String::from_sql(bytes)?.into();
-        Ok(Self(path))
-    }
-}
-
-impl<DB> ToSql<Text, DB> for Path
-where
-    DB: diesel::backend::Backend,
-    str: ToSql<Text, DB>,
-{
-    fn to_sql<W: Write>(&self, out: &mut Output<W, DB>) -> serialize::Result {
-        let value = self.0.to_string_lossy();
-        value.to_sql(out)
-    }
-}
-
-impl AsRef<std::path::Path> for Path {
-    fn as_ref(&self) -> &std::path::Path {
-        &self.0
-    }
-}
-
-impl From<PathBuf> for Path {
-    fn from(value: PathBuf) -> Self {
-        Self(value)
-    }
-}
-
-impl Deref for Path {
-    type Target = PathBuf;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 #[derive(Clone, Debug, Default, AsExpression, FromSqlRow)]
 #[sql_type = "Text"]
 pub struct PlayerArgs(SmallVec<[String; 3]>);
