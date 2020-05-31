@@ -99,6 +99,12 @@ impl EpisodeRegex {
     }
 }
 
+impl PartialEq for EpisodeRegex {
+    fn eq(&self, other: &Self) -> bool {
+        self.get().as_str() == other.get().as_str()
+    }
+}
+
 #[cfg(feature = "diesel-support")]
 impl<DB> FromSql<Text, DB> for EpisodeRegex
 where
@@ -286,6 +292,17 @@ impl EpisodeParser {
 impl Default for EpisodeParser {
     fn default() -> Self {
         Self::Default
+    }
+}
+
+impl PartialEq for EpisodeParser {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Default, Self::Default) => true,
+            (Self::Default, Self::Custom(_)) => false,
+            (Self::Custom(_), Self::Default) => false,
+            (Self::Custom(pat1), Self::Custom(pat2)) => pat1 == pat2,
+        }
     }
 }
 
