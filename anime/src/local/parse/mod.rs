@@ -430,6 +430,7 @@ mod tests {
             ),
             cus("[Header 1] Series 2 Title - 12 [10].mkv", "Series 2 Title"),
             cus("[Header 1] Series Title 02 - 12.mkv", "Series Title 02"),
+            cus("[Header 1] Series Title 2 12", "Series Title 2"),
             def("12 Series Title.mkv"),
             def("S01E12 - Series Title.mkv"),
             def("E12 - Series Title.mkv"),
