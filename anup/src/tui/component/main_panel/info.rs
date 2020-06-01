@@ -69,23 +69,13 @@ impl InfoPanel {
                 frame.render_widget(header_pg, info_layout[0]);
 
                 let body = [Text::raw(
-                    "Add one by pressing ':' and using the 'add' command \
+                    "Add one by pressing the 'a' key\
 
-                    \n\nThe command requires a nickname for the series \
-                    \nyou want to add. For automatic detection, the nickname \
-                    \nshould be similar to the name of the folder the series \
-                    \nis in on disk. Any tags in the series folder name \
-                    \nshould not affect the detection algorithm. \
-
-                    \n\nIf you don't care about automatic detection, \
-                    \nyou can set the ID of the series by appending 'id=<value>' \
-                    \nto the 'add' command and use any nickname you wish. \
-
-                    \n\nBy default, the program will look for series in '~/anime/'. \
-                    \nYou can change this in `~/.config/anup/config.toml`. \
-                    \nYou can also manually specify the path to a series by appending \
-                    \n'path=\"<value>\"' to the 'add' command when adding a new series, \
-                    \nor the 'set' command when modifying an existing one.",
+                    \n\nThe opened panel will require you to specify\
+                    \n a name for the series you want to add.\
+                    \n\nFor automatic detection, the name should be\
+                    \nsimilar to the name of the folder the series\
+                    \nis in on disk.",
                 )];
 
                 let body_pg = Paragraph::new(body.iter())
