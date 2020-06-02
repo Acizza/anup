@@ -103,11 +103,8 @@ impl InfoSelector {
         S: Into<String>,
     {
         use anime::local::detect::dir;
-
         let path = path.into();
-
-        dir::parse_title(path.get().to_string_lossy())
-            .map_or_else(|| Self::Name(name.into()), Self::Name)
+        dir::parse_title(path.get()).map_or_else(|| Self::Name(name.into()), Self::Name)
     }
 }
 

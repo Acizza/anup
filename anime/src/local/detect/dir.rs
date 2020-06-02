@@ -1,6 +1,9 @@
-use once_cell::sync::Lazy;
-use regex::Regex;
+use super::common::{replace_whitespace, tags, whitespace, INVALID_TITLE_CHARS};
+use nom::bytes::complete::take_while;
+use nom::sequence::tuple;
+use nom::IResult;
 use std::fs::DirEntry;
+use std::path::Path;
 
 #[inline]
 pub fn closest_match<I, S>(name: S, min_confidence: f32, items: I) -> Option<DirEntry>
@@ -12,7 +15,7 @@ where
     name.make_ascii_lowercase();
 
     crate::closest_match(items, min_confidence, |dir| {
-        let mut dir_name = parse_title(dir.file_name().to_string_lossy())?;
+        let mut dir_name = parse_title(dir.file_name())?;
         dir_name.make_ascii_lowercase();
 
         Some(strsim::jaro(&dir_name, &name) as f32)
@@ -23,15 +26,17 @@ where
 #[inline]
 pub fn parse_title<S>(dir: S) -> Option<String>
 where
-    S: AsRef<str>,
+    S: AsRef<Path>,
 {
-    // This pattern parses titles out of strings like this:
-    // [GroupName] Series Title (01-13) [1080p]
-    static TITLE_REGEX: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"(?:\[.+?\]\s*)?(?P<title>.+?)(?:\(|\[|$)").unwrap());
+    let dir = dir.as_ref();
+    let dir_name = dir.file_name()?.to_string_lossy();
 
-    let caps = TITLE_REGEX.captures(dir.as_ref())?;
-    let title = caps["title"].to_string();
+    let (_, (_, _, parsed)) = tuple((tags, whitespace, title))(&dir_name).ok()?;
+    let parsed = replace_whitespace(parsed);
 
-    Some(title)
+    Some(parsed)
+}
+
+fn title(input: &str) -> IResult<&str, &str> {
+    take_while(|ch| !INVALID_TITLE_CHARS.contains(&(ch as u8)))(input)
 }

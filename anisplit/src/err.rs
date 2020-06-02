@@ -48,9 +48,6 @@ pub enum Error {
     #[snafu(display("missing group \"{}\" in name format", group))]
     MissingFormatGroup { group: String },
 
-    #[snafu(display("directory has no name"))]
-    NoDirName,
-
     #[snafu(display("specified path has no parent directory"))]
     NoDirParent,
 

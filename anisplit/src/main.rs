@@ -410,12 +410,9 @@ where
     P: AsRef<Path>,
 {
     let path = path.as_ref();
-
     ensure!(path.is_dir(), err::NotADirectory);
 
-    let fname = path.file_name().context(err::NoDirName)?.to_string_lossy();
-    let title = detect::dir::parse_title(fname).context(err::FolderTitleParse)?;
-
+    let title = detect::dir::parse_title(path).context(err::FolderTitleParse)?;
     Ok(title)
 }
 

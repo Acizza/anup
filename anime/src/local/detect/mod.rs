@@ -1,5 +1,7 @@
 pub mod dir;
-mod episode;
+pub mod episode;
+
+mod common;
 
 use crate::err::{self, Error, Result};
 use regex::Regex;
@@ -515,6 +517,32 @@ mod tests {
                     parsed.title, parsed.episode, format
                 ),
                 Err(_) => (),
+            }
+        }
+    }
+
+    #[test]
+    fn title_detection() {
+        let def = ExpectedTitle::Default;
+        let cus = ExpectedTitle::Custom;
+
+        let titles = vec![
+            def("Series Title"),
+            def("[Tag 1] Series Title (01-13)"),
+            def("[Tag 1] Series Title (01-13) [Tag 2]"),
+            cus("[Tag 1] Series - Title (01-13) [Tag 2]", "Series - Title"),
+            def("[Tag.1].Series.Title.(01-13).[Tag.2]"),
+        ];
+
+        for title in titles {
+            match dir::parse_title(title.fmt()) {
+                Some(parsed) => assert_eq!(
+                    parsed,
+                    title.expected(),
+                    "parsed title mismatch: {}",
+                    title.fmt()
+                ),
+                None => panic!("failed to parse title: {}", title.fmt()),
             }
         }
     }
