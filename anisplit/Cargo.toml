@@ -6,6 +6,5 @@ edition = "2018"
 
 [dependencies]
 anime = { path = "../anime" }
-detect = { path = "../detect" }
 gumdrop = "~0.8.0"
 snafu = "~0.6.0"

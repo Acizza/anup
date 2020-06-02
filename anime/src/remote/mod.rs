@@ -84,6 +84,27 @@ pub struct SeriesInfo {
     pub sequel: Option<u32>,
 }
 
+impl SeriesInfo {
+    #[inline]
+    pub fn closest_match<'a, I, S>(
+        name: S,
+        min_confidence: f32,
+        items: I,
+    ) -> Option<(usize, Cow<'a, Self>)>
+    where
+        I: Iterator<Item = Cow<'a, Self>>,
+        S: Into<String>,
+    {
+        let mut name = name.into();
+        name.make_ascii_lowercase();
+
+        crate::closest_match(items, min_confidence, |info| {
+            let title = info.title.romaji.to_ascii_lowercase();
+            Some(strsim::jaro_winkler(&title, &name) as f32)
+        })
+    }
+}
+
 impl<'a> Into<Cow<'a, Self>> for SeriesInfo {
     fn into(self) -> Cow<'a, Self> {
         Cow::Owned(self)

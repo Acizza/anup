@@ -1,5 +1,6 @@
 mod err;
 
+use anime::local::detect;
 use anime::local::{EpisodeParser, Episodes};
 use anime::remote::anilist::AniList;
 use anime::remote::{RemoteService, SeriesInfo};
@@ -422,6 +423,8 @@ fn find_series_info<S>(args: &CmdOptions, title: S, remote: &AniList) -> Result<
 where
     S: AsRef<str>,
 {
+    const MIN_CONFIDENCE: f32 = 0.85;
+
     match args.series_id {
         Some(id) => {
             let info = remote.search_info_by_id(id)?;
@@ -431,7 +434,7 @@ where
             let title = title.as_ref();
             let results = remote.search_info_by_name(title)?.map(Cow::Owned);
 
-            detect::series_info::closest_match(results, title)
+            SeriesInfo::closest_match(title, MIN_CONFIDENCE, results)
                 .map(|(_, info)| info.into_owned())
                 .context(err::UnableToDetectSeries { title })
         }

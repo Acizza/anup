@@ -440,7 +440,7 @@ impl Command {
     fn best_matching_cmd_info(name: &str) -> Option<&'static CommandInfo> {
         const MIN_CONFIDENCE: f32 = 0.7;
 
-        detect::closest_match(&Command::COMMANDS, MIN_CONFIDENCE, |cmd| {
+        anime::closest_match(&Command::COMMANDS, MIN_CONFIDENCE, |cmd| {
             Some(strsim::jaro_winkler(&cmd.name, name) as f32)
         })
         .map(|(_, cmd)| cmd)

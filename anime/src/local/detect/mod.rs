@@ -1,3 +1,4 @@
+pub mod dir;
 mod episode;
 
 use crate::err::{self, Error, Result};

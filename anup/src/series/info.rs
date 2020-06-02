@@ -3,6 +3,7 @@ use crate::database::schema::series_info;
 use crate::database::Database;
 use crate::err::Result;
 use anime::remote::RemoteService;
+use anime::remote::SeriesInfo as RemoteInfo;
 use diesel::prelude::*;
 use std::borrow::Cow;
 
@@ -57,10 +58,13 @@ impl SeriesInfo {
         S: Into<String>,
         R: RemoteService + ?Sized,
     {
+        const MIN_CONFIDENCE: f32 = 0.85;
+
         let name = name.into();
 
         let mut results = remote.search_info_by_name(&name)?.collect::<Vec<_>>();
-        let found = detect::series_info::closest_match(results.iter().map(Cow::Borrowed), name);
+        let found =
+            RemoteInfo::closest_match(name, MIN_CONFIDENCE, results.iter().map(Cow::Borrowed));
 
         match found {
             Some((best_match, _)) => {
@@ -98,9 +102,11 @@ impl InfoSelector {
         P: Into<Cow<'a, SeriesPath>>,
         S: Into<String>,
     {
+        use anime::local::detect::dir;
+
         let path = path.into();
 
-        detect::dir::parse_title(path.get().to_string_lossy())
+        dir::parse_title(path.get().to_string_lossy())
             .map_or_else(|| Self::Name(name.into()), Self::Name)
     }
 }

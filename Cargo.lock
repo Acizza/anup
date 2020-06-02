@@ -26,11 +26,13 @@ dependencies = [
  "chrono",
  "diesel",
  "nom",
+ "once_cell",
  "regex",
  "serde",
  "serde_derive",
  "serde_json",
  "snafu",
+ "strsim",
  "ureq",
 ]
 
@@ -39,7 +41,6 @@ name = "anisplit"
 version = "0.1.0"
 dependencies = [
  "anime",
- "detect",
  "gumdrop",
  "snafu",
 ]
@@ -50,7 +51,6 @@ version = "0.0.0"
 dependencies = [
  "anime",
  "chrono",
- "detect",
  "diesel",
  "dirs",
  "gumdrop",
@@ -206,17 +206,6 @@ dependencies = [
  "autocfg",
  "cfg-if",
  "lazy_static",
-]
-
-[[package]]
-name = "detect"
-version = "0.1.0"
-dependencies = [
- "anime",
- "once_cell",
- "regex",
- "snafu",
- "strsim",
 ]
 
 [[package]]

@@ -5,8 +5,9 @@ pub mod info;
 use crate::config::Config;
 use crate::database::Database;
 use crate::err::{self, Error, Result};
+use crate::file;
 use crate::file::SaveDir;
-use crate::{try_opt_r, util, SERIES_EPISODE_REP, SERIES_TITLE_REP};
+use crate::{try_opt_r, SERIES_EPISODE_REP, SERIES_TITLE_REP};
 use anime::local::{EpisodeParser, Episodes};
 use anime::remote::{RemoteService, Status};
 use chrono::{DateTime, Duration, Utc};
@@ -428,7 +429,17 @@ impl SeriesPath {
     where
         S: AsRef<str>,
     {
-        util::closest_matching_dir(&config.series_dir, name).map(|path| Self::new(path, config))
+        use anime::local::detect::dir;
+
+        const MIN_CONFIDENCE: f32 = 0.6;
+
+        let name = name.as_ref();
+        let files = file::read_dir(&config.series_dir)?;
+
+        dir::closest_match(name, MIN_CONFIDENCE, files.into_iter()).map_or_else(
+            || Err(Error::NoMatchingSeriesOnDisk { name: name.into() }),
+            |dir| Ok(Self::new(dir.path(), config)),
+        )
     }
 
     #[inline(always)]

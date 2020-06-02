@@ -1,4 +1,4 @@
-mod detect;
+pub mod detect;
 
 pub use detect::{EpisodeParser, EpisodeRegex, ParsedEpisode};
 
