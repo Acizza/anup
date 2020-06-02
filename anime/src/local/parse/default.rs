@@ -32,7 +32,7 @@ pub mod title_and_episode {
         let input = input.as_ref().chars().rev().collect::<String>();
 
         let (_, (_, _, (title, episode))) =
-            tuple((opt(tags), whitespace, title_and_episode))(&input).ok()?;
+            tuple((tags, whitespace, title_and_episode))(&input).ok()?;
 
         let title = title.chars().rev().collect::<String>();
         let cleaned = replace_whitespace(title);
@@ -112,7 +112,7 @@ pub mod episode_and_title {
         let input = input.as_ref();
 
         let (_, (_, _, (episode, title))) =
-            tuple((opt(tags), whitespace, episode_and_title))(input).ok()?;
+            tuple((tags, whitespace, episode_and_title))(input).ok()?;
 
         let title = replace_whitespace(title);
 
