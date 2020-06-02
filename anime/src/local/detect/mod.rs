@@ -1,4 +1,4 @@
-mod default;
+mod episode;
 
 use crate::err::{self, Error, Result};
 use regex::Regex;
@@ -240,8 +240,8 @@ impl EpisodeParser {
             filename = &filename[..index];
         }
 
-        let (title, ep_num) = default::title_and_episode::parse(filename)
-            .or_else(|| default::episode_and_title::parse(filename))
+        let (title, ep_num) = episode::title_and_episode::parse(filename)
+            .or_else(|| episode::episode_and_title::parse(filename))
             .context(err::EpisodeParseFailed { filename })?;
 
         Ok(ParsedEpisode::new(Some(title), ep_num))

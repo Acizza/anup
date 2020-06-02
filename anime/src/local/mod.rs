@@ -1,6 +1,6 @@
-mod parse;
+mod detect;
 
-pub use parse::{EpisodeParser, EpisodeRegex, ParsedEpisode};
+pub use detect::{EpisodeParser, EpisodeRegex, ParsedEpisode};
 
 use crate::err::{self, Result};
 use snafu::{ensure, ResultExt};
