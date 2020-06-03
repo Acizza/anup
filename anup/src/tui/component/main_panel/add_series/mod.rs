@@ -115,10 +115,7 @@ impl AddSeriesPanel {
         macro_rules! info_label {
             ($label:expr, $value:expr, $rect:expr) => {{
                 let label = concat!($label, "\n");
-                let text = [
-                    bold_header(label),
-                    Text::styled($value, Style::default().modifier(Modifier::ITALIC)),
-                ];
+                let text = [bold_header(label), $value];
 
                 let widget = Paragraph::new(text.iter())
                     .wrap(false)
@@ -153,14 +150,20 @@ impl AddSeriesPanel {
             return;
         }
 
-        let (params, episodes) = try_opt_ret!(&self.series_builder.params);
+        let built = try_opt_ret!(&self.series_builder.params);
 
         info_label!(
             "Relative Path",
-            format!("{}", params.path.display()),
+            italic(format!("{}", built.params.path.display())),
             fields[0]
         );
-        info_label!("Episodes", episodes.len().to_string(), fields[1]);
+
+        let episodes_text = match &built.found_episodes {
+            Some(text) => italic(text),
+            None => italic_with("none", |s| s.fg(Color::Yellow)),
+        };
+
+        info_label!("Found Episodes", episodes_text, fields[1]);
     }
 }
 
@@ -251,7 +254,7 @@ pub enum AddSeriesResult {
 }
 
 struct SeriesBuilder {
-    params: Option<(SeriesParams, Episodes)>,
+    params: Option<BuiltSeriesParams>,
 }
 
 impl SeriesBuilder {
@@ -284,24 +287,27 @@ impl SeriesBuilder {
         let name = inputs.name.parsed_value();
 
         match &mut self.params {
-            Some((params, cur_episodes)) => {
-                params.update(name, path, parser);
-                *cur_episodes = episodes;
+            Some(built) => {
+                built.params.update(name, path, parser);
+                built.set_episodes(episodes);
                 Ok(())
             }
             None => {
                 let params = SeriesParams::new(name, path, parser.clone());
-                self.params = Some((params, episodes));
+                let built = BuiltSeriesParams::new(params, episodes);
+                self.params = Some(built);
                 Ok(())
             }
         }
     }
 
     fn build(&mut self, inputs: &InputSet, state: &UIState) -> Result<PartialSeries> {
-        let (params, episodes) = match self.update(inputs, state) {
+        let built = match self.update(inputs, state) {
             Ok(_) => mem::take(&mut self.params).unwrap(),
             Err(err) => return Err(err),
         };
+
+        let params = built.params;
 
         let info = {
             let id = inputs.id.parsed_value();
@@ -315,7 +321,81 @@ impl SeriesBuilder {
 
         let params = SeriesParams::new(params.name, params.path, params.parser);
 
-        Ok(PartialSeries::new(info, params, episodes))
+        Ok(PartialSeries::new(info, params, built.episodes))
+    }
+}
+
+struct BuiltSeriesParams {
+    params: SeriesParams,
+    episodes: Episodes,
+    found_episodes: Option<String>,
+}
+
+impl BuiltSeriesParams {
+    fn new(params: SeriesParams, episodes: Episodes) -> Self {
+        let found_episodes = Self::episode_range_str(&episodes);
+
+        Self {
+            params,
+            episodes,
+            found_episodes,
+        }
+    }
+
+    fn set_episodes(&mut self, episodes: Episodes) {
+        self.episodes = episodes;
+        self.found_episodes = Self::episode_range_str(&self.episodes);
+    }
+
+    /// Build a string that displays ranges and holes within a set of episodes.
+    /// A hole is considered to be an episode that is not sequential.
+    fn episode_range_str(episodes: &Episodes) -> Option<String> {
+        use std::ops::Range;
+
+        const RANGE_SEPARATOR: char = '-';
+        const HOLE_SEPARATOR: char = '|';
+
+        fn push_range(result: &mut String, range: Range<u32>) {
+            result.push_str(&range.start.to_string());
+
+            if range.end != range.start {
+                result.push(RANGE_SEPARATOR);
+                result.push_str(&range.end.to_string());
+            }
+        }
+
+        if episodes.is_empty() {
+            return None;
+        }
+
+        // Having sorted episode numbers allows us to very easily find the next hole
+        let episode_nums = {
+            let mut nums = episodes.keys().cloned().collect::<Vec<_>>();
+            nums.sort_unstable();
+            nums
+        };
+
+        if episode_nums.len() < 2 {
+            return Some(episode_nums[0].to_string());
+        }
+
+        let mut result = String::new();
+        let mut range = episode_nums[0]..episode_nums[0];
+
+        for &num in &episode_nums[1..] {
+            if num - range.end > 1 {
+                push_range(&mut result, range);
+                result.push(HOLE_SEPARATOR);
+                range = num..num;
+
+                continue;
+            }
+
+            range.end = num;
+        }
+
+        push_range(&mut result, range);
+        Some(result)
     }
 }
 
@@ -333,4 +413,81 @@ where
 #[inline(always)]
 fn bold_header(header: &str) -> Text {
     bold_header_with(header, |s| s)
+}
+
+#[inline(always)]
+fn italic_with<'a, S, F>(text: S, extra_style: F) -> Text<'a>
+where
+    S: Into<Cow<'a, str>>,
+    F: FnOnce(Style) -> Style,
+{
+    Text::styled(
+        text,
+        extra_style(Style::default().modifier(Modifier::ITALIC)),
+    )
+}
+
+#[inline(always)]
+fn italic<'a, S>(text: S) -> Text<'a>
+where
+    S: Into<Cow<'a, str>>,
+{
+    italic_with(text, |s| s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anime::local::EpisodeMap;
+    use std::ops::RangeInclusive;
+
+    fn insert_range(map: &mut EpisodeMap, range: RangeInclusive<u32>) {
+        for i in range {
+            map.insert(i, String::new());
+        }
+    }
+
+    macro_rules! episodes {
+        () => {{
+            use std::collections::HashMap;
+            Episodes::new(HashMap::new())
+        }};
+
+        ($($range:expr),+) => {{
+            use std::collections::HashMap;
+
+            let mut episodes = HashMap::new();
+            $(
+            insert_range(&mut episodes, $range);
+            )+
+            Episodes::new(episodes)
+        }};
+    }
+
+    #[test]
+    fn found_episodes_str_detection() {
+        let test_sets = vec![
+            (episodes!(), None),
+            (episodes!(6..=6), Some("6")),
+            (episodes!(1..=6, 12..=16), Some("1-6|12-16")),
+            (episodes!(1..=1), Some("1")),
+            (episodes!(1..=2), Some("1-2")),
+            (episodes!(1..=6, 8..=9), Some("1-6|8-9")),
+            (episodes!(2..=2, 6..=12), Some("2|6-12")),
+            (episodes!(1..=12, 14..=14), Some("1-12|14")),
+            (
+                episodes!(1..=12, 16..=24, 32..=48),
+                Some("1-12|16-24|32-48"),
+            ),
+            (episodes!(1..=12, 16..=16, 24..=32), Some("1-12|16|24-32")),
+            (episodes!(2..=2, 6..=6, 12..=12), Some("2|6|12")),
+        ];
+
+        for (episodes, expected) in test_sets {
+            match BuiltSeriesParams::episode_range_str(&episodes) {
+                Some(result) => assert_eq!(Some(result.as_str()), expected),
+                None => assert_eq!(None, expected),
+            }
+        }
+    }
 }
