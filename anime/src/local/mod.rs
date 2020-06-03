@@ -9,7 +9,7 @@ use std::fs;
 use std::ops::Deref;
 use std::path::Path;
 
-type EpisodeMap = HashMap<u32, String>;
+pub type EpisodeMap = HashMap<u32, String>;
 
 /// A mapping between episode numbers and their filename.
 #[derive(Debug, Default)]
