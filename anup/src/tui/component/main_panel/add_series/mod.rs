@@ -364,34 +364,29 @@ impl BuiltSeriesParams {
             }
         }
 
-        if episodes.is_empty() {
-            return None;
-        }
+        if episodes.len() < 2 {
+            if episodes.is_empty() {
+                return None;
+            }
 
-        // Having sorted episode numbers allows us to very easily find the next hole
-        let episode_nums = {
-            let mut nums = episodes.keys().cloned().collect::<Vec<_>>();
-            nums.sort_unstable();
-            nums
-        };
-
-        if episode_nums.len() < 2 {
-            return Some(episode_nums[0].to_string());
+            return Some(episodes[0].number.to_string());
         }
 
         let mut result = String::new();
-        let mut range = episode_nums[0]..episode_nums[0];
+        let mut range = episodes[0].number..episodes[0].number;
 
-        for &num in &episode_nums[1..] {
-            if num - range.end > 1 {
+        for episode in &episodes[1..] {
+            let ep_num = episode.number;
+
+            if ep_num - range.end > 1 {
                 push_range(&mut result, range);
                 result.push(HOLE_SEPARATOR);
-                range = num..num;
+                range = ep_num..ep_num;
 
                 continue;
             }
 
-            range.end = num;
+            range.end = ep_num;
         }
 
         push_range(&mut result, range);
@@ -438,29 +433,26 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anime::local::EpisodeMap;
+    use anime::local::Episode;
     use std::ops::RangeInclusive;
 
-    fn insert_range(map: &mut EpisodeMap, range: RangeInclusive<u32>) {
+    fn insert_range(list: &mut Vec<Episode>, range: RangeInclusive<u32>) {
         for i in range {
-            map.insert(i, String::new());
+            list.push(Episode::new(i, String::new()));
         }
     }
 
     macro_rules! episodes {
         () => {{
-            use std::collections::HashMap;
-            Episodes::new(HashMap::new())
+            Episodes::with_sorted(Vec::new())
         }};
 
         ($($range:expr),+) => {{
-            use std::collections::HashMap;
-
-            let mut episodes = HashMap::new();
+            let mut episodes = Vec::new();
             $(
             insert_range(&mut episodes, $range);
             )+
-            Episodes::new(episodes)
+            Episodes::with_sorted(episodes)
         }};
     }
 

@@ -313,15 +313,15 @@ impl PendingActions {
         let mut has_any_episodes = false;
 
         for real_ep_num in (1 + episode_offset)..=(episode_offset + info.episodes) {
-            let original_filename = match episodes.get(&real_ep_num) {
-                Some(filename) => {
+            let episode = match episodes.get(real_ep_num) {
+                Some(episode) => {
                     has_any_episodes = true;
-                    filename
+                    episode
                 }
                 None => continue,
             };
 
-            let episode_path = data.path.join(original_filename);
+            let episode_path = data.path.join(&episode.filename);
 
             let new_filename = data
                 .name_format

@@ -4,26 +4,64 @@ pub use detect::{EpisodeParser, EpisodeRegex, ParsedEpisode};
 
 use crate::err::{self, Result};
 use snafu::{ensure, ResultExt};
+use std::cmp::{Ord, Ordering, PartialOrd};
 use std::collections::HashMap;
 use std::fs;
 use std::ops::Deref;
 use std::path::Path;
 
-pub type EpisodeMap = HashMap<u32, String>;
+/// An episode on disk.
+#[derive(Debug)]
+pub struct Episode {
+    pub number: u32,
+    pub filename: String,
+}
 
-/// A mapping between episode numbers and their filename.
+impl Episode {
+    #[inline(always)]
+    pub fn new(number: u32, filename: String) -> Self {
+        Self { number, filename }
+    }
+}
+
+impl Ord for Episode {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.number.cmp(&other.number)
+    }
+}
+
+impl PartialOrd for Episode {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Episode {
+    fn eq(&self, other: &Self) -> bool {
+        self.number == other.number
+    }
+}
+
+impl Eq for Episode {}
+
+/// A list of episodes on disk.
 #[derive(Debug, Default)]
-pub struct Episodes(EpisodeMap);
+pub struct Episodes(Vec<Episode>);
 
 impl Episodes {
+    /// Create a new `Episodes` struct with the specified `episodes`.
+    ///
+    /// This function assumes that `episodes` is sorted by episode number.
+    /// Expect issues with the [get()](#method.get) method if they are in fact not sorted.
     #[inline(always)]
-    pub fn new(episodes: EpisodeMap) -> Self {
+    pub fn with_sorted(episodes: Vec<Episode>) -> Self {
         Self(episodes)
     }
 
     /// Find all series and episodes in `dir` with the specified `parser`.
     ///
     /// The matcher must have the title group specified, or a `NeedTitleGroup` error will be returned.
+    /// The returned episodes are also guaranteed to be sorted.
     pub fn parse_all<P>(dir: P, parser: &EpisodeParser) -> Result<HashMap<String, Self>>
     where
         P: AsRef<Path>,
@@ -35,22 +73,29 @@ impl Episodes {
         Self::parse_eps_in_dir_with(dir, parser, |parsed, filename| {
             let entry = results
                 .entry(parsed.title.unwrap())
-                .or_insert_with(|| Self::new(HashMap::with_capacity(13)));
+                .or_insert_with(|| Self(Vec::with_capacity(13)));
 
-            entry.0.insert(parsed.episode, filename);
+            entry.0.push(Episode::new(parsed.episode, filename));
             Ok(())
         })?;
+
+        for series in results.values_mut() {
+            series.0.sort_unstable();
+            series.0.dedup();
+        }
 
         Ok(results)
     }
 
     /// Find the first matching series episodes in `dir` with the specified `parser`.
+    ///
+    /// The returned episodes are guaranteed to be sorted.
     pub fn parse<P>(dir: P, parser: &EpisodeParser) -> Result<Self>
     where
         P: AsRef<Path>,
     {
         let mut last_title: Option<String> = None;
-        let mut results = HashMap::with_capacity(13);
+        let mut results = Vec::with_capacity(13);
 
         Self::parse_eps_in_dir_with(dir, parser, |parsed, filename| {
             if let Some(series_name) = parsed.title {
@@ -66,11 +111,14 @@ impl Episodes {
                 }
             }
 
-            results.insert(parsed.episode, filename);
+            results.push(Episode::new(parsed.episode, filename));
             Ok(())
         })?;
 
-        Ok(Self::new(results))
+        results.sort_unstable();
+        results.dedup();
+
+        Ok(Self(results))
     }
 
     fn parse_eps_in_dir_with<P, F>(dir: P, parser: &EpisodeParser, mut inserter: F) -> Result<()>
@@ -103,10 +151,19 @@ impl Episodes {
 
         Ok(())
     }
+
+    /// Get a reference to the episode with the specified `number`.
+    #[inline]
+    pub fn get(&self, number: u32) -> Option<&Episode> {
+        self.0
+            .binary_search_by_key(&number, |episode| episode.number)
+            .ok()
+            .map(|index| &self.0[index])
+    }
 }
 
 impl Deref for Episodes {
-    type Target = HashMap<u32, String>;
+    type Target = Vec<Episode>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

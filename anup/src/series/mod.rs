@@ -145,10 +145,10 @@ impl Series {
         Self::new(data, config)
     }
 
-    pub fn episode_path(&self, episode: u32, config: &Config) -> Option<PathBuf> {
-        let episode_filename = self.episodes.get(&episode)?;
+    pub fn episode_path(&self, ep_num: u32, config: &Config) -> Option<PathBuf> {
+        let episode = self.episodes.get(ep_num)?;
         let mut path = self.data.config.path.absolute(config).into_owned();
-        path.push(episode_filename);
+        path.push(&episode.filename);
         path.canonicalize().ok()
     }
 
