@@ -99,7 +99,7 @@ impl AniList {
 }
 
 impl RemoteService for AniList {
-    fn search_info_by_name(&self, name: &str) -> Result<Box<dyn Iterator<Item = SeriesInfo>>> {
+    fn search_info_by_name(&self, name: &str) -> Result<Vec<SeriesInfo>> {
         let entries: Vec<Media> = query!(
             None,
             "info_by_name",
@@ -107,8 +107,8 @@ impl RemoteService for AniList {
             "data" => "Page" => "media"
         )?;
 
-        let entries = entries.into_iter().map(|entry| entry.into());
-        Ok(Box::new(entries))
+        let entries = entries.into_iter().map(|entry| entry.into()).collect();
+        Ok(entries)
     }
 
     fn search_info_by_id(&self, id: SeriesID) -> Result<SeriesInfo> {

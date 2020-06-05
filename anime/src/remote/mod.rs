@@ -41,9 +41,8 @@ impl Remote {
 /// Core functionality to interact with an anime tracking service.
 #[enum_dispatch(Remote)]
 pub trait RemoteService: ScoreParser {
-    // TODO: convert return type to impl Iterator when associated type defaults are stable  (https://github.com/rust-lang/rust/issues/29661)
     /// Search for an anime's information by title and return all of the matches.
-    fn search_info_by_name(&self, name: &str) -> Result<Box<dyn Iterator<Item = SeriesInfo>>>;
+    fn search_info_by_name(&self, name: &str) -> Result<Vec<SeriesInfo>>;
 
     /// Get an anime's information by its ID.
     /// Note that the ID will differ from service to service.

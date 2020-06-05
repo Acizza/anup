@@ -429,7 +429,10 @@ where
         }
         None => {
             let title = title.as_ref();
-            let results = remote.search_info_by_name(title)?.map(Cow::Owned);
+            let results = remote
+                .search_info_by_name(title)?
+                .into_iter()
+                .map(Cow::Owned);
 
             SeriesInfo::closest_match(title, MIN_CONFIDENCE, results)
                 .map(|(_, info)| info.into_owned())

@@ -53,7 +53,7 @@ impl SeriesInfo {
         const MIN_CONFIDENCE: f32 = 0.85;
 
         let name = name.into();
-        let mut results = remote.search_info_by_name(&name)?.collect::<Vec<_>>();
+        let mut results = remote.search_info_by_name(&name)?;
         let found =
             RemoteInfo::closest_match(name, MIN_CONFIDENCE, results.iter().map(Cow::Borrowed));
 
