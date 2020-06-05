@@ -10,7 +10,7 @@ use crate::err::{self, Result};
 /// Note that the `search_info_by_name` and `search_info_by_id` methods will always
 /// return an error with the variant `NeedExistingSeriesData`. All other methods simply
 /// do nothing.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Offline;
 
 impl Offline {

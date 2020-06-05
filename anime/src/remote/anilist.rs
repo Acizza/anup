@@ -358,7 +358,7 @@ struct Media {
 
 impl Media {
     /// Returns the media ID of the series that is listed as a sequel and matches the same format.
-    fn direct_sequel_id(&self) -> Option<u32> {
+    fn direct_sequel_id(&self) -> Option<SeriesID> {
         let relations = self.relations.as_ref()?;
 
         let is_direct_sequel =

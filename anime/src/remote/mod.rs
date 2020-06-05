@@ -2,6 +2,9 @@ pub mod anilist;
 pub mod offline;
 
 use crate::err::{self, Result};
+use anilist::AniList;
+use enum_dispatch::enum_dispatch;
+use offline::Offline;
 use serde_derive::{Deserialize, Serialize};
 use snafu::ResultExt;
 use std::borrow::Cow;
@@ -20,7 +23,23 @@ use {
 /// Type representing the ID of an anime series.
 pub type SeriesID = u32;
 
+/// Enum representing each remote service.
+#[enum_dispatch]
+#[derive(Debug)]
+pub enum Remote {
+    AniList,
+    Offline,
+}
+
+impl Remote {
+    #[inline(always)]
+    pub fn offline() -> Self {
+        Offline::new().into()
+    }
+}
+
 /// Core functionality to interact with an anime tracking service.
+#[enum_dispatch(Remote)]
 pub trait RemoteService: ScoreParser {
     // TODO: convert return type to impl Iterator when associated type defaults are stable  (https://github.com/rust-lang/rust/issues/29661)
     /// Search for an anime's information by title and return all of the matches.
@@ -50,6 +69,7 @@ pub trait RemoteService: ScoreParser {
 }
 
 /// Functionality to deal with scores from an anime tracking service.
+#[enum_dispatch(Remote)]
 pub trait ScoreParser {
     /// Parse the given `score` string to a u8 between 0 - 100.
     ///
@@ -81,7 +101,7 @@ pub struct SeriesInfo {
     /// The length of a single episode in minutes.
     pub episode_length: u32,
     /// An ID pointing to the sequel of this series.
-    pub sequel: Option<u32>,
+    pub sequel: Option<SeriesID>,
 }
 
 impl SeriesInfo {
