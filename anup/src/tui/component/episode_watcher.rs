@@ -28,7 +28,7 @@ impl EpisodeWatcher {
             self.last_watched.save()?;
         }
 
-        series.begin_watching(state.remote.as_ref(), &state.config, &state.db)?;
+        series.begin_watching(&state.remote, &state.config, &state.db)?;
 
         let next_ep = series.data.entry.watched_episodes() + 1;
 
@@ -74,8 +74,7 @@ impl Component for EpisodeWatcher {
                 };
 
                 if Utc::now() >= progress_time {
-                    let remote = state.remote.as_ref();
-                    series.episode_completed(remote, &state.config, &state.db)?;
+                    series.episode_completed(&state.remote, &state.config, &state.db)?;
                 }
 
                 state.current_action.reset();

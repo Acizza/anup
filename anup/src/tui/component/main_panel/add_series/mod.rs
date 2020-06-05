@@ -316,7 +316,7 @@ impl SeriesBuilder {
                 InfoSelector::ID,
             );
 
-            SeriesInfo::from_remote(sel, state.remote.as_ref())?
+            SeriesInfo::from_remote(sel, &state.remote)?
         };
 
         let params = SeriesParams::new(params.name, params.path, params.parser);

@@ -11,6 +11,7 @@ use crate::series::SeriesParams;
 use crate::tui::{CurrentAction, UIBackend, UIState};
 use add_series::{AddSeriesPanel, AddSeriesResult};
 use anime::local::Episodes;
+use anime::remote::RemoteService;
 use info::InfoPanel;
 use select_series::KeyResult;
 use select_series::SelectSeriesPanel;

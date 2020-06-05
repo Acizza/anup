@@ -11,7 +11,7 @@ use crate::series::{LastWatched, Series, SeriesData};
 use crate::try_opt_r;
 use crate::CmdOptions;
 use anime::local::Episodes;
-use anime::remote::RemoteService;
+use anime::remote::{Remote, ScoreParser};
 use backend::{TermionBackend, UIBackend, UIEvent, UIEvents};
 use chrono::Duration;
 use component::episode_watcher::{EpisodeWatcher, ProgressTime};
@@ -53,12 +53,12 @@ pub struct UIState {
     series: Selection<SeriesStatus>,
     current_action: CurrentAction,
     config: Config,
-    remote: Box<dyn RemoteService>,
+    remote: Remote,
     db: Database,
 }
 
 impl UIState {
-    fn init(remote: Box<dyn RemoteService>) -> Result<Self> {
+    fn init(remote: Remote) -> Result<Self> {
         let config = Config::load_or_create()?;
         let db = Database::open()?;
 
@@ -81,7 +81,7 @@ impl UIState {
     where
         E: Into<Option<Episodes>>,
     {
-        let data = SeriesData::from_remote(config, info, self.remote.as_ref())?;
+        let data = SeriesData::from_remote(config, info, &self.remote)?;
 
         let series = match episodes.into() {
             Some(episodes) => Series::with_episodes(data, episodes),
@@ -193,9 +193,8 @@ where
         })
     }
 
-    fn init_remote(args: &CmdOptions, log: &mut Log) -> Box<dyn RemoteService> {
+    fn init_remote(args: &CmdOptions, log: &mut Log) -> Remote {
         use anime::remote::anilist;
-        use anime::remote::offline::Offline;
 
         match crate::init_remote(args, true) {
             Ok(remote) => remote,
@@ -219,7 +218,7 @@ where
                 }
 
                 log.push_info("continuing in offline mode");
-                Box::new(Offline::new())
+                Remote::offline()
             }
         }
     }
@@ -355,15 +354,14 @@ where
                     },
                 };
 
-                *remote = Box::new(AniList::authenticated(token)?);
+                *remote = Remote::AniList(AniList::authenticated(token)?);
                 self.prompt.log.push_info("logged in to AniList");
 
                 Ok(())
             }
             Command::Delete => self.state.delete_selected_series(),
             Command::Offline => {
-                use anime::remote::offline::Offline;
-                *remote = Box::new(Offline::new());
+                *remote = Remote::offline();
                 Ok(())
             }
             Command::PlayerArgs(args) => {
@@ -377,7 +375,6 @@ where
                 use component::prompt::command::ProgressDirection;
 
                 let series = try_opt_r!(self.state.series.valid_selection_mut());
-                let remote = remote.as_ref();
 
                 match direction {
                     ProgressDirection::Forwards => series.episode_completed(remote, config, db),
@@ -386,7 +383,6 @@ where
             }
             Command::Set(params) => {
                 let status = try_opt_r!(self.state.series.selected_mut());
-                let remote = remote.as_ref();
 
                 match status {
                     SeriesStatus::Loaded(series) => {
@@ -399,7 +395,6 @@ where
             }
             cmd @ Command::SyncFromRemote | cmd @ Command::SyncToRemote => {
                 let series = try_opt_r!(self.state.series.valid_selection_mut());
-                let remote = remote.as_ref();
 
                 match cmd {
                     Command::SyncFromRemote => series.data.entry.force_sync_from_remote(remote)?,
@@ -419,8 +414,6 @@ where
                     None => return Err(Error::InvalidScore),
                 };
 
-                let remote = remote.as_ref();
-
                 series.data.entry.set_score(score.map(|s| s as i16));
                 series.data.entry.sync_to_remote(remote)?;
                 series.save(db)?;
@@ -429,7 +422,6 @@ where
             }
             Command::Status(status) => {
                 let series = try_opt_r!(self.state.series.valid_selection_mut());
-                let remote = remote.as_ref();
 
                 series.data.entry.set_status(status, config);
                 series.data.entry.sync_to_remote(remote)?;

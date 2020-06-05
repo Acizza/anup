@@ -1,6 +1,7 @@
 use crate::series::Series;
 use crate::tui::{CurrentAction, SeriesStatus, UIState};
 use crate::util;
+use anime::remote::ScoreParser;
 use chrono::Utc;
 use smallvec::SmallVec;
 use std::borrow::Cow;

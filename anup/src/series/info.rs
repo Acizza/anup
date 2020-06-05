@@ -2,8 +2,7 @@ use super::SeriesPath;
 use crate::database::schema::series_info;
 use crate::database::Database;
 use crate::err::Result;
-use anime::remote::RemoteService;
-use anime::remote::SeriesInfo as RemoteInfo;
+use anime::remote::{Remote, RemoteService, SeriesInfo as RemoteInfo};
 use diesel::prelude::*;
 use std::borrow::Cow;
 
@@ -33,35 +32,27 @@ impl SeriesInfo {
             .execute(db.conn())
     }
 
-    pub fn from_remote<R>(sel: InfoSelector, remote: &R) -> Result<InfoResult>
-    where
-        R: RemoteService + ?Sized,
-    {
+    pub fn from_remote(sel: InfoSelector, remote: &Remote) -> Result<InfoResult> {
         match sel {
             InfoSelector::ID(id) => Self::from_remote_by_id(id, remote).map(InfoResult::Confident),
             InfoSelector::Name(name) => Self::from_remote_by_name(name, remote),
         }
     }
 
-    pub fn from_remote_by_id<R>(id: i32, remote: &R) -> Result<Self>
-    where
-        R: RemoteService + ?Sized,
-    {
+    pub fn from_remote_by_id(id: i32, remote: &Remote) -> Result<Self> {
         remote
             .search_info_by_id(id as u32)
             .map(Into::into)
             .map_err(Into::into)
     }
 
-    pub fn from_remote_by_name<S, R>(name: S, remote: &R) -> Result<InfoResult>
+    pub fn from_remote_by_name<S>(name: S, remote: &Remote) -> Result<InfoResult>
     where
         S: Into<String>,
-        R: RemoteService + ?Sized,
     {
         const MIN_CONFIDENCE: f32 = 0.85;
 
         let name = name.into();
-
         let mut results = remote.search_info_by_name(&name)?.collect::<Vec<_>>();
         let found =
             RemoteInfo::closest_match(name, MIN_CONFIDENCE, results.iter().map(Cow::Borrowed));

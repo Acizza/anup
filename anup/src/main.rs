@@ -17,7 +17,7 @@ use crate::series::config::SeriesConfig;
 use crate::series::entry::SeriesEntry;
 use crate::series::info::SeriesInfo;
 use crate::series::{LastWatched, Series};
-use anime::remote::RemoteService;
+use anime::remote::Remote;
 use chrono::Utc;
 use gumdrop::Options;
 use snafu::{ensure, ResultExt};
@@ -72,14 +72,13 @@ fn run(args: CmdOptions) -> Result<()> {
     }
 }
 
-fn init_remote(args: &CmdOptions, can_use_offline: bool) -> Result<Box<dyn RemoteService>> {
+fn init_remote(args: &CmdOptions, can_use_offline: bool) -> Result<Remote> {
     use anime::remote::anilist::AniList;
-    use anime::remote::offline::Offline;
     use anime::remote::AccessToken;
 
     if args.offline {
         ensure!(can_use_offline, err::MustRunOnline);
-        Ok(Box::new(Offline::new()))
+        Ok(Remote::offline())
     } else {
         let token = match &args.token {
             Some(token) => {
@@ -97,7 +96,7 @@ fn init_remote(args: &CmdOptions, can_use_offline: bool) -> Result<Box<dyn Remot
         };
 
         let anilist = AniList::authenticated(token)?;
-        Ok(Box::new(anilist))
+        Ok(Remote::AniList(anilist))
     }
 }
 
@@ -121,7 +120,7 @@ fn sync(args: CmdOptions) -> Result<()> {
             ),
         }
 
-        entry.sync_to_remote(remote.as_ref())?;
+        entry.sync_to_remote(&remote)?;
         entry.save(&db)?;
     }
 
@@ -136,7 +135,6 @@ fn play_episode(args: CmdOptions) -> Result<()> {
     let mut last_watched = LastWatched::load()?;
 
     let remote = init_remote(&args, true)?;
-    let remote = remote.as_ref();
 
     let desired_series = args
         .series
@@ -157,7 +155,7 @@ fn play_episode(args: CmdOptions) -> Result<()> {
         last_watched.save()?;
     }
 
-    series.begin_watching(remote, &config, &db)?;
+    series.begin_watching(&remote, &config, &db)?;
 
     let progress_time = series.data.next_watch_progress_time(&config);
     let next_episode_num = series.data.entry.watched_episodes() + 1;
@@ -170,7 +168,7 @@ fn play_episode(args: CmdOptions) -> Result<()> {
         })?;
 
     if Utc::now() >= progress_time {
-        series.episode_completed(remote, &config, &db)?;
+        series.episode_completed(&remote, &config, &db)?;
 
         if series.data.entry.status() == Status::Completed {
             println!("{} completed!", series.data.info.title_preferred);

@@ -9,7 +9,7 @@ use crate::file;
 use crate::file::SaveDir;
 use crate::{try_opt_r, SERIES_EPISODE_REP, SERIES_TITLE_REP};
 use anime::local::{EpisodeParser, Episodes};
-use anime::remote::{RemoteService, Status};
+use anime::remote::{Remote, RemoteService, Status};
 use chrono::{DateTime, Duration, Utc};
 use config::SeriesConfig;
 use diesel::deserialize::{self, FromSql};
@@ -33,10 +33,7 @@ pub struct SeriesData {
 }
 
 impl SeriesData {
-    pub fn from_remote<R>(config: SeriesConfig, info: SeriesInfo, remote: &R) -> Result<Self>
-    where
-        R: RemoteService + ?Sized,
-    {
+    pub fn from_remote(config: SeriesConfig, info: SeriesInfo, remote: &Remote) -> Result<Self> {
         let entry = SeriesEntry::from_remote(remote, &info)?;
 
         Ok(Self {
@@ -98,16 +95,13 @@ impl Series {
     }
 
     /// Sets the specified parameters on the series and reloads any neccessary state.
-    pub fn update<R>(
+    pub fn update(
         &mut self,
         params: UpdateParams,
         config: &Config,
         db: &Database,
-        remote: &R,
-    ) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
+        remote: &Remote,
+    ) -> Result<()> {
         let id = params.id;
 
         if id.is_some() && remote.is_offline() {
@@ -168,10 +162,12 @@ impl Series {
         Ok(cmd)
     }
 
-    pub fn begin_watching<R>(&mut self, remote: &R, config: &Config, db: &Database) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
+    pub fn begin_watching(
+        &mut self,
+        remote: &Remote,
+        config: &Config,
+        db: &Database,
+    ) -> Result<()> {
         self.data.entry.sync_from_remote(remote)?;
 
         let entry = &mut self.data.entry;
@@ -207,10 +203,12 @@ impl Series {
         Ok(())
     }
 
-    pub fn episode_completed<R>(&mut self, remote: &R, config: &Config, db: &Database) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
+    pub fn episode_completed(
+        &mut self,
+        remote: &Remote,
+        config: &Config,
+        db: &Database,
+    ) -> Result<()> {
         let new_progress = self.data.entry.watched_episodes() + 1;
 
         if new_progress >= self.data.info.episodes {
@@ -230,10 +228,12 @@ impl Series {
         Ok(())
     }
 
-    pub fn episode_regressed<R>(&mut self, remote: &R, config: &Config, db: &Database) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
+    pub fn episode_regressed(
+        &mut self,
+        remote: &Remote,
+        config: &Config,
+        db: &Database,
+    ) -> Result<()> {
         let entry = &mut self.data.entry;
         entry.set_watched_episodes(entry.watched_episodes().saturating_sub(1));
 
@@ -250,10 +250,12 @@ impl Series {
         Ok(())
     }
 
-    pub fn series_complete<R>(&mut self, remote: &R, config: &Config, db: &Database) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
+    pub fn series_complete(
+        &mut self,
+        remote: &Remote,
+        config: &Config,
+        db: &Database,
+    ) -> Result<()> {
         let entry = &mut self.data.entry;
 
         // A rewatch is typically only counted once the series is completed again

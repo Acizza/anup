@@ -3,7 +3,7 @@ use crate::config::Config;
 use crate::database::schema::series_entries;
 use crate::database::Database;
 use crate::err::Result;
-use anime::remote::{RemoteService, Status};
+use anime::remote::{Remote, RemoteService, Status};
 use chrono::{Local, NaiveDate};
 use diesel::prelude::*;
 
@@ -41,20 +41,14 @@ impl SeriesEntry {
         series_entries.filter(needs_sync.eq(true)).load(db.conn())
     }
 
-    pub fn from_remote<R>(remote: &R, info: &SeriesInfo) -> Result<Self>
-    where
-        R: RemoteService + ?Sized,
-    {
+    pub fn from_remote(remote: &Remote, info: &SeriesInfo) -> Result<Self> {
         match remote.get_list_entry(info.id as u32)? {
             Some(entry) => Ok(Self::from(entry)),
             None => Ok(Self::from(info.id)),
         }
     }
 
-    pub fn force_sync_to_remote<R>(&mut self, remote: &R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
+    pub fn force_sync_to_remote(&mut self, remote: &Remote) -> Result<()> {
         if remote.is_offline() {
             return Ok(());
         }
@@ -64,10 +58,7 @@ impl SeriesEntry {
         Ok(())
     }
 
-    pub fn sync_to_remote<R>(&mut self, remote: &R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
+    pub fn sync_to_remote(&mut self, remote: &Remote) -> Result<()> {
         if !self.needs_sync {
             return Ok(());
         }
@@ -75,10 +66,7 @@ impl SeriesEntry {
         self.force_sync_to_remote(remote)
     }
 
-    pub fn force_sync_from_remote<R>(&mut self, remote: &R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
+    pub fn force_sync_from_remote(&mut self, remote: &Remote) -> Result<()> {
         if remote.is_offline() {
             return Ok(());
         }
@@ -91,10 +79,7 @@ impl SeriesEntry {
         Ok(())
     }
 
-    pub fn sync_from_remote<R>(&mut self, remote: &R) -> Result<()>
-    where
-        R: RemoteService + ?Sized,
-    {
+    pub fn sync_from_remote(&mut self, remote: &Remote) -> Result<()> {
         if self.needs_sync {
             return Ok(());
         }
