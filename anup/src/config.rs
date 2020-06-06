@@ -32,7 +32,7 @@ impl Config {
             Ok(config) => Ok(config),
             Err(ref err) if err.is_file_nonexistant() => {
                 // Fallback path is ~/anime/
-                let mut dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("~/"));
+                let mut dir = dirs_next::home_dir().unwrap_or_else(|| PathBuf::from("~/"));
                 dir.push("anime");
 
                 let config = Config::new(dir);
@@ -60,7 +60,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         // Default series dir is ~/anime/
-        let mut series_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("~/"));
+        let mut series_dir = dirs_next::home_dir().unwrap_or_else(|| PathBuf::from("~/"));
         series_dir.push("anime");
 
         Self {
