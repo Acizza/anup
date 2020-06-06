@@ -274,11 +274,15 @@ where
     }
 
     fn draw(&mut self) -> Result<()> {
+        macro_rules! after_draw {
+            ($($component:ident),+) => {
+                $(self.$component.after_draw(&mut self.backend, &self.state);)+
+            };
+        }
+
         self.draw_internal()?;
 
-        self.prompt.after_draw(&mut self.backend, &self.state);
-        self.series_list.after_draw(&mut self.backend, &self.state);
-        self.main_panel.after_draw(&mut self.backend, &self.state);
+        after_draw!(prompt, series_list, main_panel);
 
         Ok(())
     }
