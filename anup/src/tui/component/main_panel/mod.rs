@@ -1,7 +1,8 @@
+pub mod select_series;
+
 mod add_series;
 mod info;
 mod input;
-pub mod select_series;
 
 use super::{Component, Draw};
 use crate::err::{Error, Result};
@@ -13,9 +14,7 @@ use add_series::{AddSeriesPanel, AddSeriesResult};
 use anime::local::Episodes;
 use anime::remote::RemoteService;
 use info::InfoPanel;
-use select_series::KeyResult;
-use select_series::SelectSeriesPanel;
-use select_series::SelectState;
+use select_series::{SelectSeriesPanel, SelectSeriesResult, SelectState};
 use std::mem;
 use termion::event::Key;
 use tui::backend::Backend;
@@ -105,8 +104,8 @@ impl Component for MainPanel {
                 AddSeriesResult::Error(err) => Err(err),
             },
             Panel::SelectSeries(panel) => match panel.process_key(key, &mut ()) {
-                KeyResult::Ok => Ok(()),
-                KeyResult::AddSeries(info) => {
+                SelectSeriesResult::Ok => Ok(()),
+                SelectSeriesResult::AddSeries(info) => {
                     let params = match mem::take(&mut self.current) {
                         Panel::SelectSeries(panel) => panel.take_params(),
                         _ => unreachable!(),
@@ -117,7 +116,7 @@ impl Component for MainPanel {
 
                     Ok(())
                 }
-                KeyResult::Reset => {
+                SelectSeriesResult::Reset => {
                     self.reset(state);
                     Ok(())
                 }

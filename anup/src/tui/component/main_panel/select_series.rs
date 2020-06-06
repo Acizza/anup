@@ -31,28 +31,28 @@ impl SelectSeriesPanel {
 
 impl Component for SelectSeriesPanel {
     type State = ();
-    type KeyResult = KeyResult;
+    type KeyResult = SelectSeriesResult;
 
     fn process_key(&mut self, key: Key, _: &mut Self::State) -> Self::KeyResult {
         match key {
             Key::Up => {
                 self.state.series_list.dec_selected();
-                KeyResult::Ok
+                SelectSeriesResult::Ok
             }
             Key::Down => {
                 self.state.series_list.inc_selected();
-                KeyResult::Ok
+                SelectSeriesResult::Ok
             }
             Key::Char('\n') => {
                 let info = match self.state.series_list.swap_remove_selected() {
                     Some(info) => info,
-                    None => return KeyResult::Reset,
+                    None => return SelectSeriesResult::Reset,
                 };
 
-                KeyResult::AddSeries(info)
+                SelectSeriesResult::AddSeries(info)
             }
-            Key::Esc => KeyResult::Reset,
-            _ => KeyResult::Ok,
+            Key::Esc => SelectSeriesResult::Reset,
+            _ => SelectSeriesResult::Ok,
         }
     }
 }
@@ -104,7 +104,7 @@ impl SelectState {
     }
 }
 
-pub enum KeyResult {
+pub enum SelectSeriesResult {
     Ok,
     AddSeries(SeriesInfo),
     Reset,
