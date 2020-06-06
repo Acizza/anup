@@ -31,13 +31,8 @@ impl Config {
         match Self::load() {
             Ok(config) => Ok(config),
             Err(ref err) if err.is_file_nonexistant() => {
-                // Fallback path is ~/anime/
-                let mut dir = dirs_next::home_dir().unwrap_or_else(|| PathBuf::from("~/"));
-                dir.push("anime");
-
-                let config = Config::new(dir);
+                let config = Config::default();
                 config.save()?;
-
                 Ok(config)
             }
             Err(err) => Err(err),
