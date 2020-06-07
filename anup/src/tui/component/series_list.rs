@@ -1,7 +1,7 @@
 use super::{Component, Draw};
 use crate::err::Result;
 use crate::series::LastWatched;
-use crate::tui::UIState;
+use crate::tui::{CurrentAction, UIState};
 use crate::CmdOptions;
 use termion::event::Key;
 use tui::backend::Backend;
@@ -70,10 +70,17 @@ where
             .iter()
             .map(|series| Text::raw(series.nickname()));
 
+        let highlight_style = match &state.current_action {
+            CurrentAction::Idle => Style::default().fg(Color::Green).modifier(Modifier::ITALIC),
+            _ => Style::default()
+                .fg(Color::DarkGray)
+                .modifier(Modifier::ITALIC),
+        };
+
         let series_list = List::new(series_names)
             .block(Block::default().title("Series").borders(Borders::ALL))
             .style(Style::default().fg(Color::White))
-            .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC))
+            .highlight_style(highlight_style)
             .highlight_symbol(">");
 
         self.list_state.select(Some(state.series.index()));
