@@ -172,17 +172,9 @@ impl Mul<Percentage> for f32 {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct TuiConfig {
     pub keys: TuiKeys,
-}
-
-impl Default for TuiConfig {
-    fn default() -> TuiConfig {
-        TuiConfig {
-            keys: TuiKeys::default(),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
