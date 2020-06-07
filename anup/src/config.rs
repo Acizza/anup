@@ -86,8 +86,8 @@ pub struct EpisodeConfig {
 }
 
 impl Default for EpisodeConfig {
-    fn default() -> EpisodeConfig {
-        EpisodeConfig {
+    fn default() -> Self {
+        Self {
             pcnt_must_watch: Percentage::new(50.0),
             player: String::from("mpv"),
             player_args: Vec::new(),
@@ -99,8 +99,8 @@ impl Default for EpisodeConfig {
 pub struct Percentage(#[serde(with = "Percentage")] f32);
 
 impl Percentage {
-    pub fn new(value: f32) -> Percentage {
-        Percentage(value / 100.0)
+    pub fn new(value: f32) -> Self {
+        Self(value / 100.0)
     }
 
     fn deserialize<'de, D>(de: D) -> result::Result<f32, D::Error>
