@@ -440,23 +440,21 @@ where
 #[derive(Debug)]
 pub struct Selection<T> {
     items: Vec<T>,
-    selected: usize,
+    index: WrappingIndex,
 }
 
 impl<T> Selection<T> {
     #[inline(always)]
     fn new(items: Vec<T>) -> Self {
-        Self { items, selected: 0 }
+        Self {
+            items,
+            index: WrappingIndex::new(0),
+        }
     }
 
     #[inline(always)]
     fn index(&self) -> usize {
-        self.selected
-    }
-
-    #[inline(always)]
-    fn is_valid_index(&self, index: usize) -> bool {
-        index < self.items.len()
+        self.index.get()
     }
 
     #[inline(always)]
@@ -465,7 +463,7 @@ impl<T> Selection<T> {
             return None;
         }
 
-        Some(&self.items[self.selected])
+        Some(&self.items[self.index])
     }
 
     #[inline(always)]
@@ -474,36 +472,26 @@ impl<T> Selection<T> {
             return None;
         }
 
-        Some(&mut self.items[self.selected])
+        Some(&mut self.items[self.index])
     }
 
     #[inline(always)]
     fn inc_selected(&mut self) {
-        let new_index = self.selected + 1;
-
-        if !self.is_valid_index(new_index) {
-            return;
-        }
-
-        self.selected = new_index;
+        self.index.increment(self.items.len())
     }
 
     #[inline(always)]
     fn dec_selected(&mut self) {
-        if self.selected == 0 {
-            return;
-        }
-
-        self.selected -= 1;
+        self.index.decrement(self.items.len())
     }
 
     #[inline(always)]
     fn set_selected(&mut self, selected: usize) {
-        if !self.is_valid_index(selected) {
+        if selected >= self.items.len() {
             return;
         }
 
-        self.selected = selected;
+        *self.index.get_mut() = selected;
     }
 
     #[inline(always)]
@@ -529,10 +517,10 @@ impl<T> Selection<T> {
             return None;
         }
 
-        let item = func(&mut self.items, self.selected);
+        let item = func(&mut self.items, self.index.get());
 
-        if self.selected == self.items.len() {
-            self.selected = self.selected.saturating_sub(1);
+        if self.index == self.items.len() {
+            self.index.decrement(self.items.len());
         }
 
         Some(item)
@@ -576,6 +564,60 @@ impl<T> IndexMut<usize> for Selection<T> {
 impl<T> From<Vec<T>> for Selection<T> {
     fn from(value: Vec<T>) -> Self {
         Self::new(value)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct WrappingIndex(usize);
+
+impl WrappingIndex {
+    #[inline(always)]
+    pub fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    #[inline(always)]
+    pub fn get(&self) -> usize {
+        self.0
+    }
+
+    #[inline(always)]
+    pub fn get_mut(&mut self) -> &mut usize {
+        &mut self.0
+    }
+
+    #[inline(always)]
+    fn increment(&mut self, max: usize) {
+        self.0 = if max > 0 { (self.0 + 1) % max } else { max };
+    }
+
+    #[inline(always)]
+    fn decrement(&mut self, max: usize) {
+        self.0 = if self.0 == 0 {
+            max.saturating_sub(1)
+        } else {
+            self.0 - 1
+        }
+    }
+}
+
+impl PartialEq<usize> for WrappingIndex {
+    fn eq(&self, other: &usize) -> bool {
+        self.get() == *other
+    }
+}
+
+impl<T> Index<WrappingIndex> for Vec<T> {
+    type Output = T;
+
+    fn index(&self, index: WrappingIndex) -> &Self::Output {
+        &self[index.get()]
+    }
+}
+
+impl<T> IndexMut<WrappingIndex> for Vec<T> {
+    fn index_mut(&mut self, index: WrappingIndex) -> &mut Self::Output {
+        &mut self[index.get()]
     }
 }
 
