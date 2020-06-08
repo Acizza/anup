@@ -207,6 +207,8 @@ impl Auth {
 pub struct User {
     /// The user's account ID.
     pub id: u32,
+    /// The user's account name.
+    pub name: String,
     /// Settings related to the user's anime list.
     #[serde(rename = "mediaListOptions")]
     pub options: ListOptions,
