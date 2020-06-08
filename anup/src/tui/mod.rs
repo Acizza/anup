@@ -4,7 +4,7 @@ mod component;
 use crate::config::Config;
 use crate::database::Database;
 use crate::err::{self, Error, Result};
-use crate::file::TomlFile;
+use crate::file::SerializedFile;
 use crate::series::config::SeriesConfig;
 use crate::series::info::SeriesInfo;
 use crate::series::{LastWatched, Series, SeriesData};

@@ -12,7 +12,7 @@ mod util;
 use crate::config::Config;
 use crate::database::Database;
 use crate::err::{Error, Result};
-use crate::file::TomlFile;
+use crate::file::SerializedFile;
 use crate::series::config::SeriesConfig;
 use crate::series::entry::SeriesEntry;
 use crate::series::info::SeriesInfo;

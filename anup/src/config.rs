@@ -1,5 +1,4 @@
-use crate::err::Result;
-use crate::file::{SaveDir, TomlFile};
+use crate::file::{FileFormat, SaveDir, SerializedFile};
 use serde::de::{self, Deserializer, Visitor};
 use serde::ser::Serializer;
 use serde_derive::{Deserialize, Serialize};
@@ -24,18 +23,6 @@ impl Config {
         Self {
             series_dir: series_dir.into(),
             ..Default::default()
-        }
-    }
-
-    pub fn load_or_create() -> Result<Self> {
-        match Self::load() {
-            Ok(config) => Ok(config),
-            Err(ref err) if err.is_file_nonexistant() => {
-                let config = Config::default();
-                config.save()?;
-                Ok(config)
-            }
-            Err(err) => Err(err),
         }
     }
 
@@ -67,13 +54,17 @@ impl Default for Config {
     }
 }
 
-impl TomlFile for Config {
+impl SerializedFile for Config {
     fn filename() -> &'static str {
         "config"
     }
 
     fn save_dir() -> SaveDir {
         SaveDir::Config
+    }
+
+    fn format() -> FileFormat {
+        FileFormat::Toml
     }
 }
 

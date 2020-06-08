@@ -51,6 +51,20 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display("message pack decode error at {}: {}", path.display(), source))]
+    RMPDecode {
+        path: path::PathBuf,
+        source: rmp_serde::decode::Error,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("message pack encode error at {}: {}", path.display(), source))]
+    RMPEncode {
+        path: path::PathBuf,
+        source: rmp_serde::encode::Error,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("mpsc channel receive error: {}", source))]
     MPSCRecv {
         source: mpsc::RecvError,
