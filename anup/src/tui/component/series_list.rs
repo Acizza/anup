@@ -31,7 +31,7 @@ impl SeriesList {
         };
 
         state.series.set_selected(selected);
-        state.init_selected_series().ok();
+        state.init_selected_series();
 
         Self {
             list_state: ListState::default(),
@@ -52,7 +52,8 @@ impl Component for SeriesList {
                     _ => unreachable!(),
                 }
 
-                state.init_selected_series()
+                state.init_selected_series();
+                Ok(())
             }
             _ => Ok(()),
         }

@@ -1,3 +1,4 @@
+use crate::err::Error;
 use crate::series::Series;
 use crate::tui::component::Draw;
 use crate::tui::widget_util::{block, text};
@@ -9,6 +10,7 @@ use smallvec::SmallVec;
 use std::borrow::Cow;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use tui::style::Color;
 use tui::terminal::Frame;
 use tui::widgets::{Paragraph, Text};
 
@@ -45,16 +47,25 @@ impl InfoPanel {
             .split(rect)
     }
 
-    fn draw_no_users_info<B>(rect: Rect, frame: &mut Frame<B>)
+    fn draw_text_panel<B>(header: &[Text], body: &[Text], rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
     {
         let layout = Self::text_display_layout(rect);
 
-        let header = [text::bold("No Accounts Added")];
         let header_widget = Paragraph::new(header.iter()).alignment(Alignment::Center);
         frame.render_widget(header_widget, layout[0]);
 
+        let body_widget = Paragraph::new(body.iter())
+            .alignment(Alignment::Center)
+            .wrap(true);
+        frame.render_widget(body_widget, layout[1]);
+    }
+
+    fn draw_no_users_info<B>(rect: Rect, frame: &mut Frame<B>)
+    where
+        B: Backend,
+    {
         let body = [Text::raw(
             "Add an account by pressing 'u' to open\
             \nuser management and then by pressing tab\
@@ -69,22 +80,13 @@ impl InfoPanel {
             \nhttps://github.com/Acizza/anup#adding-an-account",
         )];
 
-        let body_widget = Paragraph::new(body.iter())
-            .alignment(Alignment::Center)
-            .wrap(true);
-        frame.render_widget(body_widget, layout[1]);
+        Self::draw_text_panel(&[text::bold("No Accounts Added")], &body, rect, frame);
     }
 
     fn draw_no_series_found<B>(rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
     {
-        let layout = Self::text_display_layout(rect);
-
-        let header = [text::bold("No Series Found")];
-        let header_widget = Paragraph::new(header.iter()).alignment(Alignment::Center);
-        frame.render_widget(header_widget, layout[0]);
-
         let body = [Text::raw(
             "Add one by pressing the 'a' key\
 
@@ -95,10 +97,20 @@ impl InfoPanel {
             \nis in on disk.",
         )];
 
-        let body_widget = Paragraph::new(body.iter())
-            .alignment(Alignment::Center)
-            .wrap(true);
-        frame.render_widget(body_widget, layout[1]);
+        Self::draw_text_panel(&[text::bold("No Series Found")], &body, rect, frame);
+    }
+
+    fn draw_series_error<B>(err: &Error, rect: Rect, frame: &mut Frame<B>)
+    where
+        B: Backend,
+    {
+        let header = [text::bold_with("Error Loading Series", |s| {
+            s.fg(Color::Red)
+        })];
+
+        let body = [text::with_color(format!("{}", err), Color::Red)];
+
+        Self::draw_text_panel(&header, &body, rect, frame);
     }
 
     fn draw_series_info<B>(state: &UIState, series: &Series, rect: Rect, frame: &mut Frame<B>)
@@ -242,7 +254,7 @@ where
             Some(SeriesStatus::Loaded(series)) => {
                 Self::draw_series_info(state, series, rect, frame)
             }
-            Some(SeriesStatus::Unloaded(_)) => (),
+            Some(SeriesStatus::Error(_, err)) => Self::draw_series_error(err, rect, frame),
             None => Self::draw_no_series_found(rect, frame),
         }
     }

@@ -9,9 +9,9 @@ use crate::file::SerializedFile;
 use crate::series::config::SeriesConfig;
 use crate::series::info::SeriesInfo;
 use crate::series::{LastWatched, Series, SeriesData};
-use crate::try_opt_r;
 use crate::user::Users;
 use crate::CmdOptions;
+use crate::{try_opt_r, try_opt_ret};
 use anime::local::Episodes;
 use anime::remote::{Remote, ScoreParser};
 use backend::{TermionBackend, UIBackend, UIEvent, UIEvents};
@@ -68,8 +68,7 @@ impl UIState {
 
         let series = SeriesConfig::load_all(&db)?
             .into_iter()
-            .map(Into::into)
-            .map(SeriesStatus::Unloaded)
+            .map(|sconfig| SeriesStatus::init(sconfig, &config, &db))
             .collect::<Vec<_>>();
 
         Ok(Self {
@@ -111,16 +110,16 @@ impl UIState {
         Ok(())
     }
 
-    fn init_selected_series(&mut self) -> Result<()> {
-        let selected = try_opt_r!(self.series.selected_mut());
-        selected.ensure_loaded(&self.config, &self.db)
+    fn init_selected_series(&mut self) {
+        let selected = try_opt_ret!(self.series.selected_mut());
+        selected.load(&self.config, &self.db)
     }
 
     fn delete_selected_series(&mut self) -> Result<()> {
         let series = try_opt_r!(self.series.remove_selected());
 
         // Since we changed our selected series, we need to make sure the new one is initialized
-        self.init_selected_series()?;
+        self.init_selected_series();
 
         series.config().delete(&self.db)?;
         Ok(())
@@ -358,7 +357,7 @@ where
                         series.save(db)?;
                         Ok(())
                     }
-                    SeriesStatus::Unloaded(_) => Ok(()),
+                    SeriesStatus::Error(_, _) => Ok(()),
                 }
             }
             cmd @ Command::SyncFromRemote | cmd @ Command::SyncToRemote => {
@@ -593,48 +592,45 @@ impl Into<usize> for WrappingIndex {
 
 pub enum SeriesStatus {
     Loaded(Series),
-    Unloaded(SeriesConfig),
+    Error(SeriesConfig, Error),
 }
 
 impl SeriesStatus {
-    fn ensure_loaded(&mut self, config: &Config, db: &Database) -> Result<()> {
+    fn init(sconfig: SeriesConfig, config: &Config, db: &Database) -> Self {
+        match Series::load_from_config(sconfig.clone(), config, db) {
+            Ok(series) => Self::Loaded(series),
+            Err(err) => Self::Error(sconfig, err),
+        }
+    }
+
+    fn load(&mut self, config: &Config, db: &Database) {
         match self {
-            Self::Loaded(_) => Ok(()),
-            Self::Unloaded(cfg) => {
-                let series = Series::load_from_config(cfg.clone(), config, db)?;
-                *self = Self::Loaded(series);
-                Ok(())
-            }
+            Self::Loaded(_) => (),
+            Self::Error(cfg, cur_err) => match Series::load_from_config(cfg.clone(), config, db) {
+                Ok(series) => *self = Self::Loaded(series),
+                Err(err) => *cur_err = err,
+            },
         }
     }
 
     fn config(&self) -> &SeriesConfig {
         match self {
             Self::Loaded(series) => &series.data.config,
-            Self::Unloaded(cfg) => cfg,
+            Self::Error(cfg, _) => cfg,
         }
     }
 
     fn loaded_mut(&mut self) -> Option<&mut Series> {
         match self {
             Self::Loaded(series) => Some(series),
-            Self::Unloaded(_) => None,
+            Self::Error(_, _) => None,
         }
     }
 
     fn nickname(&self) -> &str {
         match self {
             Self::Loaded(series) => series.data.config.nickname.as_ref(),
-            Self::Unloaded(cfg) => cfg.nickname.as_ref(),
-        }
-    }
-}
-
-impl PartialEq<i32> for SeriesStatus {
-    fn eq(&self, id: &i32) -> bool {
-        match self {
-            Self::Loaded(series) => series.data.config.id == *id,
-            Self::Unloaded(_) => false,
+            Self::Error(cfg, _) => cfg.nickname.as_ref(),
         }
     }
 }
