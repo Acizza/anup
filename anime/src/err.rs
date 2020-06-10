@@ -80,7 +80,7 @@ pub enum Error {
     #[snafu(display("need existing series info to use offline backend"))]
     NeedExistingSeriesData,
 
-    #[snafu(display("received bad response from AniList (code {}): {}", code, message))]
+    #[snafu(display("bad AniList response ({}): {}", code, message))]
     BadAniListResponse { code: u16, message: String },
 
     #[snafu(display(
