@@ -12,6 +12,7 @@ Current features include:
 * Easy playing of unwatched episodes
 * TUI interface to view, play, and modify all series added to the program
 * Offline mode
+* Multi-user support
 * Automatic series status handling (watching, rewatching, completed, etc)
 * Automatic series start / end date handling
 
@@ -25,8 +26,9 @@ This project requires the following dependencies:
 * A recent stable version of Rust
 * SQLite
 * pkg-config
+* xdg-open / xdg-utils
 
-Note that pkg-config is most likely already installed. If your distribution does not provide a recent version of Rust, you can obtain the latest version [here](https://rustup.rs/).
+Note that pkg-config and xdg-open / xdg-utils are most likely already installed. If your distribution does not provide a recent version of Rust, you can obtain the latest version [here](https://rustup.rs/).
 
 Once the dependencies are installed, you can build the project simply by running `cargo build --release` in the project's directory. Once compilation is complete, you will find the `anup` and `anisplit` binaries in the `target/release/` folder. None of the other files in that directory need to be kept.
 
@@ -34,11 +36,13 @@ Once the dependencies are installed, you can build the project simply by running
 
 By default, the program will look for anime in `~/anime/` and play episodes with `mpv`. To change these, run the program once to generate the config file and change the `series_dir` and `player` fields in `~/.config/anup/config.toml`, respectively.
 
-## Logging in to AniList
+## Adding an Account
 
-Before you can add and play a series, you will need to authenticate the program to make changes to your anime list. To do this, visit the [URL printed in the TUI](https://anilist.co/api/v2/oauth/authorize?client_id=427&response_type=token) and follow the instructions to obtain an access token. Once you have a token, you will need to paste it in either with the `anilist` command in the TUI (enter commands by pressing ":"), or with the `-t` CLI flag.
+Before you can add and play a series, you will need to add an AniList account to the program. To do this, open [this URL](https://anilist.co/api/v2/oauth/authorize?client_id=427&response_type=token) and follow the instructions to obtain an account access token. Once you have a token, you will need to paste it into the program. To do this, first press `u` to open user management, and then `Tab` to switch to the add user panel. Now press either `Ctrl + Shift + V` **or** `Ctrl + V` (depending on your terminal) to paste the token. Once your token has been pasted in, you can press enter to add your account.
 
-Note that the token will be saved to `~/.config/anup/token.toml` and base64 encoded. You can disable this token at any time from the `Apps` section of your AniList account settings.
+You can repeat this process as needed to add more accounts. Once you are done, you can press `Escape` to return to the main panel.
+
+All accounts are saved to `~/.local/share/anup/users.mpack` and are **not encrypted**. You can disable an account's token at any time by going to your AniList account settings, and navigating to the `Apps` section.
 
 ## Adding a Series
 
