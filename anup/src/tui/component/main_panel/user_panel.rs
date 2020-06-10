@@ -15,7 +15,7 @@ use std::process::Command;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
-use tui::style::{Color, Style};
+use tui::style::Color;
 use tui::terminal::Frame;
 use tui::widgets::{List, ListState, Paragraph, Row, Table, TableState, Text};
 
@@ -260,7 +260,7 @@ impl UserPanel {
 
         let users = row_data.iter().map(|(data, is_logged_in)| {
             if *is_logged_in {
-                Row::StyledData(data.iter(), Style::default().fg(Color::Blue))
+                Row::StyledData(data.iter(), style::fg(Color::Blue))
             } else {
                 Row::Data(data.iter())
             }

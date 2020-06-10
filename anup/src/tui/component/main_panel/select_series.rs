@@ -1,13 +1,14 @@
 use crate::series::info::SeriesInfo;
 use crate::series::SeriesParams;
 use crate::tui::component::{Component, Draw};
+use crate::tui::widget_util::{block, style};
 use crate::tui::Selection;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
-use tui::style::{Color, Modifier, Style};
+use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::{Block, Borders, List, ListState, Text};
+use tui::widgets::{List, ListState, Text};
 
 pub struct SelectSeriesPanel {
     list_state: ListState,
@@ -71,13 +72,9 @@ where
             .map(|info| Text::raw(&info.title_preferred));
 
         let items = List::new(names)
-            .block(
-                Block::default()
-                    .title("Select a series from the list")
-                    .borders(Borders::ALL),
-            )
-            .style(Style::default().fg(Color::White))
-            .highlight_style(Style::default().fg(Color::Green).modifier(Modifier::ITALIC))
+            .block(block::with_borders("Select a series from the list"))
+            .style(style::fg(Color::White))
+            .highlight_style(style::italic().fg(Color::Green))
             .highlight_symbol(">");
 
         self.list_state.select(Some(self.state.series_list.index()));

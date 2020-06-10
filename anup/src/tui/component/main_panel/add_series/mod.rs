@@ -5,6 +5,7 @@ use crate::err::{Error, Result};
 use crate::series::info::{InfoSelector, SeriesInfo};
 use crate::series::{SeriesParams, SeriesPath};
 use crate::tui::component::{Component, Draw};
+use crate::tui::widget_util::{block, text};
 use crate::tui::{UIBackend, UIState};
 use crate::{try_opt_r, try_opt_ret};
 use anime::local::Episodes;
@@ -15,9 +16,9 @@ use std::time::Instant;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
-use tui::style::{Color, Modifier, Style};
+use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::{Block, Borders, Paragraph, Text};
+use tui::widgets::Paragraph;
 
 const SECS_BETWEEN_SERIES_UPDATES: f32 = 0.25;
 
@@ -98,7 +99,7 @@ impl AddSeriesPanel {
                 .horizontal_margin(3)
                 .split(pos);
 
-            let text = [bold_header(input.label())];
+            let text = [text::bold(input.label())];
             let widget = Paragraph::new(text.iter())
                 .wrap(false)
                 .alignment(Alignment::Center);
@@ -115,7 +116,7 @@ impl AddSeriesPanel {
         macro_rules! info_label {
             ($label:expr, $value:expr, $rect:expr) => {{
                 let label = concat!($label, "\n");
-                let text = [bold_header(label), $value];
+                let text = [text::bold(label), $value];
 
                 let widget = Paragraph::new(text.iter())
                     .wrap(false)
@@ -126,11 +127,11 @@ impl AddSeriesPanel {
 
         let (header_text, has_error) = match (&self.error, &self.series_builder.params) {
             (Some(err), Some(_)) | (Some(err), None) => {
-                ([bold_header_with(err.as_ref(), |s| s.fg(Color::Red))], true)
+                ([text::bold_with(err.as_ref(), |s| s.fg(Color::Red))], true)
             }
-            (None, Some(_)) => ([bold_header("Detected")], false),
+            (None, Some(_)) => ([text::bold("Detected")], false),
             (None, None) => (
-                [bold_header_with("Nothing Detected", |s| s.fg(Color::Red))],
+                [text::bold_with("Nothing Detected", |s| s.fg(Color::Red))],
                 false,
             ),
         };
@@ -154,13 +155,13 @@ impl AddSeriesPanel {
 
         info_label!(
             "Relative Path",
-            italic(format!("{}", built.params.path.display())),
+            text::italic(format!("{}", built.params.path.display())),
             fields[0]
         );
 
         let episodes_text = match &built.found_episodes {
-            Some(text) => italic(text),
-            None => italic_with("none", |s| s.fg(Color::Yellow)),
+            Some(text) => text::italic(text),
+            None => text::italic_with("none", |s| s.fg(Color::Yellow)),
         };
 
         info_label!("Found Episodes", episodes_text, fields[1]);
@@ -232,7 +233,7 @@ where
             .horizontal_margin(2)
             .split(rect);
 
-        let outline = Block::default().title("Add Series").borders(Borders::ALL);
+        let outline = block::with_borders("Add Series");
         frame.render_widget(outline, rect);
 
         self.draw_add_series_panel(split[0], frame);
@@ -392,42 +393,6 @@ impl BuiltSeriesParams {
         push_range(&mut result, range);
         Some(result)
     }
-}
-
-#[inline(always)]
-fn bold_header_with<F>(header: &str, extra_style: F) -> Text
-where
-    F: FnOnce(Style) -> Style,
-{
-    Text::styled(
-        header,
-        extra_style(Style::default().modifier(Modifier::BOLD)),
-    )
-}
-
-#[inline(always)]
-fn bold_header(header: &str) -> Text {
-    bold_header_with(header, |s| s)
-}
-
-#[inline(always)]
-fn italic_with<'a, S, F>(text: S, extra_style: F) -> Text<'a>
-where
-    S: Into<Cow<'a, str>>,
-    F: FnOnce(Style) -> Style,
-{
-    Text::styled(
-        text,
-        extra_style(Style::default().modifier(Modifier::ITALIC)),
-    )
-}
-
-#[inline(always)]
-fn italic<'a, S>(text: S) -> Text<'a>
-where
-    S: Into<Cow<'a, str>>,
-{
-    italic_with(text, |s| s)
 }
 
 #[cfg(test)]

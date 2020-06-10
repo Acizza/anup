@@ -1,8 +1,7 @@
-pub mod select_series;
-
 mod add_series;
 mod info;
 mod input;
+mod select_series;
 mod user_panel;
 
 use super::{Component, Draw};
@@ -49,7 +48,7 @@ impl MainPanel {
         Ok(())
     }
 
-    pub fn switch_to_select_series(&mut self, select: SelectState, state: &mut UIState) {
+    fn switch_to_select_series(&mut self, select: SelectState, state: &mut UIState) {
         self.current = Panel::select_series(select);
         state.current_action = CurrentAction::FocusedOnMainPanel;
     }

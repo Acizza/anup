@@ -1,12 +1,13 @@
 use crate::try_opt_ret;
 use crate::tui::component::Draw;
+use crate::tui::widget_util::{block, style};
 use crate::tui::UIBackend;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
-use tui::style::{Color, Style};
+use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::{Block, Borders, Paragraph, Text};
+use tui::widgets::{Paragraph, Text};
 use unicode_width::UnicodeWidthChar;
 
 pub struct Input {
@@ -87,10 +88,10 @@ where
             (false, false) => None,
         };
 
-        let mut block = Block::default().borders(Borders::ALL);
+        let mut block = block::with_borders(None);
 
         if let Some(color) = block_color {
-            block = block.border_style(Style::default().fg(color));
+            block = block.border_style(style::fg(color));
         }
 
         let text = [Text::raw(self.visible())];

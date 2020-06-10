@@ -2,6 +2,7 @@ use crate::config::Config;
 use crate::err::{self, Error, Result};
 use crate::series::UpdateParams;
 use crate::tui::component::{Component, Draw};
+use crate::tui::widget_util::{block, style};
 use crate::tui::UIState;
 use smallvec::{smallvec, SmallVec};
 use snafu::ensure;
@@ -11,8 +12,8 @@ use std::result;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
-use tui::style::{Color, Style};
-use tui::widgets::{Block, Borders, Paragraph, Text};
+use tui::style::Color;
+use tui::widgets::{Paragraph, Text};
 use tui::Frame;
 use unicode_width::UnicodeWidthChar;
 
@@ -103,7 +104,7 @@ impl CommandPrompt {
         if let Some(hint_cmd) = &self.hint_cmd {
             text.push(Text::styled(
                 hint_cmd.remaining_name_and_usage(),
-                Style::default().fg(Color::DarkGray),
+                style::fg(Color::DarkGray),
             ));
         }
 
@@ -130,11 +131,7 @@ where
         let draw_items = self.draw_items();
 
         let widget = Paragraph::new(draw_items.iter())
-            .block(
-                Block::default()
-                    .title("Enter Command")
-                    .borders(Borders::ALL),
-            )
+            .block(block::with_borders("Enter Command"))
             .wrap(true);
 
         frame.render_widget(widget, rect);

@@ -1,6 +1,6 @@
 use crate::series::Series;
 use crate::tui::component::Draw;
-use crate::tui::widget_util::text;
+use crate::tui::widget_util::{block, text};
 use crate::tui::{CurrentAction, SeriesStatus, UIState};
 use crate::util;
 use anime::remote::ScoreParser;
@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::terminal::Frame;
-use tui::widgets::{Block, Borders, Paragraph, Text};
+use tui::widgets::{Paragraph, Text};
 
 pub struct InfoPanel;
 
@@ -231,7 +231,7 @@ where
     type State = UIState;
 
     fn draw(&mut self, state: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        let info_block = Block::default().title("Info").borders(Borders::ALL);
+        let info_block = block::with_borders("Info");
         frame.render_widget(info_block, rect);
 
         if state.users.get().is_empty() {

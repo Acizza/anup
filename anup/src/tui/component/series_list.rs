@@ -1,14 +1,15 @@
 use super::{Component, Draw};
 use crate::err::Result;
 use crate::series::LastWatched;
+use crate::tui::widget_util::{block, style};
 use crate::tui::{CurrentAction, UIState};
 use crate::CmdOptions;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
-use tui::style::{Color, Modifier, Style};
+use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::{Block, Borders, List, ListState, Text};
+use tui::widgets::{List, ListState, Text};
 
 pub struct SeriesList {
     list_state: ListState,
@@ -71,15 +72,13 @@ where
             .map(|series| Text::raw(series.nickname()));
 
         let highlight_style = match &state.current_action {
-            CurrentAction::Idle => Style::default().fg(Color::Green).modifier(Modifier::ITALIC),
-            _ => Style::default()
-                .fg(Color::DarkGray)
-                .modifier(Modifier::ITALIC),
+            CurrentAction::Idle => style::italic().fg(Color::Green),
+            _ => style::italic().fg(Color::DarkGray),
         };
 
         let series_list = List::new(series_names)
-            .block(Block::default().title("Series").borders(Borders::ALL))
-            .style(Style::default().fg(Color::White))
+            .block(block::with_borders("Series"))
+            .style(style::fg(Color::White))
             .highlight_style(highlight_style)
             .highlight_symbol(">");
 

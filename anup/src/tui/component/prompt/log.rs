@@ -1,10 +1,11 @@
 use crate::err::Error;
 use crate::tui::component::Draw;
+use crate::tui::widget_util::{block, text};
 use std::collections::VecDeque;
 use tui::backend::Backend;
 use tui::layout::Rect;
-use tui::style::{Color, Style};
-use tui::widgets::{Block, Borders, Paragraph, Text};
+use tui::style::Color;
+use tui::widgets::{Paragraph, Text};
 use tui::Frame;
 
 /// A scrolling status log.
@@ -94,7 +95,7 @@ where
         );
 
         let draw_item = Paragraph::new(self.draw_items.iter())
-            .block(Block::default().title(&title).borders(Borders::ALL))
+            .block(block::with_borders(title.as_ref()))
             .wrap(true);
 
         frame.render_widget(draw_item, rect);
@@ -109,7 +110,7 @@ impl<'a> LogItem<'a> {
     where
         S: AsRef<str>,
     {
-        let header = Text::styled("error: ", Style::default().fg(Color::Red));
+        let header = text::with_color("error: ", Color::Red);
         let desc = Text::raw(format!("{}\n", desc.as_ref()));
 
         Self([header, desc])
@@ -119,7 +120,7 @@ impl<'a> LogItem<'a> {
     where
         S: AsRef<str>,
     {
-        let header = Text::styled("^ ", Style::default().fg(Color::Yellow));
+        let header = text::with_color("^ ", Color::Yellow);
         let context = Text::raw(format!("{}\n", context.as_ref()));
 
         Self([header, context])
@@ -129,7 +130,7 @@ impl<'a> LogItem<'a> {
     where
         S: AsRef<str>,
     {
-        let header = Text::styled("info: ", Style::default().fg(Color::Green));
+        let header = text::with_color("info: ", Color::Green);
         let info = Text::raw(format!("{}\n", info.as_ref()));
 
         Self([header, info])
