@@ -1,9 +1,10 @@
 use super::{Component, Draw};
 use crate::err::Result;
 use crate::series::LastWatched;
-use crate::tui::widget_util::{block, style};
-use crate::tui::{CurrentAction, UIState};
+use crate::tui::widget_util::{block, style, text};
+use crate::tui::{CurrentAction, SeriesStatus, UIState};
 use crate::CmdOptions;
+use anime::remote::Status;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
@@ -37,6 +38,24 @@ impl SeriesList {
             list_state: ListState::default(),
         }
     }
+
+    fn series_text(series: &SeriesStatus) -> Text {
+        match series {
+            SeriesStatus::Loaded(series) => {
+                let color = match series.data.entry.status() {
+                    Status::Watching => Color::Blue,
+                    Status::Completed => Color::Green,
+                    Status::OnHold => Color::Yellow,
+                    Status::Dropped => Color::Red,
+                    Status::PlanToWatch => Color::Gray,
+                    Status::Rewatching => Color::Blue,
+                };
+
+                text::with_color(series.data.config.nickname.as_str(), color)
+            }
+            SeriesStatus::Error(cfg, _) => text::with_color(cfg.nickname.as_str(), Color::LightRed),
+        }
+    }
 }
 
 impl Component for SeriesList {
@@ -67,15 +86,12 @@ where
     type State = UIState;
 
     fn draw(&mut self, state: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        let series_names = state
-            .series
-            .iter()
-            .map(|series| Text::raw(series.nickname()));
-
         let highlight_style = match &state.current_action {
             CurrentAction::Idle => style::italic().fg(Color::Green),
             _ => style::italic().fg(Color::DarkGray),
         };
+
+        let series_names = state.series.iter().map(Self::series_text);
 
         let series_list = List::new(series_names)
             .block(block::with_borders("Series"))
