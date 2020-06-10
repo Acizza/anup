@@ -1,7 +1,7 @@
 use super::{
     AccessToken, RemoteService, ScoreParser, SeriesEntry, SeriesID, SeriesInfo, SeriesTitle, Status,
 };
-use crate::err::{self, Result};
+use crate::err::{self, Error, Result};
 use chrono::{Datelike, NaiveDate};
 use serde_derive::{Deserialize, Serialize};
 use serde_json as json;
@@ -62,38 +62,33 @@ macro_rules! query {
 
 /// A connection to the AniList API.
 #[derive(Debug)]
-pub struct AniList {
-    /// The currently authenticated user.
-    pub auth: Option<Auth>,
-}
-
-impl AniList {
-    /// Create a new unauthenticated `AniList` instance.
+pub enum AniList {
+    /// An `AniList` connection with authentication.
     ///
-    /// When unauthenticated, you can only search for series info by name and by ID.
-    /// Trying to make any other request will return a `NeedAuthentication` error.
-    #[inline]
-    pub fn unauthenticated() -> Self {
-        Self { auth: None }
-    }
-
-    /// Create a new authenticated `AniList` instance with the specified user `token`.
-    ///
-    /// This will allow you to update the specified user's list.
+    /// This mode will allow you to update the specified user's list.
     /// To get a user's token, they will need to visit the URL provided by
     /// the `auth_url` function and provide it to you. The token should then be
     /// stored as it is only visible once.
-    pub fn authenticated(token: AccessToken) -> Result<Self> {
-        let user = query!(Some(&token), "user", {}, "data" => "Viewer")?;
-        let auth = Auth::new(user, token);
+    Authenticated(Auth),
+    /// An `AniList` connection without any authentication.
+    ///
+    /// In this mode, you can only search for series info by name and by ID.
+    /// Trying to make any other request will return a `NeedAuthentication` error.
+    Unauthenticated,
+}
 
-        Ok(Self { auth: Some(auth) })
+impl AniList {
+    fn auth(&self) -> Result<&Auth> {
+        match &self {
+            Self::Authenticated(auth) => Ok(auth),
+            Self::Unauthenticated => Err(Error::NeedAuthentication),
+        }
     }
 
     fn score_format(&self) -> ScoreFormat {
-        match &self.auth {
-            Some(auth) => auth.user.options.score_format,
-            None => ScoreFormat::default(),
+        match &self {
+            Self::Authenticated(auth) => auth.user.options.score_format,
+            Self::Unauthenticated => ScoreFormat::default(),
         }
     }
 }
@@ -117,10 +112,7 @@ impl RemoteService for AniList {
     }
 
     fn get_list_entry(&self, id: SeriesID) -> Result<Option<SeriesEntry>> {
-        let auth = match &self.auth {
-            Some(auth) => auth,
-            None => return Err(err::Error::NeedAuthentication),
-        };
+        let auth = self.auth()?;
 
         let query: Result<MediaEntry> = query!(
             Some(&auth.token),
@@ -137,10 +129,7 @@ impl RemoteService for AniList {
     }
 
     fn update_list_entry(&self, entry: &SeriesEntry) -> Result<()> {
-        let token = match &self.auth {
-            Some(auth) => &auth.token,
-            None => return Err(err::Error::NeedAuthentication),
-        };
+        let token = self.auth().map(|auth| &auth.token)?;
 
         send!(
             Some(token),
@@ -197,8 +186,14 @@ pub struct Auth {
 
 impl Auth {
     #[inline(always)]
-    fn new(user: User, token: AccessToken) -> Self {
+    pub fn new(user: User, token: AccessToken) -> Self {
         Self { user, token }
+    }
+
+    /// Retrieve the current authorization from AniList using the specified `token`.
+    pub fn retrieve(token: AccessToken) -> Result<Self> {
+        let user = query!(Some(&token), "user", {}, "data" => "Viewer")?;
+        Ok(Self::new(user, token))
     }
 }
 
@@ -331,7 +326,7 @@ where
         let message = err["message"].as_str().unwrap_or("unknown").to_string();
         let code = err["status"].as_u64().unwrap_or(0) as u16;
 
-        return Err(err::Error::BadAniListResponse { code, message });
+        return Err(Error::BadAniListResponse { code, message });
     }
 
     Ok(json)
