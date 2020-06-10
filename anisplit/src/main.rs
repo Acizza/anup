@@ -57,8 +57,7 @@ fn main() {
 }
 
 fn run(args: CmdOptions) -> Result<()> {
-    let remote = AniList::unauthenticated();
-
+    let remote = AniList::Unauthenticated;
     let path = args.path.canonicalize().context(err::IO)?;
 
     let name_format = match &args.name_format {
