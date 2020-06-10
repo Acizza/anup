@@ -3,6 +3,7 @@ pub mod select_series;
 mod add_series;
 mod info;
 mod input;
+mod user_panel;
 
 use super::{Component, Draw};
 use crate::err::{Error, Result};
@@ -20,6 +21,7 @@ use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::terminal::Frame;
+use user_panel::{ShouldReset, UserPanel};
 
 pub struct MainPanel {
     current: Panel,
@@ -49,6 +51,11 @@ impl MainPanel {
 
     pub fn switch_to_select_series(&mut self, select: SelectState, state: &mut UIState) {
         self.current = Panel::select_series(select);
+        state.current_action = CurrentAction::FocusedOnMainPanel;
+    }
+
+    pub fn switch_to_user_panel(&mut self, state: &mut UIState) {
+        self.current = Panel::user();
         state.current_action = CurrentAction::FocusedOnMainPanel;
     }
 
@@ -121,6 +128,15 @@ impl Component for MainPanel {
                     Ok(())
                 }
             },
+            Panel::User(user) => match user.process_key(key, state) {
+                Ok(ShouldReset::Yes) => {
+                    self.cursor_needs_hiding = true;
+                    self.reset(state);
+                    Ok(())
+                }
+                Ok(ShouldReset::No) => Ok(()),
+                Err(err) => Err(err),
+            },
         }
     }
 }
@@ -136,12 +152,15 @@ where
             Panel::Info(info) => info.draw(state, rect, frame),
             Panel::AddSeries(add) => add.draw(&(), rect, frame),
             Panel::SelectSeries(panel) => panel.draw(&(), rect, frame),
+            Panel::User(user) => user.draw(state, rect, frame),
         }
     }
 
-    fn after_draw(&mut self, backend: &mut UIBackend<B>, _: &Self::State) {
-        if let Panel::AddSeries(add) = &mut self.current {
-            add.after_draw(backend, &());
+    fn after_draw(&mut self, backend: &mut UIBackend<B>, state: &Self::State) {
+        match &mut self.current {
+            Panel::AddSeries(add) => add.after_draw(backend, &()),
+            Panel::User(user) => user.after_draw(backend, state),
+            _ => (),
         }
 
         if self.cursor_needs_hiding {
@@ -155,6 +174,7 @@ enum Panel {
     Info(InfoPanel),
     AddSeries(Box<AddSeriesPanel>),
     SelectSeries(SelectSeriesPanel),
+    User(UserPanel),
 }
 
 impl Panel {
@@ -171,6 +191,11 @@ impl Panel {
     #[inline(always)]
     fn select_series(select: SelectState) -> Self {
         Self::SelectSeries(SelectSeriesPanel::new(select))
+    }
+
+    #[inline(always)]
+    fn user() -> Self {
+        Self::User(UserPanel::new())
     }
 }
 

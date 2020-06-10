@@ -7,6 +7,7 @@ mod err;
 mod file;
 mod series;
 mod tui;
+mod user;
 mod util;
 
 use crate::config::Config;
@@ -17,11 +18,11 @@ use crate::series::config::SeriesConfig;
 use crate::series::entry::SeriesEntry;
 use crate::series::info::SeriesInfo;
 use crate::series::{LastWatched, Series};
+use crate::user::Users;
 use anime::remote::Remote;
 use chrono::Utc;
 use gumdrop::Options;
-use snafu::{ensure, ResultExt};
-use std::path::PathBuf;
+use snafu::{ensure, OptionExt, ResultExt};
 use std::str;
 
 const ANILIST_CLIENT_ID: u32 = 427;
@@ -38,17 +39,6 @@ pub struct CmdOptions {
     pub offline: bool,
     #[options(help = "play a single episode from the specified or last watched series")]
     pub single: bool,
-    #[options(help = "your account access token")]
-    pub token: Option<String>,
-    #[options(no_short, help = "the ID to use for the series")]
-    pub series_id: Option<i32>,
-    #[options(
-        no_short,
-        help = "the custom regex pattern to match episode files with"
-    )]
-    pub matcher: Option<String>,
-    #[options(no_short, help = "the path to the series")]
-    pub path: Option<PathBuf>,
     #[options(no_short, help = "syncronize changes made while offline to AniList")]
     pub sync: bool,
 }
@@ -73,30 +63,19 @@ fn run(args: CmdOptions) -> Result<()> {
 }
 
 fn init_remote(args: &CmdOptions, can_use_offline: bool) -> Result<Remote> {
-    use anime::remote::anilist::AniList;
-    use anime::remote::AccessToken;
+    use anime::remote::anilist::{AniList, Auth};
 
     if args.offline {
         ensure!(can_use_offline, err::MustRunOnline);
         Ok(Remote::offline())
     } else {
-        let token = match &args.token {
-            Some(token) => {
-                let token = AccessToken::encode(token);
-                token.save()?;
-                token
-            }
-            None => match AccessToken::load() {
-                Ok(token) => token,
-                Err(ref err) if err.is_file_nonexistant() => {
-                    return Err(Error::NeedAniListToken);
-                }
-                Err(err) => return Err(err),
-            },
+        let token = match Users::load_or_create() {
+            Ok(users) => users.take_last_used_token().context(err::MustAddAccount)?,
+            Err(err) => return Err(err),
         };
 
-        let anilist = AniList::authenticated(token)?;
-        Ok(Remote::AniList(anilist))
+        let auth = Auth::retrieve(token)?;
+        Ok(AniList::Authenticated(auth).into())
     }
 }
 

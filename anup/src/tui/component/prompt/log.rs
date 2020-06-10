@@ -49,13 +49,6 @@ impl<'a> Log<'a> {
         self.items.push_back(item);
     }
 
-    pub fn push_error<S>(&mut self, error: S)
-    where
-        S: AsRef<str>,
-    {
-        self.push(LogItem::error(error))
-    }
-
     pub fn push_context<S>(&mut self, context: S)
     where
         S: AsRef<str>,

@@ -1,5 +1,6 @@
 mod backend;
 mod component;
+mod widget_util;
 
 use crate::config::Config;
 use crate::database::Database;
@@ -9,6 +10,7 @@ use crate::series::config::SeriesConfig;
 use crate::series::info::SeriesInfo;
 use crate::series::{LastWatched, Series, SeriesData};
 use crate::try_opt_r;
+use crate::user::Users;
 use crate::CmdOptions;
 use anime::local::Episodes;
 use anime::remote::{Remote, ScoreParser};
@@ -53,6 +55,7 @@ pub struct UIState {
     series: Selection<SeriesStatus>,
     current_action: CurrentAction,
     config: Config,
+    users: Users,
     remote: Remote,
     db: Database,
 }
@@ -60,6 +63,7 @@ pub struct UIState {
 impl UIState {
     fn init(remote: Remote) -> Result<Self> {
         let config = Config::load_or_create()?;
+        let users = Users::load_or_create()?;
         let db = Database::open()?;
 
         let series = SeriesConfig::load_all(&db)?
@@ -72,6 +76,7 @@ impl UIState {
             series: Selection::new(series),
             current_action: CurrentAction::default(),
             config,
+            users,
             remote,
             db,
         })
@@ -194,28 +199,14 @@ where
     }
 
     fn init_remote(args: &CmdOptions, log: &mut Log) -> Remote {
-        use anime::remote::anilist;
-
         match crate::init_remote(args, true) {
             Ok(remote) => remote,
+            Err(Error::MustAddAccount) => Remote::offline(),
             Err(err) => {
-                match err {
-                    Error::NeedAniListToken => {
-                        log.push_error(format!(
-                            "no access token found. Go to {} \
-                             and set your token with the 'anilist' command",
-                            anilist::auth_url(crate::ANILIST_CLIENT_ID)
-                        ));
-                    }
-                    _ => {
-                        log.push(err);
-                        log.push_context(format!(
-                            "if you need a new token, go to {} \
-                             and set it with the 'anilist' command",
-                            anilist::auth_url(crate::ANILIST_CLIENT_ID)
-                        ));
-                    }
-                }
+                log.push(err);
+                log.push_context(
+                    "enter user management with 'u' and add your account again if a new token is needed",
+                );
 
                 log.push_info("continuing in offline mode");
                 Remote::offline()
@@ -313,6 +304,7 @@ where
                     capture!(self.episode_watcher.begin_watching_episode(&mut self.state))
                 }
                 Key::Char('a') => capture!(self.main_panel.switch_to_add_series(&mut self.state)),
+                Key::Char('u') => self.main_panel.switch_to_user_panel(&mut self.state),
                 Key::Char(COMMAND_KEY) => {
                     self.state.current_action = CurrentAction::EnteringCommand
                 }
@@ -339,35 +331,7 @@ where
         let db = &self.state.db;
 
         match command {
-            Command::AniList(token) => {
-                use anime::remote::anilist::AniList;
-                use anime::remote::AccessToken;
-
-                let token = match token {
-                    Some(token) => {
-                        let token = AccessToken::encode(token);
-                        token.save()?;
-                        token
-                    }
-                    None => match AccessToken::load() {
-                        Ok(token) => token,
-                        Err(err) if err.is_file_nonexistant() => {
-                            return Err(Error::NeedAniListToken)
-                        }
-                        Err(err) => return Err(err),
-                    },
-                };
-
-                *remote = Remote::AniList(AniList::authenticated(token)?);
-                self.prompt.log.push_info("logged in to AniList");
-
-                Ok(())
-            }
             Command::Delete => self.state.delete_selected_series(),
-            Command::Offline => {
-                *remote = Remote::offline();
-                Ok(())
-            }
             Command::PlayerArgs(args) => {
                 let series = try_opt_r!(self.state.series.valid_selection_mut());
 
@@ -618,6 +582,12 @@ impl<T> Index<WrappingIndex> for Vec<T> {
 impl<T> IndexMut<WrappingIndex> for Vec<T> {
     fn index_mut(&mut self, index: WrappingIndex) -> &mut Self::Output {
         &mut self[index.get()]
+    }
+}
+
+impl Into<usize> for WrappingIndex {
+    fn into(self) -> usize {
+        self.0
     }
 }
 

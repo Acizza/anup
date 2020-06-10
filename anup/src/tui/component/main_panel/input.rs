@@ -55,6 +55,11 @@ impl Input {
         self.offset = self.caret.pos - max_width;
     }
 
+    pub fn clear(&mut self) {
+        self.caret.clear();
+        self.offset = 0;
+    }
+
     #[inline(always)]
     pub fn text(&self) -> &str {
         &self.caret.buffer
@@ -183,5 +188,12 @@ impl Caret {
     fn move_end(&mut self) {
         self.cur_width = self.total_width;
         self.pos = self.buffer.len();
+    }
+
+    fn clear(&mut self) {
+        self.buffer.clear();
+        self.cur_width = 0;
+        self.total_width = 0;
+        self.pos = 0;
     }
 }

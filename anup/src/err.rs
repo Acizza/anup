@@ -111,10 +111,10 @@ pub enum Error {
     EpisodeNotFound { episode: u32 },
 
     #[snafu(display(
-        "need access token for AniList\ngo to {} and specify your token with the -t flag",
+        "no accounts found\ngo to {} and add your account in the TUI",
         anilist::auth_url(crate::ANILIST_CLIENT_ID)
     ))]
-    NeedAniListToken,
+    MustAddAccount,
 
     #[snafu(display("no command specified"))]
     NoCommandSpecified,
@@ -139,6 +139,13 @@ pub enum Error {
 
     #[snafu(display("since this is a new series, you must specify the series ID\nyou can use the add command in the TUI instead to avoid this"))]
     NewSeriesNeedsID,
+
+    #[snafu(display("failed to open URL in browser with {}: {}", opener, source))]
+    OpenURL {
+        opener: &'static str,
+        source: io::Error,
+        backtrace: Backtrace,
+    },
 }
 
 impl Error {

@@ -132,20 +132,6 @@ impl SaveDir {
     }
 }
 
-impl SerializedFile for anime::remote::AccessToken {
-    fn filename() -> &'static str {
-        "token"
-    }
-
-    fn save_dir() -> SaveDir {
-        SaveDir::Config
-    }
-
-    fn format() -> FileFormat {
-        FileFormat::Toml
-    }
-}
-
 pub fn read_dir<D>(dir: D) -> Result<Vec<DirEntry>>
 where
     D: AsRef<Path>,

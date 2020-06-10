@@ -305,12 +305,8 @@ macro_rules! impl_command_matching {
 /// A parsed command with its arguments.
 #[derive(Debug, Clone)]
 pub enum Command {
-    /// Set the current remote to AniList with an optional login token.
-    AniList(Option<String>),
     /// Remove the selected series from the program.
     Delete,
-    // Set the current remote to offline.
-    Offline,
     /// Specify the video player arguments for the selected season.
     PlayerArgs(SmallVec<[String; 3]>),
     /// Increment / decrement the watched episodes of the selected season.
@@ -327,32 +323,12 @@ pub enum Command {
     Status(anime::remote::Status),
 }
 
-impl_command_matching!(Command, 10,
-    AniList(_) => {
-        name: "anilist",
-        usage: "[login token]",
-        min_args: 0,
-        fn: |args: &[&str], _| {
-            let token = if !args.is_empty() {
-                Some(args.join(" "))
-            } else {
-                None
-            };
-
-            Ok(Command::AniList(token))
-        },
-    },
+impl_command_matching!(Command, 8,
     Delete => {
         name: "delete",
         usage: "",
         min_args: 0,
         fn: |_, _| Ok(Command::Delete),
-    },
-    Offline => {
-        name: "offline",
-        usage: "",
-        min_args: 0,
-        fn: |_, _| Ok(Command::Offline),
     },
     PlayerArgs(_) => {
         name: "args",
@@ -509,11 +485,6 @@ mod tests {
         }
 
         test_command!("delete\n", Command::Delete);
-
-        match enter_command("anilist inserttokenhere\n") {
-            Command::AniList(token) if token == Some("inserttokenhere".into()) => (),
-            other => expected!(other, Command::AniList(Some("inserttokenhere".into()))),
-        }
 
         let expected_args: SmallVec<[_; 3]> = smallvec!["arg1".into(), "arg2".into()];
 
