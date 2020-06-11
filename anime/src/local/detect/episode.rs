@@ -15,14 +15,10 @@ const SEPARATOR_CHAR: u8 = b'-';
 ///
 /// Internally, this variant reverses the supplied string before and after parsing, as it makes it much easier to parse titles correctly.
 pub mod title_and_episode {
-    use super::{separator_opt, title, whitespace};
+    use super::{reverse, separator_opt, title, whitespace};
     use crate::local::detect::common::replace_whitespace;
-    use nom::branch::alt;
-    use nom::bytes::complete::{is_not, tag_no_case};
-    use nom::character::complete::{char, digit1, one_of};
-    use nom::combinator::{map, map_res, opt};
-    use nom::multi::many0;
-    use nom::sequence::{delimited, separated_pair, tuple};
+    use nom::combinator::map;
+    use nom::sequence::{separated_pair, tuple};
     use nom::IResult;
 
     pub fn parse<S>(input: S) -> Option<(String, u32)>
@@ -32,7 +28,7 @@ pub mod title_and_episode {
         let input = input.as_ref().chars().rev().collect::<String>();
 
         let (_, (_, _, (title, episode))) =
-            tuple((tags, whitespace, title_and_episode))(&input).ok()?;
+            tuple((reverse::tags, whitespace, title_and_episode))(&input).ok()?;
 
         let title = title.chars().rev().collect::<String>();
         let cleaned = replace_whitespace(title);
@@ -41,61 +37,41 @@ pub mod title_and_episode {
     }
 
     fn title_and_episode(input: &str) -> IResult<&str, (&str, u32)> {
-        let result = separated_pair(episode, separator_opt, title);
+        let result = separated_pair(reverse::episode, separator_opt, title);
         map(result, |(ep, title)| (title, ep))(input)
     }
+}
 
-    fn episode(input: &str) -> IResult<&str, u32> {
-        let ep = map_res(digit1, |s: &str| {
-            let rev = s.chars().rev().collect::<String>();
-            rev.parse::<u32>()
-        });
+/// Variant of the default parser that looks for episodes fitting a `<title> - <episode> - <desc>` format.
+pub mod title_episode_desc {
+    use super::{reverse, separator_opt, title, whitespace};
+    use crate::local::detect::common::replace_whitespace;
+    use nom::bytes::complete::take_till;
+    use nom::character::is_digit;
+    use nom::combinator::map;
+    use nom::sequence::tuple;
+    use nom::IResult;
 
-        // These look for one of the following formats:
-        // S<season>E<episode>
-        // Ep <episode>
-        // Episode <episode>
-        let prefix = {
-            let season_marker = map(tuple((one_of("Ee"), digit1, one_of("Ss"))), |_| ());
-            let ep_prefix = map(
-                tuple((
-                    whitespace,
-                    // Reverse of "isode"
-                    opt(tag_no_case("edosi")),
-                    // Reverse of "ep"
-                    tag_no_case("pe"),
-                )),
-                |_| (),
-            );
-            let e_prefix = map(one_of("Ee"), |_| ());
-            alt((season_marker, ep_prefix, e_prefix))
-        };
+    pub fn parse<S>(input: S) -> Option<(String, u32)>
+    where
+        S: AsRef<str>,
+    {
+        let input = input.as_ref().chars().rev().collect::<String>();
 
-        let version_suffix = map(tuple((digit1, one_of("vV"))), |_| ());
-        let parsed_episode = tuple((opt(version_suffix), ep, opt(prefix)));
+        let (_, (_, _, (title, episode))) =
+            tuple((reverse::tags, whitespace, title_and_episode))(&input).ok()?;
 
-        map(parsed_episode, |(_, ep, _)| ep)(input)
+        let title = title.chars().rev().collect::<String>();
+        let cleaned = replace_whitespace(title);
+
+        Some((cleaned, episode))
     }
 
-    fn tags(input: &str) -> IResult<&str, ()> {
-        map(many0(tag), |_| ())(input)
-    }
+    fn title_and_episode(input: &str) -> IResult<&str, (&str, u32)> {
+        let until_digit = take_till(|c: char| is_digit(c as u8));
+        let title_episode = tuple((until_digit, reverse::episode, separator_opt, title));
 
-    fn tag(input: &str) -> IResult<&str, ()> {
-        let surrounding = tuple((whitespace, metadata_block, whitespace));
-        map(surrounding, |_| ())(input)
-    }
-
-    fn metadata_block(input: &str) -> IResult<&str, &str> {
-        alt((brackets, parens))(input)
-    }
-
-    fn parens(input: &str) -> IResult<&str, &str> {
-        delimited(char(')'), is_not("("), char('('))(input)
-    }
-
-    fn brackets(input: &str) -> IResult<&str, &str> {
-        delimited(char(']'), is_not("["), char('['))(input)
+        map(title_episode, |(_, episode, _, title)| (title, episode))(input)
     }
 }
 
@@ -168,4 +144,68 @@ fn separator(input: &str) -> IResult<&str, ()> {
 
 fn separator_opt(input: &str) -> IResult<&str, ()> {
     alt((separator, whitespace))(input)
+}
+
+mod reverse {
+    use super::whitespace;
+    use nom::branch::alt;
+    use nom::bytes::complete::{is_not, tag_no_case};
+    use nom::character::complete::{char, digit1, one_of};
+    use nom::combinator::{map, map_res, opt};
+    use nom::multi::many0;
+    use nom::sequence::{delimited, tuple};
+    use nom::IResult;
+
+    pub fn tags(input: &str) -> IResult<&str, ()> {
+        map(many0(tag), |_| ())(input)
+    }
+
+    pub fn tag(input: &str) -> IResult<&str, ()> {
+        let surrounding = tuple((whitespace, metadata_block, whitespace));
+        map(surrounding, |_| ())(input)
+    }
+
+    pub fn metadata_block(input: &str) -> IResult<&str, &str> {
+        alt((brackets, parens))(input)
+    }
+
+    pub fn parens(input: &str) -> IResult<&str, &str> {
+        delimited(char(')'), is_not("("), char('('))(input)
+    }
+
+    pub fn brackets(input: &str) -> IResult<&str, &str> {
+        delimited(char(']'), is_not("["), char('['))(input)
+    }
+
+    pub fn episode(input: &str) -> IResult<&str, u32> {
+        let ep = map_res(digit1, |s: &str| {
+            let rev = s.chars().rev().collect::<String>();
+            rev.parse::<u32>()
+        });
+
+        // These look for one of the following formats:
+        // S<season>E<episode>
+        // Ep <episode>
+        // Episode <episode>
+        let prefix = {
+            let season_marker = map(tuple((one_of("Ee"), digit1, one_of("Ss"))), |_| ());
+            let ep_prefix = map(
+                tuple((
+                    whitespace,
+                    // Reverse of "isode"
+                    opt(tag_no_case("edosi")),
+                    // Reverse of "ep"
+                    tag_no_case("pe"),
+                )),
+                |_| (),
+            );
+            let e_prefix = map(one_of("Ee"), |_| ());
+            alt((season_marker, ep_prefix, e_prefix))
+        };
+
+        let version_suffix = map(tuple((digit1, one_of("vV"))), |_| ());
+        let parsed_episode = tuple((opt(version_suffix), ep, opt(prefix)));
+
+        map(parsed_episode, |(_, ep, _)| ep)(input)
+    }
 }

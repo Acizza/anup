@@ -245,6 +245,7 @@ impl EpisodeParser {
 
         let (title, ep_num) = episode::title_and_episode::parse(filename)
             .or_else(|| episode::episode_and_title::parse(filename))
+            .or_else(|| episode::title_episode_desc::parse(filename))
             .context(err::EpisodeParseFailed { filename })?;
 
         Ok(ParsedEpisode::new(Some(title), ep_num))
@@ -469,6 +470,13 @@ mod tests {
             def("[Header 1].Series.Title.Episode.12.[10].mkv"),
             def("[Header 1] Series Title - 12v2.mkv"),
             def("[Header 1] 12v2 - Series Title.mkv"),
+            def("Series Title 12 An Episode Description (1080p).mkv"),
+            def("Series Title - 12 An Episode Description.mkv"),
+            def("Series Title - 12 - An Episode Description.mkv"),
+            cus(
+                "Series Title 2 12 An Episode Description [1080p].mkv",
+                "Series Title 2",
+            ),
         ];
 
         let parser = EpisodeParser::default();
