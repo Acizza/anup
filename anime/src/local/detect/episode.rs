@@ -43,6 +43,10 @@ pub mod title_and_episode {
 }
 
 /// Variant of the default parser that looks for episodes fitting a `<title> - <episode> - <desc>` format.
+///
+/// ### Implementation Note
+///
+/// Internally, this variant reverses the supplied string before and after parsing, as it makes it much easier to parse titles correctly.
 pub mod title_episode_desc {
     use super::{reverse, separator_opt, title, whitespace};
     use crate::local::detect::common::replace_whitespace;
