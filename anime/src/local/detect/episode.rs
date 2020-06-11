@@ -55,21 +55,26 @@ pub mod title_and_episode {
         // S<season>E<episode>
         // Ep <episode>
         // Episode <episode>
-        let season_marker = map(tuple((one_of("Ee"), digit1, one_of("Ss"))), |_| ());
-        let ep_prefix = map(
-            tuple((
-                whitespace,
-                // Reverse of "isode"
-                opt(tag_no_case("edosi")),
-                // Reverse of "ep"
-                tag_no_case("pe"),
-            )),
-            |_| (),
-        );
-        let e_prefix = map(one_of("Ee"), |_| ());
-        let prefix = alt((season_marker, ep_prefix, e_prefix));
+        let prefix = {
+            let season_marker = map(tuple((one_of("Ee"), digit1, one_of("Ss"))), |_| ());
+            let ep_prefix = map(
+                tuple((
+                    whitespace,
+                    // Reverse of "isode"
+                    opt(tag_no_case("edosi")),
+                    // Reverse of "ep"
+                    tag_no_case("pe"),
+                )),
+                |_| (),
+            );
+            let e_prefix = map(one_of("Ee"), |_| ());
+            alt((season_marker, ep_prefix, e_prefix))
+        };
 
-        map(tuple((ep, opt(prefix))), |(ep, _)| ep)(input)
+        let version_suffix = map(tuple((digit1, one_of("vV"))), |_| ());
+        let parsed_episode = tuple((opt(version_suffix), ep, opt(prefix)));
+
+        map(parsed_episode, |(_, ep, _)| ep)(input)
     }
 
     fn tags(input: &str) -> IResult<&str, ()> {
@@ -98,7 +103,7 @@ pub mod title_and_episode {
 pub mod episode_and_title {
     use super::{separator_opt, title, whitespace};
     use crate::local::detect::common::{replace_whitespace, tags};
-    use nom::character::complete::{char, digit1};
+    use nom::character::complete::{char, digit1, one_of};
     use nom::combinator::{map, map_res, opt};
     use nom::sequence::{separated_pair, tuple};
     use nom::IResult;
@@ -126,8 +131,11 @@ pub mod episode_and_title {
 
         let season_marker = tuple((char('S'), digit1));
         let ep_marker = tuple((opt(season_marker), char('E')));
+        let version_suffix = map(tuple((one_of("vV"), digit1)), |_| ());
 
-        map(tuple((opt(ep_marker), ep)), |(_, ep)| ep)(input)
+        let parsed_episode = tuple((opt(ep_marker), ep, opt(version_suffix)));
+
+        map(parsed_episode, |(_, ep, _)| ep)(input)
     }
 }
 

@@ -467,6 +467,8 @@ mod tests {
             def("[Header 1].Series.Title.E12.[10].mkv"),
             def("[Header 1].Series.Title.Ep.12.[10].mkv"),
             def("[Header 1].Series.Title.Episode.12.[10].mkv"),
+            def("[Header 1] Series Title - 12v2.mkv"),
+            def("[Header 1] 12v2 - Series Title.mkv"),
         ];
 
         let parser = EpisodeParser::default();
