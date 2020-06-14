@@ -95,9 +95,6 @@ pub enum Error {
     #[snafu(display("{} must be added to the program first\nyou can do this in the TUI by using the add command", name))]
     MustAddSeries { name: String },
 
-    #[snafu(display("path must be a directory"))]
-    NotADirectory,
-
     #[snafu(display("series name must be specified"))]
     MustSpecifySeriesName,
 
@@ -136,9 +133,6 @@ pub enum Error {
 
     #[snafu(display("invalid score"))]
     InvalidScore,
-
-    #[snafu(display("since this is a new series, you must specify the series ID\nyou can use the add command in the TUI instead to avoid this"))]
-    NewSeriesNeedsID,
 
     #[snafu(display("failed to open URL in browser with {}: {}", opener, source))]
     OpenURL {
@@ -195,19 +189,6 @@ impl From<num::ParseIntError> for Error {
 
 pub fn display_error(err: Error) {
     eprintln!("{}", err);
-
-    let mut print_backtrace = true;
-
-    if let Error::Anime { source, .. } = &err {
-        if let anime::Error::NeedExistingSeriesData = source {
-            eprintln!("run the program with the --prefetch flag first when an internet connection is available");
-            print_backtrace = false;
-        }
-    }
-
-    if !print_backtrace {
-        return;
-    }
 
     if let Some(backtrace) = err.backtrace() {
         eprintln!("backtrace:\n{}", backtrace);
