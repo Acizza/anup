@@ -17,32 +17,70 @@ const SEPARATOR_CHAR: u8 = b'-';
 pub mod title_and_episode {
     use super::{reverse, separator_opt, title, whitespace};
     use crate::local::detect::common::replace_whitespace;
+    use crate::local::ParsedEpisode;
+    use crate::SeriesKind;
+    use nom::branch::alt;
     use nom::combinator::map;
     use nom::sequence::{separated_pair, tuple};
     use nom::IResult;
 
-    pub fn parse<S>(input: S) -> Option<(String, u32)>
+    pub fn parse<S>(input: S) -> Option<ParsedEpisode>
     where
         S: AsRef<str>,
     {
         let input = input.as_ref().chars().rev().collect::<String>();
 
-        let (_, (_, _, (title, episode))) =
+        let (_, (_, _, (title, episode, category))) =
             tuple((reverse::tags, whitespace, title_and_episode))(&input).ok()?;
 
         let title = title.chars().rev().collect::<String>();
         let cleaned = replace_whitespace(title);
 
-        Some((cleaned, episode))
+        let episode = ParsedEpisode::new(Some(cleaned), episode, category);
+        Some(episode)
     }
 
-    fn title_and_episode(input: &str) -> IResult<&str, (&str, u32)> {
-        let result = separated_pair(reverse::episode, separator_opt, title);
-        map(result, |(ep, title)| (title, ep))(input)
+    fn title_and_episode(input: &str) -> IResult<&str, (&str, u32, SeriesKind)> {
+        // Categories can be specified before or after the actual episode
+        let ep_with_category = alt((
+            map(
+                tuple((reverse::category, whitespace, reverse::episode)),
+                |(cat, _, ep)| (ep, cat),
+            ),
+            map(
+                tuple((reverse::episode, whitespace, reverse::category)),
+                |(ep, _, cat)| (ep, cat),
+            ),
+            // If we only have a category, we should assume that there's only one episode
+            map(reverse::category, |cat| (1, cat)),
+        ));
+
+        let title_with_category = map(
+            tuple((reverse::category, separator_opt, title)),
+            |(cat, _, title)| (title, cat),
+        );
+
+        // We can have a category specified at either the episode marker or title marker, but not both
+        alt((
+            map(
+                separated_pair(ep_with_category, separator_opt, title),
+                |((ep, cat), title)| (title, ep, cat),
+            ),
+            map(
+                separated_pair(reverse::episode, separator_opt, title_with_category),
+                |(ep, (title, cat))| (title, ep, cat),
+            ),
+            map(
+                separated_pair(reverse::episode, separator_opt, title),
+                |(ep, title)| (title, ep, SeriesKind::Season),
+            ),
+        ))(input)
     }
 }
 
 /// Variant of the default parser that looks for episodes fitting a `<title> - <episode> - <desc>` format.
+///
+/// All episodes in this format are assumed to be season episodes.
 ///
 /// ### Implementation Note
 ///
@@ -50,13 +88,15 @@ pub mod title_and_episode {
 pub mod title_episode_desc {
     use super::{reverse, separator_opt, title, whitespace};
     use crate::local::detect::common::replace_whitespace;
+    use crate::local::ParsedEpisode;
+    use crate::SeriesKind;
     use nom::bytes::complete::take_till;
     use nom::character::is_digit;
     use nom::combinator::map;
     use nom::sequence::tuple;
     use nom::IResult;
 
-    pub fn parse<S>(input: S) -> Option<(String, u32)>
+    pub fn parse<S>(input: S) -> Option<ParsedEpisode>
     where
         S: AsRef<str>,
     {
@@ -68,7 +108,8 @@ pub mod title_episode_desc {
         let title = title.chars().rev().collect::<String>();
         let cleaned = replace_whitespace(title);
 
-        Some((cleaned, episode))
+        let episode = ParsedEpisode::new(Some(cleaned), episode, SeriesKind::Season);
+        Some(episode)
     }
 
     fn title_and_episode(input: &str) -> IResult<&str, (&str, u32)> {
@@ -80,15 +121,19 @@ pub mod title_episode_desc {
 }
 
 /// Variant of the default parser that looks for episodes fitting a `<episode> - <title>` format.
+///
+/// All episodes in this format are assumed to be season episodes.
 pub mod episode_and_title {
     use super::{separator_opt, title, whitespace};
     use crate::local::detect::common::{replace_whitespace, tags};
+    use crate::local::ParsedEpisode;
+    use crate::SeriesKind;
     use nom::character::complete::{char, digit1, one_of};
     use nom::combinator::{map, map_res, opt};
     use nom::sequence::{separated_pair, tuple};
     use nom::IResult;
 
-    pub fn parse<S>(input: S) -> Option<(String, u32)>
+    pub fn parse<S>(input: S) -> Option<ParsedEpisode>
     where
         S: AsRef<str>,
     {
@@ -98,8 +143,9 @@ pub mod episode_and_title {
             tuple((tags, whitespace, episode_and_title))(input).ok()?;
 
         let title = replace_whitespace(title);
+        let episode = ParsedEpisode::new(Some(title), episode, SeriesKind::Season);
 
-        Some((title, episode))
+        Some(episode)
     }
 
     fn episode_and_title(input: &str) -> IResult<&str, (u32, &str)> {
@@ -152,6 +198,7 @@ fn separator_opt(input: &str) -> IResult<&str, ()> {
 
 mod reverse {
     use super::whitespace;
+    use crate::SeriesKind;
     use nom::branch::alt;
     use nom::bytes::complete::{is_not, tag_no_case};
     use nom::character::complete::{char, digit1, one_of};
@@ -159,6 +206,12 @@ mod reverse {
     use nom::multi::many0;
     use nom::sequence::{delimited, tuple};
     use nom::IResult;
+
+    macro_rules! maybe_plural {
+        ($input:expr) => {
+            tuple((opt(one_of("sS")), tag_no_case($input)))
+        };
+    }
 
     pub fn tags(input: &str) -> IResult<&str, ()> {
         map(many0(tag), |_| ())(input)
@@ -207,9 +260,27 @@ mod reverse {
             alt((season_marker, ep_prefix, e_prefix))
         };
 
-        let version_suffix = map(tuple((digit1, one_of("vV"))), |_| ());
-        let parsed_episode = tuple((opt(version_suffix), ep, opt(prefix)));
+        let parsed_episode = tuple((opt(file_version), ep, opt(prefix)));
 
         map(parsed_episode, |(_, ep, _)| ep)(input)
+    }
+
+    pub fn file_version(input: &str) -> IResult<&str, ()> {
+        map(tuple((digit1, one_of("vV"))), |_| ())(input)
+    }
+
+    pub fn category(input: &str) -> IResult<&str, SeriesKind> {
+        let variants = alt((
+            // Special
+            map(maybe_plural!("laiceps"), |_| SeriesKind::Special),
+            // OVA
+            map(maybe_plural!("avo"), |_| SeriesKind::OVA),
+            // ONA
+            map(maybe_plural!("ano"), |_| SeriesKind::ONA),
+            // Movie
+            map(maybe_plural!("eivom"), |_| SeriesKind::Movie),
+        ));
+
+        map(tuple((opt(file_version), variants)), |(_, cat)| cat)(input)
     }
 }

@@ -1,5 +1,6 @@
 use super::{
-    AccessToken, RemoteService, ScoreParser, SeriesEntry, SeriesID, SeriesInfo, SeriesTitle, Status,
+    AccessToken, RemoteService, ScoreParser, Sequel, SeriesEntry, SeriesID, SeriesInfo, SeriesKind,
+    SeriesTitle, Status,
 };
 use crate::err::{self, Error, Result};
 use chrono::{Datelike, NaiveDate};
@@ -102,13 +103,17 @@ impl RemoteService for AniList {
             "data" => "Page" => "media"
         )?;
 
-        let entries = entries.into_iter().map(|entry| entry.into()).collect();
+        let entries = entries
+            .into_iter()
+            .filter_map(|entry| entry.try_into().ok())
+            .collect();
+
         Ok(entries)
     }
 
     fn search_info_by_id(&self, id: SeriesID) -> Result<SeriesInfo> {
         let info: Media = query!(None, "info_by_id", { "id": id }, "data" => "Media")?;
-        Ok(info.into())
+        info.try_into().map_err(|_| Error::NotAnAnime)
     }
 
     fn get_list_entry(&self, id: SeriesID) -> Result<Option<SeriesEntry>> {
@@ -350,36 +355,39 @@ struct Media {
     episodes: Option<u32>,
     duration: Option<u32>,
     relations: Option<MediaRelation>,
-    format: String,
+    format: MediaFormat,
 }
 
 impl Media {
-    /// Returns the media ID of the series that is listed as a sequel and matches the same format.
-    fn direct_sequel_id(&self) -> Option<SeriesID> {
-        let relations = self.relations.as_ref()?;
-
-        let is_direct_sequel =
-            |edge: &&MediaEdge| edge.is_sequel() && edge.matches_format(&self.format);
+    fn sequels(&self) -> Vec<Sequel> {
+        let relations = match self.relations.as_ref() {
+            Some(relations) => relations,
+            None => return Vec::new(),
+        };
 
         relations
             .edges
             .iter()
-            .find(is_direct_sequel)
-            .map(|edge| edge.node.id)
+            .filter_map(|edge| edge.try_into().ok())
+            .collect()
     }
 }
 
-impl Into<SeriesInfo> for Media {
-    fn into(self) -> SeriesInfo {
-        let sequel = self.direct_sequel_id();
+impl TryInto<SeriesInfo> for Media {
+    type Error = ();
 
-        SeriesInfo {
+    fn try_into(self) -> result::Result<SeriesInfo, Self::Error> {
+        let kind = self.format.try_into()?;
+        let sequels = self.sequels();
+
+        Ok(SeriesInfo {
             id: self.id,
             title: self.title.into(),
             episodes: self.episodes.unwrap_or(1),
             episode_length: self.duration.unwrap_or(24),
-            sequel,
-        }
+            kind,
+            sequels,
+        })
     }
 }
 
@@ -411,36 +419,79 @@ struct MediaEdge {
     node: MediaNode,
 }
 
-impl MediaEdge {
-    #[inline(always)]
-    fn is_sequel(&self) -> bool {
-        self.relation == MediaRelationType::Sequel
-    }
+impl TryInto<Sequel> for &MediaEdge {
+    type Error = ();
 
-    fn matches_format<S>(&self, format: S) -> bool
-    where
-        S: AsRef<str>,
-    {
-        self.node
-            .format
-            .as_ref()
-            .map(|fmt| fmt == format.as_ref())
-            .unwrap_or(false)
+    fn try_into(self) -> result::Result<Sequel, Self::Error> {
+        // It doesn't make sense to consider this media edge a sequel
+        // if its an alternative, source, or character relation
+        if !self.relation.is_sequential() {
+            return Err(());
+        }
+
+        let kind = self.node.format.try_into()?;
+        let sequel = Sequel::new(kind, self.node.id);
+
+        Ok(sequel)
     }
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
 enum MediaRelationType {
-    #[serde(rename = "SEQUEL")]
     Sequel,
-    #[serde(other)]
+    #[serde(rename = "SIDE_STORY")]
+    SideStory,
     Other,
+    #[serde(other)]
+    Unknown,
+}
+
+impl MediaRelationType {
+    /// Returns true if the relation is considered to be some kind of sequel. Ex: a second season, OVA, ONA, movie, etc
+    fn is_sequential(self) -> bool {
+        match self {
+            Self::Sequel | Self::SideStory | Self::Other => true,
+            Self::Unknown => false,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
 struct MediaNode {
     id: u32,
-    format: Option<String>,
+    format: MediaFormat,
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "UPPERCASE")]
+enum MediaFormat {
+    TV,
+    #[serde(rename = "TV_SHORT")]
+    TVShort,
+    Movie,
+    Special,
+    OVA,
+    ONA,
+    Music,
+    #[serde(other)]
+    Other,
+}
+
+impl TryInto<SeriesKind> for MediaFormat {
+    type Error = ();
+
+    fn try_into(self) -> result::Result<SeriesKind, Self::Error> {
+        match self {
+            Self::TV | Self::TVShort => Ok(SeriesKind::Season),
+            Self::Movie => Ok(SeriesKind::Movie),
+            Self::Special => Ok(SeriesKind::Special),
+            Self::OVA => Ok(SeriesKind::OVA),
+            Self::ONA => Ok(SeriesKind::ONA),
+            Self::Music => Ok(SeriesKind::Music),
+            Self::Other => Err(()),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

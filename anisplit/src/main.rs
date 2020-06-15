@@ -1,9 +1,10 @@
 mod err;
 
 use anime::local::detect;
-use anime::local::{EpisodeParser, Episodes};
+use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
 use anime::remote::anilist::AniList;
 use anime::remote::{RemoteService, SeriesInfo};
+use anime::SeriesKind;
 use err::{Error, Result};
 use gumdrop::Options;
 use snafu::{ensure, OptionExt, ResultExt};
@@ -57,7 +58,6 @@ fn main() {
 }
 
 fn run(args: CmdOptions) -> Result<()> {
-    let remote = AniList::Unauthenticated;
     let path = args.path.canonicalize().context(err::IO)?;
 
     let name_format = match &args.name_format {
@@ -77,11 +77,11 @@ fn run(args: CmdOptions) -> Result<()> {
         None => path.parent().context(err::NoDirParent)?.into(),
     };
 
-    let all_episodes = Episodes::parse_all(&path, &matcher)?;
+    let all_episodes = CategorizedEpisodes::parse_all(&path, &matcher)?;
 
     match all_episodes.len() {
         len if len > 1 => {
-            println!("found multiple titles in directory.. these will be moved instead\nrerun the tool afterwards to split up merged seasons\n");
+            println!("found multiple titles in directory.. these will be moved instead\nrerun the tool afterwards to split up merged seasons / episode categories\n");
 
             let data = SeriesData {
                 name_format,
@@ -90,9 +90,10 @@ fn run(args: CmdOptions) -> Result<()> {
                 out_dir,
             };
 
-            split_multiple_titles(&args, data, all_episodes, remote)
+            split_multiple_titles(data, all_episodes)
         }
         1 => {
+            let remote = AniList::Unauthenticated;
             let (_, episodes) = all_episodes.into_iter().next().unwrap();
 
             let series = {
@@ -109,17 +110,15 @@ fn run(args: CmdOptions) -> Result<()> {
                 out_dir,
             };
 
-            format_sequels(data, series, episodes, remote)
+            format_all_series(data, series, episodes, remote)
         }
         _ => Ok(()),
     }
 }
 
 fn split_multiple_titles(
-    args: &CmdOptions,
     data: SeriesData,
-    all_episodes: HashMap<String, Episodes>,
-    remote: AniList,
+    all_episodes: HashMap<String, CategorizedEpisodes>,
 ) -> Result<()> {
     let original_title = parse_path_title(&data.path)?;
 
@@ -128,10 +127,26 @@ fn split_multiple_titles(
             continue;
         }
 
+        let out_dir = data.out_dir.join(&title);
+
         println!("moving {}", title);
 
-        let info = find_series_info(args, title, &remote)?;
-        let actions = PendingActions::generate(&data, &info, &episodes, 0)?;
+        let actions = episodes
+            .take()
+            .into_iter()
+            .flat_map(|(_, eps)| eps.take().into_iter())
+            .map(|ep| {
+                let ep_path = data.path.join(&ep.filename);
+                let out_path = out_dir.join(ep.filename);
+                FormatAction::new(ep_path, out_path)
+            })
+            .collect();
+
+        let actions = PendingActions {
+            actions,
+            out_dir,
+            method: data.link_method,
+        };
 
         if !actions.confirm_proceed()? {
             continue;
@@ -143,26 +158,79 @@ fn split_multiple_titles(
     Ok(())
 }
 
-fn format_sequels(
+fn format_all_series(
     data: SeriesData,
-    mut info: SeriesInfo,
-    episodes: Episodes,
+    info: SeriesInfo,
+    mut episodes: CategorizedEpisodes,
     remote: AniList,
 ) -> Result<()> {
-    let mut episode_offset = 0;
     let mut total_actions = 0;
 
-    while let Some(sequel) = info.sequel {
-        info = remote.search_info_by_id(sequel)?;
-        episode_offset += info.episodes;
+    // Split up merged seasons first
+    if let Some(season_eps) = episodes.remove(&SeriesKind::Season) {
+        total_actions += format_series_sequels(&data, &info, &season_eps, &remote)?;
+    }
 
-        println!("looking for {}", info.title.preferred);
+    // Now we should split episode categories
+    for (cat, cat_eps) in episodes.iter() {
+        let cat_str = match cat {
+            SeriesKind::Season => unreachable!(),
+            SeriesKind::Special => "specials",
+            SeriesKind::OVA => "OVAs",
+            SeriesKind::ONA => "ONAs",
+            SeriesKind::Movie => "movies",
+            SeriesKind::Music => "music",
+        };
 
-        let actions = match PendingActions::generate(&data, &info, &episodes, episode_offset) {
+        println!("spltting series {}..", cat_str);
+
+        let cat_info = match info.sequel_by_kind(*cat) {
+            Some(sequel) => remote.search_info_by_id(sequel.id)?,
+            None => continue,
+        };
+
+        let actions = match PendingActions::generate(&data, &cat_info, &cat_eps, 0) {
             Ok(actions) => actions,
             Err(err @ Error::NoEpisodes) => {
                 println!("| {}", err);
                 return Ok(());
+            }
+            Err(err) => return Err(err),
+        };
+
+        if actions.confirm_proceed()? {
+            total_actions += actions.execute()?;
+        }
+
+        thread::sleep(Duration::from_millis(500));
+    }
+
+    println!("\n{} actions performed", total_actions);
+    Ok(())
+}
+
+fn format_series_sequels(
+    data: &SeriesData,
+    initial_info: &SeriesInfo,
+    episodes: &SortedEpisodes,
+    remote: &AniList,
+) -> Result<u32> {
+    let mut episode_offset = 0;
+    let mut total_actions = 0;
+
+    let mut info = Cow::Borrowed(initial_info);
+
+    while let Some(sequel) = info.direct_sequel() {
+        info = remote.search_info_by_id(sequel.id)?.into();
+        episode_offset += info.episodes;
+
+        println!("looking for {}", info.title.preferred);
+
+        let actions = match PendingActions::generate(data, &info, episodes, episode_offset) {
+            Ok(actions) => actions,
+            Err(err @ Error::NoEpisodes) => {
+                println!("| {}", err);
+                return Ok(total_actions);
             }
             Err(err) => return Err(err),
         };
@@ -174,15 +242,14 @@ fn format_sequels(
         total_actions += actions.execute()?;
 
         // We don't need to sleep if there isn't another sequel
-        if info.sequel.is_none() {
+        if info.sequels.is_empty() {
             break;
         }
 
         thread::sleep(Duration::from_millis(500));
     }
 
-    println!("\n{} actions performed", total_actions);
-    Ok(())
+    Ok(total_actions)
 }
 
 struct SeriesData {
@@ -304,7 +371,7 @@ impl PendingActions {
     fn generate(
         data: &SeriesData,
         info: &SeriesInfo,
-        episodes: &Episodes,
+        episodes: &SortedEpisodes,
         episode_offset: u32,
     ) -> Result<Self> {
         let out_dir = data.out_dir.join(&info.title.preferred);
@@ -312,7 +379,7 @@ impl PendingActions {
         let mut has_any_episodes = false;
 
         for real_ep_num in (1 + episode_offset)..=(episode_offset + info.episodes) {
-            let episode = match episodes.get(real_ep_num) {
+            let episode = match episodes.find(real_ep_num) {
                 Some(episode) => {
                     has_any_episodes = true;
                     episode

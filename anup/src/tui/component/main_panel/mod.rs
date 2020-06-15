@@ -11,7 +11,7 @@ use crate::series::info::InfoResult;
 use crate::series::SeriesParams;
 use crate::tui::{CurrentAction, UIBackend, UIState};
 use add_series::{AddSeriesPanel, AddSeriesResult};
-use anime::local::Episodes;
+use anime::local::SortedEpisodes;
 use anime::remote::RemoteService;
 use info::InfoPanel;
 use select_series::{SelectSeriesPanel, SelectSeriesResult, SelectState};
@@ -208,14 +208,14 @@ impl Default for Panel {
 pub struct PartialSeries {
     info: InfoResult,
     params: SeriesParams,
-    episodes: Option<Episodes>,
+    episodes: Option<SortedEpisodes>,
 }
 
 impl PartialSeries {
     #[inline(always)]
     fn new<E>(info: InfoResult, params: SeriesParams, episodes: E) -> Self
     where
-        E: Into<Option<Episodes>>,
+        E: Into<Option<SortedEpisodes>>,
     {
         Self {
             info,

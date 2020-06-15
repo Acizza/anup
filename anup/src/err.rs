@@ -140,6 +140,14 @@ pub enum Error {
         source: io::Error,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("no episodes found"))]
+    NoEpisodesFound,
+
+    #[snafu(display(
+        "multiple non-seasonal episode categories found\nyou must split this series with anisplit first"
+    ))]
+    SeriesNeedsSplitting,
 }
 
 impl Error {

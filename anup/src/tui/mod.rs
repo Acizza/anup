@@ -12,7 +12,7 @@ use crate::series::{LastWatched, Series, SeriesData};
 use crate::user::Users;
 use crate::CmdOptions;
 use crate::{try_opt_r, try_opt_ret};
-use anime::local::Episodes;
+use anime::local::SortedEpisodes;
 use anime::remote::{Remote, ScoreParser};
 use backend::{TermionBackend, UIBackend, UIEvent, UIEvents};
 use chrono::Duration;
@@ -83,7 +83,7 @@ impl UIState {
 
     fn add_series<E>(&mut self, config: SeriesConfig, info: SeriesInfo, episodes: E) -> Result<()>
     where
-        E: Into<Option<Episodes>>,
+        E: Into<Option<SortedEpisodes>>,
     {
         let data = SeriesData::from_remote(config, info, &self.remote)?;
 

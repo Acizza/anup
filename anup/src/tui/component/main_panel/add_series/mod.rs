@@ -1,6 +1,7 @@
 mod inputs;
 
 use super::PartialSeries;
+use crate::config::Config;
 use crate::err::{Error, Result};
 use crate::series::info::{InfoSelector, SeriesInfo};
 use crate::series::{SeriesParams, SeriesPath};
@@ -8,7 +9,7 @@ use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, text};
 use crate::tui::{UIBackend, UIState};
 use crate::{try_opt_r, try_opt_ret};
-use anime::local::Episodes;
+use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
 use inputs::{InputSet, ParsedValue, ValidatedInput};
 use std::borrow::Cow;
 use std::mem;
@@ -159,9 +160,12 @@ impl AddSeriesPanel {
             fields[0]
         );
 
-        let episodes_text = match &built.found_episodes {
-            Some(text) => text::italic(text),
-            None => text::italic_with("none", |s| s.fg(Color::Yellow)),
+        let episodes_text = match &built.episodes {
+            ParsedEpisodes::Parsed(_, range_str) => text::italic(range_str),
+            ParsedEpisodes::NoneFound => text::italic_with("none", |s| s.fg(Color::Yellow)),
+            ParsedEpisodes::NeedsSplitting => {
+                text::italic_with("needs splitting", |s| s.fg(Color::Yellow))
+            }
         };
 
         info_label!("Found Episodes", episodes_text, fields[1]);
@@ -284,13 +288,13 @@ impl SeriesBuilder {
         let path = self.path(inputs, state)?;
 
         let parser = inputs.parser.parsed_value();
-        let episodes = Episodes::parse(path.absolute(&state.config), parser)?;
+        let episodes = ParsedEpisodes::parse(&path, &state.config, parser)?;
         let name = inputs.name.parsed_value();
 
         match &mut self.params {
             Some(built) => {
                 built.params.update(name, path, parser);
-                built.set_episodes(episodes);
+                built.episodes = episodes;
                 Ok(())
             }
             None => {
@@ -308,6 +312,8 @@ impl SeriesBuilder {
             Err(err) => return Err(err),
         };
 
+        // TODO: our built series gets eaten when this fails
+        let episodes = built.episodes.take_episodes()?;
         let params = built.params;
 
         let info = {
@@ -322,35 +328,47 @@ impl SeriesBuilder {
 
         let params = SeriesParams::new(params.name, params.path, params.parser);
 
-        Ok(PartialSeries::new(info, params, built.episodes))
+        Ok(PartialSeries::new(info, params, episodes))
     }
 }
 
-struct BuiltSeriesParams {
-    params: SeriesParams,
-    episodes: Episodes,
-    found_episodes: Option<String>,
+enum ParsedEpisodes {
+    Parsed(SortedEpisodes, String),
+    NoneFound,
+    NeedsSplitting,
 }
 
-impl BuiltSeriesParams {
-    fn new(params: SeriesParams, episodes: Episodes) -> Self {
-        let found_episodes = Self::episode_range_str(&episodes);
+impl ParsedEpisodes {
+    fn parse(path: &SeriesPath, config: &Config, parser: &EpisodeParser) -> Result<Self> {
+        let episodes = CategorizedEpisodes::parse(path.absolute(config), parser)?;
 
-        Self {
-            params,
-            episodes,
-            found_episodes,
+        if episodes.is_empty() {
+            return Ok(Self::NoneFound);
         }
+
+        let result = episodes
+            .take_season_episodes_or_present()
+            .map(|eps| {
+                Self::episode_range_str(&eps)
+                    .map(|range| Self::Parsed(eps, range))
+                    .unwrap_or(Self::NoneFound)
+            })
+            .unwrap_or(Self::NeedsSplitting);
+
+        Ok(result)
     }
 
-    fn set_episodes(&mut self, episodes: Episodes) {
-        self.episodes = episodes;
-        self.found_episodes = Self::episode_range_str(&self.episodes);
+    fn take_episodes(self) -> Result<SortedEpisodes> {
+        match self {
+            Self::Parsed(episodes, _) => Ok(episodes),
+            Self::NoneFound => Err(Error::NoEpisodesFound),
+            Self::NeedsSplitting => Err(Error::SeriesNeedsSplitting),
+        }
     }
 
     /// Build a string that displays ranges and holes within a set of episodes.
     /// A hole is considered to be an episode that is not sequential.
-    fn episode_range_str(episodes: &Episodes) -> Option<String> {
+    fn episode_range_str(episodes: &SortedEpisodes) -> Option<String> {
         use std::ops::Range;
 
         const RANGE_SEPARATOR: char = '-';
@@ -395,10 +413,22 @@ impl BuiltSeriesParams {
     }
 }
 
+struct BuiltSeriesParams {
+    params: SeriesParams,
+    episodes: ParsedEpisodes,
+}
+
+impl BuiltSeriesParams {
+    #[inline(always)]
+    fn new(params: SeriesParams, episodes: ParsedEpisodes) -> Self {
+        Self { params, episodes }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anime::local::Episode;
+    use anime::local::{Episode, SortedEpisodes};
     use std::ops::RangeInclusive;
 
     fn insert_range(list: &mut Vec<Episode>, range: RangeInclusive<u32>) {
@@ -409,7 +439,7 @@ mod tests {
 
     macro_rules! episodes {
         () => {{
-            Episodes::with_sorted(Vec::new())
+            SortedEpisodes::new()
         }};
 
         ($($range:expr),+) => {{
@@ -417,7 +447,7 @@ mod tests {
             $(
             insert_range(&mut episodes, $range);
             )+
-            Episodes::with_sorted(episodes)
+            SortedEpisodes::with_episodes(episodes)
         }};
     }
 
@@ -441,7 +471,7 @@ mod tests {
         ];
 
         for (episodes, expected) in test_sets {
-            match BuiltSeriesParams::episode_range_str(&episodes) {
+            match ParsedEpisodes::episode_range_str(&episodes) {
                 Some(result) => assert_eq!(Some(result.as_str()), expected),
                 None => assert_eq!(None, expected),
             }

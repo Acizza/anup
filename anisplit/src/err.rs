@@ -52,7 +52,7 @@ pub enum Error {
     NoDirParent,
 
     #[snafu(display(
-        "unable to find matching series with name: {}\nconsider supplying the ID instead with -i",
+        "unable to find matching series with name: {}\nconsider supplying the ID instead with -s",
         title
     ))]
     UnableToDetectSeries { title: String },

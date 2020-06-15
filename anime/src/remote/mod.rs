@@ -2,6 +2,7 @@ pub mod anilist;
 pub mod offline;
 
 use crate::err::{self, Result};
+use crate::SeriesKind;
 use anilist::AniList;
 use enum_dispatch::enum_dispatch;
 use offline::Offline;
@@ -99,8 +100,10 @@ pub struct SeriesInfo {
     pub episodes: u32,
     /// The length of a single episode in minutes.
     pub episode_length: u32,
+    /// The type of series.
+    pub kind: SeriesKind,
     /// An ID pointing to the sequel of this series.
-    pub sequel: Option<SeriesID>,
+    pub sequels: Vec<Sequel>,
 }
 
 impl SeriesInfo {
@@ -122,6 +125,20 @@ impl SeriesInfo {
             Some(strsim::jaro_winkler(&title, &name) as f32)
         })
     }
+
+    /// Returns the first sequel that is the same kind as the current series.
+    ///
+    /// This can be used to follow sequel trails of seasons.
+    #[inline(always)]
+    pub fn direct_sequel(&self) -> Option<&Sequel> {
+        self.sequel_by_kind(self.kind)
+    }
+
+    /// Returns the first sequel matching the specified `kind`.
+    #[inline]
+    pub fn sequel_by_kind(&self, kind: SeriesKind) -> Option<&Sequel> {
+        self.sequels.iter().find(|sequel| sequel.kind == kind)
+    }
 }
 
 impl<'a> Into<Cow<'a, Self>> for SeriesInfo {
@@ -133,6 +150,22 @@ impl<'a> Into<Cow<'a, Self>> for SeriesInfo {
 impl<'a> Into<Cow<'a, SeriesInfo>> for &'a SeriesInfo {
     fn into(self) -> Cow<'a, SeriesInfo> {
         Cow::Borrowed(self)
+    }
+}
+
+/// A sequel to a series.
+#[derive(Clone, Debug)]
+pub struct Sequel {
+    /// The kind of sequel this is.
+    pub kind: SeriesKind,
+    /// The series ID of the sequel.
+    pub id: SeriesID,
+}
+
+impl Sequel {
+    #[inline(always)]
+    pub fn new(kind: SeriesKind, id: SeriesID) -> Self {
+        Self { kind, id }
     }
 }
 

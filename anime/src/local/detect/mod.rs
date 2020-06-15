@@ -4,6 +4,7 @@ pub mod episode;
 mod common;
 
 use crate::err::{self, Error, Result};
+use crate::SeriesKind;
 use regex::Regex;
 use snafu::{OptionExt, ResultExt};
 use std::borrow::Cow;
@@ -243,12 +244,10 @@ impl EpisodeParser {
             filename = &filename[..index];
         }
 
-        let (title, ep_num) = episode::title_and_episode::parse(filename)
+        episode::title_and_episode::parse(filename)
             .or_else(|| episode::episode_and_title::parse(filename))
             .or_else(|| episode::title_episode_desc::parse(filename))
-            .context(err::EpisodeParseFailed { filename })?;
-
-        Ok(ParsedEpisode::new(Some(title), ep_num))
+            .context(err::EpisodeParseFailed { filename })
     }
 
     fn parse_with_regex<S>(regex: &EpisodeRegex, filename: S) -> Result<ParsedEpisode>
@@ -278,7 +277,9 @@ impl EpisodeParser {
             .and_then(|val| val.as_str().parse::<u32>().ok())
             .context(err::ExpectedEpNumber { filename })?;
 
-        Ok(ParsedEpisode::new(series_name, num))
+        // TODO: look for special / OVA / ONA / movie in the title to categorize properly
+        let episode = ParsedEpisode::new(series_name, num, SeriesKind::Season);
+        Ok(episode)
     }
 
     /// Returns true if the current parser supports title parsing.
@@ -360,12 +361,17 @@ pub struct ParsedEpisode {
     pub title: Option<String>,
     /// The parsed episode number of the episode file.
     pub episode: u32,
+    pub category: SeriesKind,
 }
 
 impl ParsedEpisode {
     #[inline(always)]
-    fn new(title: Option<String>, episode: u32) -> Self {
-        Self { title, episode }
+    fn new(title: Option<String>, episode: u32, category: SeriesKind) -> Self {
+        Self {
+            title,
+            episode,
+            category,
+        }
     }
 }
 
@@ -374,35 +380,55 @@ mod tests {
     use super::*;
 
     #[derive(Debug)]
-    enum ExpectedTitle {
+    enum Expected {
         Default(&'static str),
-        Custom(&'static str, &'static str),
+        CustomTitle(&'static str, &'static str),
+        CustomCategory(&'static str, SeriesKind),
+        CustomCategoryAndEpisode(&'static str, SeriesKind, u32),
     }
 
-    impl ExpectedTitle {
+    impl Expected {
         const DEFAULT_TITLE: &'static str = "Series Title";
 
         fn fmt(&self) -> &'static str {
             match self {
                 Self::Default(fmt) => fmt,
-                Self::Custom(fmt, _) => fmt,
+                Self::CustomTitle(fmt, _) => fmt,
+                Self::CustomCategory(fmt, _) => fmt,
+                Self::CustomCategoryAndEpisode(fmt, _, _) => fmt,
             }
         }
 
-        fn expected(&self) -> &'static str {
+        fn expected_title(&self) -> &'static str {
             match self {
-                Self::Default(_) => Self::DEFAULT_TITLE,
-                Self::Custom(_, title) => title,
+                Self::Default(_)
+                | Self::CustomCategory(_, _)
+                | Self::CustomCategoryAndEpisode(_, _, _) => Self::DEFAULT_TITLE,
+                Self::CustomTitle(_, title) => title,
+            }
+        }
+
+        fn expected_category(&self) -> SeriesKind {
+            match self {
+                Self::Default(_) | Self::CustomTitle(_, _) => SeriesKind::Season,
+                Self::CustomCategory(_, cat) | Self::CustomCategoryAndEpisode(_, cat, _) => *cat,
+            }
+        }
+
+        fn expected_episode(&self) -> u32 {
+            match self {
+                Self::Default(_) | Self::CustomTitle(_, _) | Self::CustomCategory(_, _) => 12,
+                Self::CustomCategoryAndEpisode(_, _, ep) => *ep,
             }
         }
     }
 
     #[test]
     fn episode_format_detection() {
-        const EXPECTED_EP_NUM: u32 = 12;
-
-        let def = ExpectedTitle::Default;
-        let cus = ExpectedTitle::Custom;
+        let def = Expected::Default;
+        let cus = Expected::CustomTitle;
+        let cus_cat = Expected::CustomCategory;
+        let cus_cat_ep = Expected::CustomCategoryAndEpisode;
 
         let formats = vec![
             def("Series Title - 12.mkv"),
@@ -462,8 +488,8 @@ mod tests {
             cus("[Header 1] Mutli - Title - 12 [10].mkv", "Mutli - Title"),
             cus("[Header 1] 12 - Multi - Title [10].mkv", "Multi - Title"),
             cus(
-                "[Header 1] Non @ Alpha ' Numeric : Characters - 12 [10].mkv",
-                "Non @ Alpha ' Numeric : Characters",
+                "[Header 1] Non @ Alpha ' Betic : Characters - 12 [10].mkv",
+                "Non @ Alpha ' Betic : Characters",
             ),
             def("[Header 1].Series.Title.E12.[10].mkv"),
             def("[Header 1].Series.Title.Ep.12.[10].mkv"),
@@ -477,6 +503,23 @@ mod tests {
                 "Series Title 2 12 An Episode Description [1080p].mkv",
                 "Series Title 2",
             ),
+            cus_cat("Series Title OVA - 12.mkv", SeriesKind::OVA),
+            cus_cat("Series Title OVAs - 12.mkv", SeriesKind::OVA),
+            cus_cat("Series Title Special - 12.mkv", SeriesKind::Special),
+            cus_cat("Series Title Specials - 12.mkv", SeriesKind::Special),
+            cus_cat("Series Title ONA - 12.mkv", SeriesKind::ONA),
+            cus_cat("Series Title Movie - 12.mkv", SeriesKind::Movie),
+            cus_cat("Series Title - OVA12.mkv", SeriesKind::OVA),
+            cus_cat("Series Title - OVA 12 [Tag].mkv", SeriesKind::OVA),
+            cus_cat("Series Title - 12 OVA.mkv", SeriesKind::OVA),
+            cus_cat_ep("Series Title - OVA [Tag].mkv", SeriesKind::OVA, 1),
+            cus_cat_ep("Series Title - OVAv2.mkv", SeriesKind::OVA, 1),
+            cus_cat_ep("Series Title - Special [Tag].mkv", SeriesKind::Special, 1),
+            cus_cat_ep("Series Title - OVA [Tag].mkv", SeriesKind::OVA, 1),
+            cus_cat_ep("Series Title OVA [Tag].mkv", SeriesKind::OVA, 1),
+            cus_cat_ep("Series Title OVAv2 [Tag].mkv", SeriesKind::OVA, 1),
+            cus_cat("Series Title - Specials - 12.mkv", SeriesKind::Special),
+            cus_cat("[Tag] Series Title ep 12 OVA (Tag).mkv", SeriesKind::OVA),
         ];
 
         let parser = EpisodeParser::default();
@@ -484,16 +527,10 @@ mod tests {
         for format in &formats {
             match parser.parse(format.fmt()) {
                 Ok(parsed) => {
-                    assert_eq!(
-                        parsed.episode, EXPECTED_EP_NUM,
-                        "episode number mismatch: {:?}",
-                        format
-                    );
-
                     match parsed.title {
                         Some(title) => assert_eq!(
                             title,
-                            format.expected(),
+                            format.expected_title(),
                             "episode title mismatch: {:?}",
                             format
                         ),
@@ -502,6 +539,20 @@ mod tests {
                             format
                         ),
                     }
+
+                    assert_eq!(
+                        parsed.category,
+                        format.expected_category(),
+                        "episode category mismatch: {:?}",
+                        format
+                    );
+
+                    assert_eq!(
+                        parsed.episode,
+                        format.expected_episode(),
+                        "episode number mismatch: {:?}",
+                        format
+                    );
                 }
                 Err(err) => panic!(
                     "failed to parse episode format: {:?} :: err = {}",
@@ -533,8 +584,8 @@ mod tests {
 
     #[test]
     fn title_detection() {
-        let def = ExpectedTitle::Default;
-        let cus = ExpectedTitle::Custom;
+        let def = Expected::Default;
+        let cus = Expected::CustomTitle;
 
         let titles = vec![
             def("Series Title"),
@@ -548,7 +599,7 @@ mod tests {
             match dir::parse_title(title.fmt()) {
                 Some(parsed) => assert_eq!(
                     parsed,
-                    title.expected(),
+                    title.expected_title(),
                     "parsed title mismatch: {}",
                     title.fmt()
                 ),

@@ -8,7 +8,7 @@ use crate::err::{self, Error, Result};
 use crate::file;
 use crate::file::SaveDir;
 use crate::{try_opt_r, SERIES_EPISODE_REP, SERIES_TITLE_REP};
-use anime::local::{EpisodeParser, Episodes};
+use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
 use anime::remote::{Remote, RemoteService, Status};
 use chrono::{DateTime, Duration, Utc};
 use config::SeriesConfig;
@@ -80,7 +80,7 @@ impl SeriesData {
 #[derive(Debug)]
 pub struct Series {
     pub data: SeriesData,
-    pub episodes: Episodes,
+    pub episodes: SortedEpisodes,
 }
 
 impl Series {
@@ -90,7 +90,7 @@ impl Series {
     }
 
     #[inline(always)]
-    pub fn with_episodes(data: SeriesData, episodes: Episodes) -> Self {
+    pub fn with_episodes(data: SeriesData, episodes: SortedEpisodes) -> Self {
         Self { data, episodes }
     }
 
@@ -124,9 +124,17 @@ impl Series {
         Ok(())
     }
 
-    fn scan_episodes(data: &SeriesData, config: &Config) -> Result<Episodes> {
+    fn scan_episodes(data: &SeriesData, config: &Config) -> Result<SortedEpisodes> {
         let path = data.config.path.absolute(config);
-        Episodes::parse(path, &data.config.episode_parser).map_err(Into::into)
+        let episodes = CategorizedEpisodes::parse(path, &data.config.episode_parser)?;
+
+        if episodes.is_empty() {
+            return Err(Error::NoEpisodesFound);
+        }
+
+        episodes
+            .take_season_episodes_or_present()
+            .ok_or(Error::SeriesNeedsSplitting)
     }
 
     #[inline(always)]
@@ -140,7 +148,7 @@ impl Series {
     }
 
     pub fn episode_path(&self, ep_num: u32, config: &Config) -> Option<PathBuf> {
-        let episode = self.episodes.get(ep_num)?;
+        let episode = self.episodes.find(ep_num)?;
         let mut path = self.data.config.path.absolute(config).into_owned();
         path.push(&episode.filename);
         path.canonicalize().ok()

@@ -93,6 +93,9 @@ pub enum Error {
 
     #[snafu(display("must be authorized to make this request"))]
     NeedAuthentication,
+
+    #[snafu(display("requested series is not an anime"))]
+    NotAnAnime,
 }
 
 impl Error {

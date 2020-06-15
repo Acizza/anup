@@ -8,6 +8,18 @@ pub mod remote;
 
 pub use err::{Error, Result};
 
+/// Represents the type of a series.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub enum SeriesKind {
+    /// TV episodes.
+    Season,
+    Movie,
+    Special,
+    OVA,
+    ONA,
+    Music,
+}
+
 /// Find the best matching item in `items` via `matcher` and return it if the maximum confidence is greater than `min_confidence`.
 ///
 /// `min_confidence` should be a value between 0.0 and 1.0.
