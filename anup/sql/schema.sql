@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS series_configs (
     id INTEGER NOT NULL PRIMARY KEY,
     nickname TEXT NOT NULL UNIQUE,
     path TEXT NOT NULL,
-    episode_matcher TEXT,
+    episode_parser TEXT,
     player_args TEXT
 );
 

@@ -16,8 +16,6 @@ pub mod schema {
             id -> Integer,
             nickname -> Text,
             path -> Text,
-            // TODO: this should be migrated
-            #[sql_name = "episode_matcher"]
             episode_parser -> Nullable<Text>,
             player_args -> Nullable<Text>,
         }
@@ -56,6 +54,10 @@ impl Database {
         let conn = SqliteConnection::establish(&path.to_string_lossy())?;
 
         conn.batch_execute(include_str!("../sql/schema.sql"))?;
+
+        // Migration (applied June 15th, 2020)
+        conn.batch_execute(include_str!("../sql/migrations/rename_episode_matcher.sql"))
+            .ok();
 
         Ok(Self(conn))
     }
