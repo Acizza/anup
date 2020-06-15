@@ -8,7 +8,7 @@ This is a TUI / CLI application to play and manage anime with [AniList](https://
 Note that only local files are supported.
 
 Current features include:
-* Automatic series detection
+* Automatic series detection (including merged seasons and integrated specials, OVA's, ONA's, and movies)
 * Easy playing of unwatched episodes
 * TUI interface to view, play, and modify all series added to the program
 * Offline mode
@@ -16,8 +16,7 @@ Current features include:
 * Automatic series status handling (watching, rewatching, completed, etc)
 * Automatic series start / end date handling
 
-Also included is a tool called `anisplit`. Its purpose is to split up a series that contains multiple seasons merged into one.
-For more information about this tool, please go [here](anisplit/).
+For now, you must use an included CLI tool called `anisplit` to split up merged seasons and integrated specials, OVA's, ONA's, and movies into their own folder. A dedicated panel will eventually be added to the main program's TUI to do this.
 
 # Building
 
