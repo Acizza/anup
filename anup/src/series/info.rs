@@ -97,7 +97,7 @@ impl InfoSelector {
     {
         use anime::local::detect::dir;
         let path = path.into();
-        dir::parse_title(path.get()).map_or_else(|| Self::Name(name.into()), Self::Name)
+        dir::parse_title(path.inner()).map_or_else(|| Self::Name(name.into()), Self::Name)
     }
 }
 

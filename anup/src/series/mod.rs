@@ -419,17 +419,34 @@ impl LastWatched {
 pub struct SeriesPath(PathBuf);
 
 impl SeriesPath {
+    #[inline(always)]
     pub fn new<'a, P>(path: P, config: &Config) -> Self
     where
         P: Into<Cow<'a, Path>>,
     {
-        let path = config.stripped_path(path);
+        Self::with_base(&config.series_dir, path)
+    }
+
+    pub fn with_base<'a, B, P>(base: B, path: P) -> Self
+    where
+        B: AsRef<Path>,
+        P: Into<Cow<'a, Path>>,
+    {
+        let path = Self::stripped_path(base, path).into();
         Self(path)
     }
 
+    #[inline(always)]
     pub fn absolute(&self, config: &Config) -> Cow<Path> {
+        self.absolute_base(&config.series_dir)
+    }
+
+    pub fn absolute_base<B>(&self, base: B) -> Cow<Path>
+    where
+        B: AsRef<Path>,
+    {
         if self.0.is_relative() {
-            Cow::Owned(config.series_dir.join(&self.0))
+            Cow::Owned(base.as_ref().join(&self.0))
         } else {
             Cow::Borrowed(&self.0)
         }
@@ -453,8 +470,16 @@ impl SeriesPath {
     }
 
     #[inline(always)]
-    pub fn get(&self) -> &PathBuf {
+    pub fn inner(&self) -> &PathBuf {
         &self.0
+    }
+
+    #[inline(always)]
+    pub fn exists_base<B>(&self, base: B) -> bool
+    where
+        B: AsRef<Path>,
+    {
+        self.absolute_base(base).as_ref().exists()
     }
 
     #[inline(always)]
@@ -462,7 +487,29 @@ impl SeriesPath {
     where
         P: Into<Cow<'a, Path>>,
     {
-        self.0 = config.stripped_path(path);
+        self.set_with_base(&config.series_dir, path);
+    }
+
+    #[inline(always)]
+    pub fn set_with_base<'a, B, P>(&mut self, base: B, path: P)
+    where
+        B: AsRef<Path>,
+        P: Into<Cow<'a, Path>>,
+    {
+        self.0 = Self::stripped_path(base, path).into();
+    }
+
+    fn stripped_path<'a, B, P>(base: B, path: P) -> PathBuf
+    where
+        B: AsRef<Path>,
+        P: Into<Cow<'a, Path>>,
+    {
+        let path = path.into();
+
+        match path.strip_prefix(base) {
+            Ok(stripped) => stripped.into(),
+            Err(_) => path.into(),
+        }
     }
 
     #[inline(always)]

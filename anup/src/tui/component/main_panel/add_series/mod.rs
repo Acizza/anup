@@ -32,9 +32,9 @@ pub struct AddSeriesPanel {
 }
 
 impl AddSeriesPanel {
-    pub fn new() -> Self {
+    pub fn new(config: &Config) -> Self {
         Self {
-            inputs: InputSet::new(),
+            inputs: InputSet::new(config),
             selected_input: 0,
             error: None,
             last_update: None,
@@ -267,10 +267,11 @@ impl SeriesBuilder {
         Self { params: None }
     }
 
-    fn path(&self, inputs: &InputSet, state: &UIState) -> Result<SeriesPath> {
+    fn path<'a>(&self, inputs: &'a InputSet, state: &UIState) -> Result<Cow<'a, SeriesPath>> {
         match &inputs.path.parsed_value() {
-            Some(path) => Ok(SeriesPath::new(path, &state.config)),
-            None => SeriesPath::closest_matching(inputs.name.parsed_value(), &state.config),
+            Some(path) => Ok(path.into()),
+            None => SeriesPath::closest_matching(inputs.name.parsed_value(), &state.config)
+                .map(Into::into),
         }
     }
 
@@ -298,7 +299,7 @@ impl SeriesBuilder {
                 Ok(())
             }
             None => {
-                let params = SeriesParams::new(name, path, parser.clone());
+                let params = SeriesParams::new(name, path.into_owned(), parser.clone());
                 let built = BuiltSeriesParams::new(params, episodes);
                 self.params = Some(built);
                 Ok(())

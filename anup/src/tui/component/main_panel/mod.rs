@@ -5,6 +5,7 @@ mod select_series;
 mod user_panel;
 
 use super::{Component, Draw};
+use crate::config::Config;
 use crate::err::{Error, Result};
 use crate::series::config::SeriesConfig;
 use crate::series::info::InfoResult;
@@ -42,7 +43,7 @@ impl MainPanel {
             });
         }
 
-        self.current = Panel::add_series();
+        self.current = Panel::add_series(&state.config);
         state.current_action = CurrentAction::FocusedOnMainPanel;
 
         Ok(())
@@ -182,9 +183,8 @@ impl Panel {
         Self::Info(InfoPanel::new())
     }
 
-    #[inline(always)]
-    fn add_series() -> Self {
-        Self::AddSeries(Box::new(AddSeriesPanel::new()))
+    fn add_series(config: &Config) -> Self {
+        Self::AddSeries(Box::new(AddSeriesPanel::new(config)))
     }
 
     #[inline(always)]

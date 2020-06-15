@@ -1,3 +1,5 @@
+use crate::config::Config;
+use crate::series::SeriesPath;
 use crate::tui::component::main_panel::input::Input;
 use crate::tui::component::Draw;
 use crate::tui::UIBackend;
@@ -19,11 +21,11 @@ pub struct InputSet {
 impl InputSet {
     const TOTAL: usize = 4;
 
-    pub fn new() -> Self {
+    pub fn new(config: &Config) -> Self {
         Self {
             name: NameInput::new(true),
             id: IDInput::new(false),
-            path: PathInput::new(false),
+            path: PathInput::new(false, config),
             parser: ParserInput::new(false),
         }
     }
@@ -196,13 +198,15 @@ impl_draw_for_input!(IDInput);
 
 pub struct PathInput {
     input: Input,
-    path: Option<PathBuf>,
+    base_path: PathBuf,
+    path: Option<SeriesPath>,
 }
 
 impl PathInput {
-    fn new(selected: bool) -> Self {
+    fn new(selected: bool, config: &Config) -> Self {
         Self {
             input: Input::new(selected),
+            base_path: config.series_dir.clone(),
             path: None,
         }
     }
@@ -226,8 +230,8 @@ impl ValidatedInput for PathInput {
             return;
         }
 
-        let path = PathBuf::from(text);
-        let exists = path.exists();
+        let path = SeriesPath::with_base(&self.base_path, Cow::Owned(PathBuf::from(text)));
+        let exists = path.exists_base(&self.base_path);
 
         self.path = if exists { Some(path) } else { None };
         self.input.error = !exists;
@@ -243,7 +247,7 @@ impl ValidatedInput for PathInput {
 }
 
 impl ParsedValue for PathInput {
-    type Value = Option<PathBuf>;
+    type Value = Option<SeriesPath>;
 
     fn parsed_value(&self) -> &Self::Value {
         &self.path
