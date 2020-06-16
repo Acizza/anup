@@ -28,7 +28,7 @@ dependencies = [
 name = "anime"
 version = "0.1.0"
 dependencies = [
- "base64 0.12.1",
+ "base64 0.12.2",
  "chrono",
  "diesel",
  "enum_dispatch",
@@ -120,9 +120,9 @@ checksum = "b41b7ea54a0c9d92199de89e20e58d49f02f8e699814ef3fdf266f6f748d15c7"
 
 [[package]]
 name = "base64"
-version = "0.12.1"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53d1ccbaf7d9ec9537465a97bf19edc1a4e158ecb49fc16178202238c569cc42"
+checksum = "e223af0dc48c96d4f8342ec01a4974f139df863896b316681efd36742f22cc67"
 
 [[package]]
 name = "bitflags"
@@ -349,9 +349,9 @@ dependencies = [
 
 [[package]]
 name = "itoa"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8b7a7c0c47db5545ed3fef7468ee7bb5b74691498139e4b3f6a20685dc6dd8e"
+checksum = "dc6f3ad7b9d11a0c00842ff8de1b60ee58661048eb8049ed33c73594f359d7e6"
 
 [[package]]
 name = "js-sys"
@@ -890,6 +890,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinyvec"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53953d2d3a5ad81d9f844a32f14ebb121f50b650cd59d0ee2a07cf13c617efed"
+
+[[package]]
 name = "toml"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -901,8 +907,7 @@ dependencies = [
 [[package]]
 name = "tui"
 version = "0.9.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9533d39bef0ae8f510e8a99d78702e68d1bbf0b98a78ec9740509d287010ae1e"
+source = "git+https://github.com/fdehau/tui-rs?rev=8c2ee0ed8516be887f5f68355c325fadecb5d2dc#8c2ee0ed8516be887f5f68355c325fadecb5d2dc"
 dependencies = [
  "bitflags",
  "cassowary",
@@ -924,11 +929,11 @@ dependencies = [
 
 [[package]]
 name = "unicode-normalization"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5479532badd04e128284890390c1e876ef7a993d0570b3597ae43dfa1d59afa4"
+checksum = "6fb19cf769fa8c6a80a162df694621ebeb4dafb606470b2b2fce0be40a98a977"
 dependencies = [
- "smallvec",
+ "tinyvec",
 ]
 
 [[package]]
@@ -961,7 +966,7 @@ version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8aa8506b484aac1c808cfb5e00cf47604457cac40cc49a8689669e1e1092b1ea"
 dependencies = [
- "base64 0.12.1",
+ "base64 0.12.2",
  "chunked_transfer",
  "cookie",
  "lazy_static",
