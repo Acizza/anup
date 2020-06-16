@@ -1,16 +1,16 @@
-mod inputs;
-
 use super::PartialSeries;
 use crate::config::Config;
 use crate::err::{Error, Result};
 use crate::series::info::{InfoSelector, SeriesInfo};
 use crate::series::{SeriesParams, SeriesPath};
+use crate::tui::component::input::{
+    IDInput, NameInput, ParsedValue, ParserInput, PathInput, ValidatedInput,
+};
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
 use crate::{try_opt_r, try_opt_ret};
 use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
-use inputs::{InputSet, ParsedValue, ValidatedInput};
 use std::borrow::Cow;
 use std::mem;
 use std::time::Instant;
@@ -23,8 +23,48 @@ use tui::widgets::Paragraph;
 
 const SECS_BETWEEN_SERIES_UPDATES: f32 = 0.25;
 
+struct PanelInputs {
+    name: NameInput,
+    id: IDInput,
+    path: PathInput,
+    parser: ParserInput,
+}
+
+impl PanelInputs {
+    const TOTAL: usize = 4;
+
+    fn new(config: &Config) -> Self {
+        Self {
+            name: NameInput::new(true),
+            id: IDInput::new(false),
+            path: PathInput::new(false, config),
+            parser: ParserInput::new(false),
+        }
+    }
+
+    #[inline(always)]
+    const fn len(&self) -> usize {
+        Self::TOTAL
+    }
+
+    #[inline(always)]
+    pub fn all_mut(&mut self) -> [&mut dyn ValidatedInput; Self::TOTAL] {
+        [
+            &mut self.name,
+            &mut self.id,
+            &mut self.path,
+            &mut self.parser,
+        ]
+    }
+
+    #[inline(always)]
+    pub fn index_mut(&mut self, index: usize) -> &mut dyn ValidatedInput {
+        self.all_mut()[index]
+    }
+}
+
 pub struct AddSeriesPanel {
-    inputs: InputSet,
+    inputs: PanelInputs,
     selected_input: usize,
     error: Option<Cow<'static, str>>,
     last_update: Option<Instant>,
@@ -34,7 +74,7 @@ pub struct AddSeriesPanel {
 impl AddSeriesPanel {
     pub fn new(config: &Config) -> Self {
         Self {
-            inputs: InputSet::new(config),
+            inputs: PanelInputs::new(config),
             selected_input: 0,
             error: None,
             last_update: None,
@@ -261,7 +301,7 @@ impl SeriesBuilder {
         Self { params: None }
     }
 
-    fn path<'a>(&self, inputs: &'a InputSet, state: &UIState) -> Result<Cow<'a, SeriesPath>> {
+    fn path<'a>(&self, inputs: &'a PanelInputs, state: &UIState) -> Result<Cow<'a, SeriesPath>> {
         match &inputs.path.parsed_value() {
             Some(path) => Ok(path.into()),
             None => SeriesPath::closest_matching(inputs.name.parsed_value(), &state.config)
@@ -269,7 +309,7 @@ impl SeriesBuilder {
         }
     }
 
-    fn update(&mut self, inputs: &InputSet, state: &UIState) -> Result<()> {
+    fn update(&mut self, inputs: &PanelInputs, state: &UIState) -> Result<()> {
         match self.update_internal(inputs, state) {
             ok @ Ok(_) => ok,
             err @ Err(_) => {
@@ -279,7 +319,7 @@ impl SeriesBuilder {
         }
     }
 
-    fn update_internal(&mut self, inputs: &InputSet, state: &UIState) -> Result<()> {
+    fn update_internal(&mut self, inputs: &PanelInputs, state: &UIState) -> Result<()> {
         let path = self.path(inputs, state)?;
 
         let parser = inputs.parser.parsed_value();
@@ -301,7 +341,7 @@ impl SeriesBuilder {
         }
     }
 
-    fn build(&mut self, inputs: &InputSet, state: &UIState) -> Result<PartialSeries> {
+    fn build(&mut self, inputs: &PanelInputs, state: &UIState) -> Result<PartialSeries> {
         let built = match self.update(inputs, state) {
             Ok(_) => mem::take(&mut self.params).unwrap(),
             Err(err) => return Err(err),
