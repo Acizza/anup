@@ -3,7 +3,9 @@ pub mod main_panel;
 pub mod prompt;
 pub mod series_list;
 
-use super::{UIBackend, UIState};
+mod input;
+
+use super::UIState;
 use crate::err::Result;
 use termion::event::Key;
 use tui::backend::Backend;
@@ -28,5 +30,4 @@ where
     type State;
 
     fn draw(&mut self, state: &Self::State, rect: Rect, frame: &mut Frame<B>);
-    fn after_draw(&mut self, _: &mut UIBackend<B>, _: &Self::State) {}
 }

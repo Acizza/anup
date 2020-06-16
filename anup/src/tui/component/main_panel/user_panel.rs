@@ -1,10 +1,10 @@
-use super::input::Input;
 use super::{Component, Draw};
 use crate::err::{self, Result};
 use crate::file::SerializedFile;
 use crate::try_opt_r;
+use crate::tui::component::input::Input;
 use crate::tui::widget_util::{block, style, text, SelectWidgetState, TypedSelectable};
-use crate::tui::{UIBackend, UIState};
+use crate::tui::UIState;
 use crate::user::{RemoteType, UserInfo};
 use anime::remote::anilist::AniList;
 use anime::remote::{AccessToken, Remote, RemoteService};
@@ -347,10 +347,6 @@ where
 
         self.draw_user_selection_panel(state, horiz_split[0], frame);
         self.draw_add_user_panel(horiz_split[1], frame);
-    }
-
-    fn after_draw(&mut self, backend: &mut UIBackend<B>, _: &Self::State) {
-        self.token_input.after_draw(backend, &());
     }
 }
 

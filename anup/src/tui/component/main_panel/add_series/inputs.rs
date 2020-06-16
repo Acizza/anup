@@ -1,8 +1,7 @@
 use crate::config::Config;
 use crate::series::SeriesPath;
-use crate::tui::component::main_panel::input::Input;
+use crate::tui::component::input::Input;
 use crate::tui::component::Draw;
-use crate::tui::UIBackend;
 use crate::{SERIES_EPISODE_REP, SERIES_TITLE_REP};
 use anime::local::EpisodeParser;
 use std::borrow::Cow;
@@ -85,10 +84,6 @@ macro_rules! impl_draw_for_input {
 
             fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
                 self.input_mut().draw(&(), rect, frame)
-            }
-
-            fn after_draw(&mut self, backend: &mut UIBackend<B>, _: &Self::State) {
-                self.input_mut().after_draw(backend, &())
             }
         }
     };

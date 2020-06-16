@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::err::{self, Error, Result};
 use crate::series::UpdateParams;
+use crate::tui::component::input::Input;
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, style};
 use crate::tui::UIState;
@@ -135,6 +136,11 @@ where
             .wrap(true);
 
         frame.render_widget(widget, rect);
+
+        if Input::will_cursor_fit(rect) {
+            let (x, y) = Input::calculate_cursor_pos(self.width() as u16, rect);
+            frame.set_cursor(x, y);
+        }
     }
 }
 

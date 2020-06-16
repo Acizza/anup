@@ -1,14 +1,13 @@
 use crate::err::{self, Result};
 use chrono::Duration;
 use snafu::ResultExt;
-use std::io::{self, Write};
+use std::io;
 use std::sync::mpsc;
 use std::thread;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::{IntoRawMode, RawTerminal};
 use tui::backend::{self, Backend};
-use tui::layout::Rect;
 use tui::terminal::Terminal;
 
 pub struct UIBackend<B>
@@ -16,61 +15,15 @@ where
     B: Backend,
 {
     pub terminal: Terminal<B>,
-    pub cursor_visible: bool,
 }
 
 impl<B> UIBackend<B>
 where
     B: Backend,
 {
-    const BORDER_SIZE: u16 = 2;
-
     #[inline(always)]
     pub fn clear(&mut self) -> Result<()> {
         self.terminal.clear().context(err::IO)
-    }
-
-    pub fn show_cursor(&mut self) -> Result<()> {
-        self.terminal.show_cursor().context(err::IO)?;
-        self.cursor_visible = true;
-        Ok(())
-    }
-
-    pub fn hide_cursor(&mut self) -> Result<()> {
-        self.terminal.hide_cursor().context(err::IO)?;
-        self.cursor_visible = false;
-        Ok(())
-    }
-
-    pub fn set_cursor_inside(&mut self, column: u16, rect: Rect) -> Result<()> {
-        let rect_width = rect.width.saturating_sub(Self::BORDER_SIZE);
-
-        let (len, line_num) = if rect_width > 0 {
-            let line_num = column / rect_width;
-            let max_line = rect.height - Self::BORDER_SIZE - 1;
-
-            // We want to cap the position of the cursor to the last character of the last line
-            if line_num > max_line {
-                (rect_width - 1, max_line)
-            } else {
-                (column % rect_width, line_num)
-            }
-        } else {
-            (column, 0)
-        };
-
-        let x = 1 + rect.left() + len;
-        let y = 1 + rect.top() + line_num;
-
-        self.terminal.set_cursor(x, y).context(err::IO)?;
-
-        // We should flush stdout so the cursor immediately goes to our new position
-        io::stdout().flush().context(err::IO)
-    }
-
-    #[inline(always)]
-    pub fn will_cursor_fit(&self, rect: Rect) -> bool {
-        rect.height > Self::BORDER_SIZE && rect.width > Self::BORDER_SIZE
     }
 }
 
@@ -85,10 +38,7 @@ impl UIBackend<TermionBackend> {
         terminal.clear().context(err::IO)?;
         terminal.hide_cursor().context(err::IO)?;
 
-        Ok(Self {
-            terminal,
-            cursor_visible: false,
-        })
+        Ok(Self { terminal })
     }
 }
 

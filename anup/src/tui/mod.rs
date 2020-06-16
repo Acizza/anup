@@ -233,7 +233,7 @@ where
         tick!(prompt, series_list, main_panel, episode_watcher);
     }
 
-    fn draw_internal(&mut self) -> Result<()> {
+    fn draw(&mut self) -> Result<()> {
         // We need to remove the mutable borrow on self so we can call other mutable methods on it during our draw call.
         // This *should* be completely safe as none of the methods we need to call can mutate our backend.
         let term: *mut _ = &mut self.backend.terminal;
@@ -261,20 +261,6 @@ where
                 .draw(&self.state, info_panel_splitter[1], &mut frame);
         })
         .context(err::IO)
-    }
-
-    fn draw(&mut self) -> Result<()> {
-        macro_rules! after_draw {
-            ($($component:ident),+) => {
-                $(self.$component.after_draw(&mut self.backend, &self.state);)+
-            };
-        }
-
-        self.draw_internal()?;
-
-        after_draw!(prompt, series_list, main_panel);
-
-        Ok(())
     }
 
     /// Process a key input for all UI components.

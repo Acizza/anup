@@ -1,6 +1,5 @@
 mod add_series;
 mod info;
-mod input;
 mod select_series;
 mod user_panel;
 
@@ -10,7 +9,7 @@ use crate::err::{Error, Result};
 use crate::series::config::SeriesConfig;
 use crate::series::info::InfoResult;
 use crate::series::SeriesParams;
-use crate::tui::{CurrentAction, UIBackend, UIState};
+use crate::tui::{CurrentAction, UIState};
 use add_series::{AddSeriesPanel, AddSeriesResult};
 use anime::local::SortedEpisodes;
 use anime::remote::RemoteService;
@@ -25,14 +24,12 @@ use user_panel::{ShouldReset, UserPanel};
 
 pub struct MainPanel {
     current: Panel,
-    cursor_needs_hiding: bool,
 }
 
 impl MainPanel {
     pub fn new() -> Self {
         Self {
             current: Panel::default(),
-            cursor_needs_hiding: false,
         }
     }
 
@@ -100,7 +97,6 @@ impl Component for MainPanel {
             Panel::AddSeries(add) => match add.process_key(key, state) {
                 AddSeriesResult::Ok => Ok(()),
                 AddSeriesResult::Reset => {
-                    self.cursor_needs_hiding = true;
                     self.reset(state);
                     Ok(())
                 }
@@ -130,7 +126,6 @@ impl Component for MainPanel {
             },
             Panel::User(user) => match user.process_key(key, state) {
                 Ok(ShouldReset::Yes) => {
-                    self.cursor_needs_hiding = true;
                     self.reset(state);
                     Ok(())
                 }
@@ -153,19 +148,6 @@ where
             Panel::AddSeries(add) => add.draw(&(), rect, frame),
             Panel::SelectSeries(panel) => panel.draw(&(), rect, frame),
             Panel::User(user) => user.draw(state, rect, frame),
-        }
-    }
-
-    fn after_draw(&mut self, backend: &mut UIBackend<B>, state: &Self::State) {
-        match &mut self.current {
-            Panel::AddSeries(add) => add.after_draw(backend, &()),
-            Panel::User(user) => user.after_draw(backend, state),
-            _ => (),
-        }
-
-        if self.cursor_needs_hiding {
-            backend.hide_cursor().ok();
-            self.cursor_needs_hiding = false;
         }
     }
 }

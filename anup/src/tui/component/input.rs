@@ -1,7 +1,6 @@
 use crate::try_opt_ret;
 use crate::tui::component::Draw;
 use crate::tui::widget_util::{block, style};
-use crate::tui::UIBackend;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
@@ -19,7 +18,7 @@ pub struct Input {
 }
 
 impl Input {
-    const BORDER_SIZE: usize = 2;
+    const BORDER_SIZE: u16 = 2;
 
     pub fn new(selected: bool) -> Self {
         Self {
@@ -46,14 +45,56 @@ impl Input {
     }
 
     fn update_visible_slice(&mut self) {
-        let max_width = self.visible_rect.width as usize - Self::BORDER_SIZE - 1;
+        let max_width = self.visible_rect.width - Self::BORDER_SIZE - 1;
 
-        if self.caret.pos < max_width {
+        if self.caret.pos < max_width as usize {
             self.offset = 0;
             return;
         }
 
-        self.offset = self.caret.pos - max_width;
+        self.offset = self.caret.pos - max_width as usize;
+    }
+
+    pub fn calculate_cursor_pos(column: u16, rect: Rect) -> (u16, u16) {
+        let rect_width = rect.width.saturating_sub(Self::BORDER_SIZE);
+
+        let (len, line_num) = if rect_width > 0 {
+            let line_num = column / rect_width;
+            let max_line = rect.height - Self::BORDER_SIZE - 1;
+
+            // We want to cap the position of the cursor to the last character of the last line
+            if line_num > max_line {
+                (rect_width - 1, max_line)
+            } else {
+                (column % rect_width, line_num)
+            }
+        } else {
+            (column, 0)
+        };
+
+        let x = 1 + rect.left() + len;
+        let y = 1 + rect.top() + line_num;
+
+        (x, y)
+    }
+
+    #[inline(always)]
+    pub fn will_cursor_fit(rect: Rect) -> bool {
+        rect.height > Self::BORDER_SIZE && rect.width > Self::BORDER_SIZE
+    }
+
+    fn set_cursor_pos<B>(&self, rect: Rect, frame: &mut Frame<B>)
+    where
+        B: Backend,
+    {
+        if !self.selected || !Self::will_cursor_fit(rect) {
+            return;
+        }
+
+        let width = (self.caret.cur_width as u16).min(rect.width);
+        let (x, y) = Self::calculate_cursor_pos(width, rect);
+
+        frame.set_cursor(x, y);
     }
 
     pub fn clear(&mut self) {
@@ -98,19 +139,7 @@ where
         let widget = Paragraph::new(text.iter()).block(block).wrap(false);
 
         frame.render_widget(widget, rect);
-    }
-
-    fn after_draw(&mut self, backend: &mut UIBackend<B>, _: &Self::State) {
-        if !self.selected || !backend.will_cursor_fit(self.visible_rect) {
-            return;
-        }
-
-        if !backend.cursor_visible {
-            backend.show_cursor().ok();
-        }
-
-        let width = (self.caret.cur_width as u16).min(self.visible_rect.width);
-        backend.set_cursor_inside(width, self.visible_rect).ok();
+        self.set_cursor_pos(rect, frame);
     }
 }
 

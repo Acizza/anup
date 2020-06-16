@@ -3,7 +3,7 @@ pub mod log;
 
 use super::{Component, Draw};
 use crate::err::Error;
-use crate::tui::{CurrentAction, UIBackend, UIState};
+use crate::tui::{CurrentAction, UIState};
 use command::{Command, CommandPrompt, InputResult};
 use log::Log;
 use termion::event::Key;
@@ -72,25 +72,6 @@ where
         match &state.current_action {
             CurrentAction::EnteringCommand => self.command.draw(&(), rect, frame),
             _ => self.log.draw(&(), rect, frame),
-        }
-    }
-
-    fn after_draw(&mut self, backend: &mut UIBackend<B>, state: &UIState) {
-        match &state.current_action {
-            CurrentAction::EnteringCommand if backend.will_cursor_fit(self.draw_rect) => {
-                if !backend.cursor_visible {
-                    backend.show_cursor().ok();
-                }
-
-                backend
-                    .set_cursor_inside(self.command.width() as u16, self.draw_rect)
-                    .ok();
-            }
-            _ => {
-                if backend.cursor_visible {
-                    backend.hide_cursor().ok();
-                }
-            }
         }
     }
 }

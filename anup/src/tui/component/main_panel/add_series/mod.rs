@@ -7,7 +7,7 @@ use crate::series::info::{InfoSelector, SeriesInfo};
 use crate::series::{SeriesParams, SeriesPath};
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, text};
-use crate::tui::{UIBackend, UIState};
+use crate::tui::UIState;
 use crate::{try_opt_r, try_opt_ret};
 use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
 use inputs::{InputSet, ParsedValue, ValidatedInput};
@@ -242,12 +242,6 @@ where
 
         self.draw_add_series_panel(split[0], frame);
         self.draw_detected_panel(split[1], frame);
-    }
-
-    fn after_draw(&mut self, backend: &mut UIBackend<B>, _: &Self::State) {
-        for input in &mut self.inputs.all_mut() {
-            input.input_mut().after_draw(backend, &());
-        }
     }
 }
 
