@@ -2,6 +2,7 @@ PRAGMA locking_mode = EXCLUSIVE;
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
 PRAGMA foreign_keys = ON;
+PRAGMA user_version = 1;
 
 CREATE TABLE IF NOT EXISTS series_configs (
     id INTEGER NOT NULL PRIMARY KEY,
@@ -17,7 +18,6 @@ CREATE TABLE IF NOT EXISTS series_info (
     title_romaji TEXT NOT NULL,
     episodes SMALLINT NOT NULL,
     episode_length_mins SMALLINT NOT NULL,
-    sequel INTEGER,
     FOREIGN KEY(id) REFERENCES series_configs(id) ON DELETE CASCADE
 );
 

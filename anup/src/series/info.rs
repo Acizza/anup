@@ -14,7 +14,6 @@ pub struct SeriesInfo {
     pub title_romaji: String,
     pub episodes: i16,
     pub episode_length_mins: i16,
-    pub sequel: Option<i32>,
 }
 
 impl SeriesInfo {
@@ -71,15 +70,12 @@ impl SeriesInfo {
 
 impl From<anime::remote::SeriesInfo> for SeriesInfo {
     fn from(value: anime::remote::SeriesInfo) -> Self {
-        let sequel = value.direct_sequel().map(|sequel| sequel.id as i32);
-
         Self {
             id: value.id as i32,
             title_preferred: value.title.preferred,
             title_romaji: value.title.romaji,
             episodes: value.episodes as i16,
             episode_length_mins: value.episode_length as i16,
-            sequel,
         }
     }
 }

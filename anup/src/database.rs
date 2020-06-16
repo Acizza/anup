@@ -28,7 +28,6 @@ pub mod schema {
             title_romaji -> Text,
             episodes -> SmallInt,
             episode_length_mins -> SmallInt,
-            sequel -> Nullable<Integer>,
         }
     }
 
@@ -53,11 +52,26 @@ impl Database {
         let path = Self::validated_path()?;
         let conn = SqliteConnection::establish(&path.to_string_lossy())?;
 
+        use diesel::sql_types::Integer;
+
+        #[derive(QueryableByName)]
+        struct UserVersion {
+            #[sql_type = "Integer"]
+            user_version: i32,
+        }
+
+        let version: UserVersion = diesel::sql_query("PRAGMA user_version").get_result(&conn)?;
+
         conn.batch_execute(include_str!("../sql/schema.sql"))?;
 
-        // Migration (applied June 15th, 2020)
-        conn.batch_execute(include_str!("../sql/migrations/rename_episode_matcher.sql"))
-            .ok();
+        // Migrations for June 15th, 2020
+        if version.user_version == 0 {
+            conn.batch_execute(include_str!("../sql/migrations/rename_episode_matcher.sql"))?;
+
+            conn.batch_execute(include_str!(
+                "../sql/migrations/delete_series_info_sequels.sql"
+            ))?;
+        }
 
         Ok(Self(conn))
     }
