@@ -17,7 +17,7 @@ use unicode_width::UnicodeWidthChar;
 
 pub struct Input {
     caret: Caret,
-    visible_rect: Rect,
+    visible_width: u16,
     offset: usize,
     pub selected: bool,
     pub error: bool,
@@ -29,7 +29,7 @@ impl Input {
     pub fn new(selected: bool) -> Self {
         Self {
             caret: Caret::new(),
-            visible_rect: Rect::default(),
+            visible_width: 0,
             offset: 0,
             selected,
             error: false,
@@ -51,7 +51,7 @@ impl Input {
     }
 
     fn update_visible_slice(&mut self) {
-        let max_width = self.visible_rect.width - Self::BORDER_SIZE - 1;
+        let max_width = self.visible_width - Self::BORDER_SIZE - 1;
 
         if self.caret.pos < max_width as usize {
             self.offset = 0;
@@ -126,7 +126,7 @@ where
     type State = ();
 
     fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        self.visible_rect = rect;
+        self.visible_width = rect.width;
 
         let block_color = match (self.selected, self.error) {
             (true, true) => Some(Color::LightRed),
