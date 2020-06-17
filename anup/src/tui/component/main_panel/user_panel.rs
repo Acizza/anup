@@ -33,7 +33,7 @@ impl UserPanel {
         Self {
             user_table_state: SelectWidgetState::new(),
             service_list: TypedSelectable::new(),
-            token_input: Input::new(false),
+            token_input: Input::with_label(false, "Paste Token"),
             current_panel: SelectedPanel::SelectUser,
         }
     }
@@ -139,8 +139,7 @@ impl UserPanel {
             .constraints(
                 [
                     // Token input
-                    Constraint::Length(1),
-                    Constraint::Length(3),
+                    Input::DRAW_WITH_LABEL_CONSTRAINT,
                     // Spacer
                     Constraint::Length(1),
                     // Service selection
@@ -156,16 +155,8 @@ impl UserPanel {
             .horizontal_margin(4)
             .split(rect);
 
-        let token_text = [text::bold("Paste Token")];
-
-        let token_widget = Paragraph::new(token_text.iter())
-            .wrap(false)
-            .alignment(Alignment::Center);
-
-        frame.render_widget(token_widget, vert_split[0]);
-
         self.token_input.selected = is_panel_selected;
-        self.token_input.draw(&(), vert_split[1], frame);
+        self.token_input.draw(&(), vert_split[0], frame);
 
         let services_text = ServiceList::item_data().map(Text::raw);
 
@@ -176,7 +167,7 @@ impl UserPanel {
 
         frame.render_stateful_widget(
             services_widget,
-            vert_split[3],
+            vert_split[2],
             self.service_list.state_mut(),
         );
 
@@ -184,7 +175,7 @@ impl UserPanel {
         let hint_widget = Paragraph::new(hint_text.iter())
             .alignment(Alignment::Center)
             .wrap(false);
-        frame.render_widget(hint_widget, vert_split[5]);
+        frame.render_widget(hint_widget, vert_split[4]);
     }
 
     fn draw_user_selection_panel<B>(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>)

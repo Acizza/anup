@@ -4,7 +4,7 @@ use crate::err::{Error, Result};
 use crate::series::info::{InfoSelector, SeriesInfo};
 use crate::series::{SeriesParams, SeriesPath};
 use crate::tui::component::input::{
-    IDInput, NameInput, ParsedValue, ParserInput, PathInput, ValidatedInput,
+    IDInput, Input, NameInput, ParsedValue, ParserInput, PathInput, ValidatedInput,
 };
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, text};
@@ -109,11 +109,11 @@ impl AddSeriesPanel {
             .constraints(
                 [
                     // Field
-                    Constraint::Length(4),
+                    Input::DRAW_WITH_LABEL_CONSTRAINT,
                     // Spacer
                     Constraint::Length(1),
                     // Field
-                    Constraint::Length(4),
+                    Input::DRAW_WITH_LABEL_CONSTRAINT,
                     // Remaining space
                     Constraint::Percentage(100),
                 ]
@@ -135,18 +135,12 @@ impl AddSeriesPanel {
 
         for (input, pos) in self.inputs.all_mut().iter_mut().zip(field_positions) {
             let layout = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Length(1), Constraint::Length(3)].as_ref())
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(100)].as_ref())
                 .horizontal_margin(3)
                 .split(pos);
 
-            let text = [text::bold(input.label())];
-            let widget = Paragraph::new(text.iter())
-                .wrap(false)
-                .alignment(Alignment::Center);
-            frame.render_widget(widget, layout[0]);
-
-            input.input_mut().draw(&(), layout[1], frame);
+            input.input_mut().draw(&(), layout[0], frame);
         }
     }
 

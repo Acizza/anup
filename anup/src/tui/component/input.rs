@@ -2,14 +2,14 @@ use crate::config::Config;
 use crate::series::SeriesPath;
 use crate::try_opt_ret;
 use crate::tui::component::Draw;
-use crate::tui::widget_util::{block, style};
+use crate::tui::widget_util::{block, style, text};
 use crate::{SERIES_EPISODE_REP, SERIES_TITLE_REP};
 use anime::local::EpisodeParser;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use termion::event::Key;
 use tui::backend::Backend;
-use tui::layout::Rect;
+use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::widgets::{Paragraph, Text};
@@ -21,19 +21,28 @@ pub struct Input {
     offset: usize,
     pub selected: bool,
     pub error: bool,
+    pub draw_mode: DrawMode,
 }
 
 impl Input {
+    pub const DRAW_WITH_LABEL_CONSTRAINT: Constraint = Constraint::Length(4);
+
     const BORDER_SIZE: u16 = 2;
 
-    pub fn new(selected: bool) -> Self {
+    pub fn new(selected: bool, draw_mode: DrawMode) -> Self {
         Self {
             caret: Caret::new(),
             visible_width: 0,
             offset: 0,
             selected,
             error: false,
+            draw_mode,
         }
+    }
+
+    #[inline(always)]
+    pub fn with_label(selected: bool, label: &'static str) -> Self {
+        Self::new(selected, DrawMode::Label(label))
     }
 
     pub fn process_key(&mut self, key: Key) {
@@ -141,11 +150,41 @@ where
             block = block.border_style(style::fg(color));
         }
 
+        let input_pos = match &self.draw_mode {
+            DrawMode::Label(label) => {
+                let layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(1), Constraint::Length(3)].as_ref())
+                    .split(rect);
+
+                let text = [text::bold(*label)];
+                let widget = Paragraph::new(text.iter())
+                    .wrap(false)
+                    .alignment(Alignment::Center);
+
+                frame.render_widget(widget, layout[0]);
+
+                layout[1]
+            }
+            DrawMode::Blank => rect,
+        };
+
         let text = [Text::raw(self.visible())];
         let widget = Paragraph::new(text.iter()).block(block).wrap(false);
 
-        frame.render_widget(widget, rect);
-        self.set_cursor_pos(rect, frame);
+        frame.render_widget(widget, input_pos);
+        self.set_cursor_pos(input_pos, frame);
+    }
+}
+
+pub enum DrawMode {
+    Label(&'static str),
+    Blank,
+}
+
+impl Default for DrawMode {
+    fn default() -> Self {
+        Self::Blank
     }
 }
 
@@ -278,7 +317,7 @@ pub struct NameInput(Input);
 impl NameInput {
     #[inline(always)]
     pub fn new(selected: bool) -> Self {
-        Self(Input::new(selected))
+        Self(Input::with_label(selected, "Name"))
     }
 }
 
@@ -323,7 +362,7 @@ pub struct IDInput {
 impl IDInput {
     pub fn new(selected: bool) -> Self {
         Self {
-            input: Input::new(selected),
+            input: Input::with_label(selected, "ID"),
             id: None,
         }
     }
@@ -384,7 +423,7 @@ pub struct PathInput {
 impl PathInput {
     pub fn new(selected: bool, config: &Config) -> Self {
         Self {
-            input: Input::new(selected),
+            input: Input::with_label(selected, "Path"),
             base_path: config.series_dir.clone(),
             path: None,
         }
@@ -443,7 +482,7 @@ pub struct ParserInput {
 impl ParserInput {
     pub fn new(selected: bool) -> Self {
         Self {
-            input: Input::new(selected),
+            input: Input::with_label(selected, "Episode Regex"),
             parser: EpisodeParser::default(),
         }
     }
