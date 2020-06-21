@@ -429,7 +429,11 @@ impl TryInto<Sequel> for &MediaEdge {
             return Err(());
         }
 
-        let kind = self.node.format.try_into()?;
+        let kind = match self.node.format {
+            Some(fmt) => fmt.try_into()?,
+            None => return Err(()),
+        };
+
         let sequel = Sequel::new(kind, self.node.id);
 
         Ok(sequel)
@@ -460,7 +464,7 @@ impl MediaRelationType {
 #[derive(Debug, Deserialize)]
 struct MediaNode {
     id: u32,
-    format: MediaFormat,
+    format: Option<MediaFormat>,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
