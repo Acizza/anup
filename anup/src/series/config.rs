@@ -16,7 +16,7 @@ pub struct SeriesConfig {
 
 impl SeriesConfig {
     pub fn new(id: i32, params: SeriesParams, db: &Database) -> Result<Self> {
-        if let Some(existing) = Self::exists(db, id) {
+        if let Some(existing) = Self::exists(db, id, &params) {
             return Err(Error::SeriesAlreadyExists { name: existing });
         }
 
@@ -31,7 +31,7 @@ impl SeriesConfig {
 
     pub fn update(&mut self, params: UpdateParams, db: &Database) -> Result<()> {
         if let Some(id) = params.id {
-            if let Some(existing) = Self::exists(db, id) {
+            if let Some(existing) = Self::id_exists(db, id) {
                 return Err(Error::SeriesAlreadyExists { name: existing });
             }
 
@@ -83,7 +83,17 @@ impl SeriesConfig {
         diesel::delete(series_configs.filter(id.eq(self.id))).execute(db.conn())
     }
 
-    pub fn exists(db: &Database, config_id: i32) -> Option<String> {
+    pub fn exists(db: &Database, config_id: i32, params: &SeriesParams) -> Option<String> {
+        use crate::database::schema::series_configs::dsl::*;
+
+        series_configs
+            .filter(id.eq(config_id).or(nickname.eq(&params.name)))
+            .select(nickname)
+            .get_result(db.conn())
+            .ok()
+    }
+
+    fn id_exists(db: &Database, config_id: i32) -> Option<String> {
         use crate::database::schema::series_configs::dsl::*;
 
         series_configs
