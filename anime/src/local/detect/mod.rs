@@ -356,6 +356,7 @@ where
 }
 
 /// The detected title and episode number from an episode file.
+#[derive(Debug)]
 pub struct ParsedEpisode {
     /// The parsed title of the episode file.
     pub title: Option<String>,
