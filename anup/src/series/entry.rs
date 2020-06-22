@@ -3,8 +3,8 @@ use crate::config::Config;
 use crate::database::schema::series_entries;
 use crate::database::Database;
 use crate::err::Result;
-use anime::remote::{Remote, RemoteService, Status};
-use chrono::{Local, NaiveDate};
+use anime::remote::{Remote, RemoteService, SeriesDate, Status};
+use chrono::Local;
 use diesel::prelude::*;
 
 #[derive(Debug, Queryable, Insertable)]
@@ -15,8 +15,8 @@ pub struct SeriesEntry {
     score: Option<i16>,
     status: anime::remote::Status,
     times_rewatched: i16,
-    start_date: Option<chrono::NaiveDate>,
-    end_date: Option<chrono::NaiveDate>,
+    start_date: Option<SeriesDate>,
+    end_date: Option<SeriesDate>,
     needs_sync: bool,
 }
 
@@ -95,22 +95,22 @@ impl SeriesEntry {
     pub fn set_status(&mut self, status: Status, config: &Config) {
         match status {
             Status::Watching if self.start_date().is_none() => {
-                self.start_date = Some(Local::today().naive_local());
+                self.start_date = Some(Local::today().naive_local().into());
             }
             Status::Rewatching
                 if self.start_date().is_none()
                     || (self.status() == Status::Completed && config.reset_dates_on_rewatch) =>
             {
-                self.start_date = Some(Local::today().naive_local());
+                self.start_date = Some(Local::today().naive_local().into());
             }
             Status::Completed
                 if self.end_date().is_none()
                     || (self.status() == Status::Rewatching && config.reset_dates_on_rewatch) =>
             {
-                self.end_date = Some(Local::today().naive_local());
+                self.end_date = Some(Local::today().naive_local().into());
             }
             Status::Dropped if self.end_date.is_none() => {
-                self.end_date = Some(Local::today().naive_local());
+                self.end_date = Some(Local::today().naive_local().into());
             }
             _ => (),
         }
@@ -151,8 +151,8 @@ impl_series_entry_getters_setters!(
     watched_episodes: i16 => set_watched_episodes,
     score: Option<i16> => set_score,
     times_rewatched: i16 => set_times_rewatched,
-    start_date: Option<NaiveDate> => !,
-    end_date: Option<NaiveDate> => !,
+    start_date: Option<SeriesDate> => !,
+    end_date: Option<SeriesDate> => !,
 );
 
 impl Into<anime::remote::SeriesEntry> for &mut SeriesEntry {

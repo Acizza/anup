@@ -6,6 +6,7 @@ edition = "2018"
 default-run = "anup"
 
 [dependencies]
+chrono = "~0.4.0"
 dirs-next = "~1.0.0"
 gumdrop = "~0.8.0"
 once_cell = "~1.4.0"
@@ -23,16 +24,12 @@ unicode-width = "~0.1.0"
 
 [dependencies.anime]
 path = "../anime"
-features = [ "diesel-support" ]
-
-[dependencies.chrono]
-version = "~0.4.0"
-features = [ "serde" ]
+features = [ "diesel-support", "chrono-support" ]
 
 [dependencies.diesel]
 version = "~1.4.0"
 default-features = false
-features = [ "sqlite", "chrono" ]
+features = [ "sqlite" ]
 
 [dependencies.snafu]
 version = "~0.6.0"

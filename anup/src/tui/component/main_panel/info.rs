@@ -4,7 +4,7 @@ use crate::tui::component::Draw;
 use crate::tui::widget_util::{block, text};
 use crate::tui::{CurrentAction, UIState};
 use crate::util;
-use anime::remote::ScoreParser;
+use anime::remote::{ScoreParser, SeriesDate};
 use chrono::Utc;
 use smallvec::SmallVec;
 use std::borrow::Cow;
@@ -198,13 +198,18 @@ impl InfoPanel {
         }
 
         {
+            // TODO: allow this to be changed in the config
+            let format_date = |date: SeriesDate| {
+                format!("{:02}/{:02}/{:02}", date.month, date.day, date.year % 100)
+            };
+
             let right_items = create_stat_list!(
                 "Start Date" => match entry.start_date() {
-                    Some(date) => format!("{}", date.format("%D")).into(),
+                    Some(date) => format_date(date).into(),
                     None => Cow::Borrowed("??"),
                 },
                 "Finish Date" => match entry.end_date() {
-                    Some(date) => format!("{}", date.format("%D")).into(),
+                    Some(date) => format_date(date).into(),
                     None => Cow::Borrowed("??"),
                 },
                 "Rewatched" => entry.times_rewatched()

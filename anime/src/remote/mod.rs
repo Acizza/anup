@@ -16,7 +16,7 @@ use {
     diesel::{
         deserialize::{self, FromSql},
         serialize::{self, Output, ToSql},
-        sql_types::SmallInt,
+        sql_types::{Date, SmallInt},
     },
     std::io::Write,
 };
@@ -192,9 +192,9 @@ pub struct SeriesEntry {
     /// The number of times the user has rewatched the series.
     pub times_rewatched: u32,
     /// The date the user started watching the series.
-    pub start_date: Option<chrono::NaiveDate>,
+    pub start_date: Option<SeriesDate>,
     /// The date the user finished watching the series.
-    pub end_date: Option<chrono::NaiveDate>,
+    pub end_date: Option<SeriesDate>,
 }
 
 impl SeriesEntry {
@@ -286,6 +286,87 @@ where
         };
 
         value.to_sql(out)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+#[cfg_attr(
+    feature = "diesel-support",
+    derive(AsExpression, FromSqlRow),
+    sql_type = "Date"
+)]
+/// A date on a series.
+pub struct SeriesDate {
+    pub year: u16,
+    pub month: u8,
+    pub day: u8,
+}
+
+impl SeriesDate {
+    #[inline(always)]
+    pub fn from_ymd(year: u16, month: u8, day: u8) -> Self {
+        Self { year, month, day }
+    }
+}
+
+#[cfg(feature = "diesel-support")]
+impl<DB> FromSql<Date, DB> for SeriesDate
+where
+    DB: diesel::backend::Backend,
+    String: FromSql<Date, DB>,
+{
+    fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
+        let value = String::from_sql(bytes)?;
+        let mut separator = value.split('-');
+
+        let year = separator
+            .next()
+            .ok_or_else(|| format!("no year found while parsing date"))?
+            .parse()?;
+
+        let month = separator
+            .next()
+            .ok_or_else(|| format!("no month found while parsing date"))?
+            .parse()?;
+
+        let day = separator
+            .next()
+            .ok_or_else(|| format!("no day found while parsing date"))?
+            .parse()?;
+
+        Ok(Self::from_ymd(year, month, day))
+    }
+}
+
+#[cfg(feature = "diesel-support")]
+impl<DB> ToSql<Date, DB> for SeriesDate
+where
+    DB: diesel::backend::Backend,
+    String: ToSql<Date, DB>,
+{
+    fn to_sql<W: Write>(&self, out: &mut Output<W, DB>) -> serialize::Result {
+        format!("{}-{}-{}", self.year, self.month, self.day).to_sql(out)
+    }
+}
+
+#[cfg(feature = "chrono-support")]
+impl From<chrono::NaiveDate> for SeriesDate {
+    fn from(date: chrono::NaiveDate) -> Self {
+        use chrono::Datelike;
+
+        Self {
+            year: (date.year().max(0) as u16).min(u16::MAX),
+            month: date.month().min(u8::MAX as u32) as u8,
+            day: date.day().min(u8::MAX as u32) as u8,
+        }
+    }
+}
+
+#[cfg(feature = "chrono-support")]
+impl Into<chrono::NaiveDate> for SeriesDate {
+    fn into(self) -> chrono::NaiveDate {
+        use chrono::NaiveDate;
+        NaiveDate::from_ymd(self.year as i32, self.month as u32, self.day as u32)
     }
 }
 

@@ -1,9 +1,8 @@
 use super::{
-    AccessToken, RemoteService, ScoreParser, Sequel, SeriesEntry, SeriesID, SeriesInfo, SeriesKind,
-    SeriesTitle, Status,
+    AccessToken, RemoteService, ScoreParser, Sequel, SeriesDate, SeriesEntry, SeriesID, SeriesInfo,
+    SeriesKind, SeriesTitle, Status,
 };
 use crate::err::{self, Error, Result};
-use chrono::{Datelike, NaiveDate};
 use serde_derive::{Deserialize, Serialize};
 use serde_json as json;
 use serde_json::json;
@@ -145,8 +144,8 @@ impl RemoteService for AniList {
                 "score": entry.score.unwrap_or(0),
                 "status": MediaStatus::from(entry.status),
                 "times_rewatched": entry.times_rewatched,
-                "start_date": entry.start_date.map(|date| MediaDate::from(&date)),
-                "finish_date": entry.end_date.map(|date| MediaDate::from(&date)),
+                "start_date": entry.start_date.map(MediaDate::from),
+                "finish_date": entry.end_date.map(MediaDate::from),
             },
         )?;
 
@@ -524,8 +523,8 @@ impl MediaEntry {
             score,
             status: self.status.into(),
             times_rewatched: self.repeat,
-            start_date: self.start_date.and_then(|d| d.try_into().ok()),
-            end_date: self.complete_date.and_then(|d| d.try_into().ok()),
+            start_date: self.start_date.map(Into::into),
+            end_date: self.complete_date.map(Into::into),
         }
     }
 }
@@ -572,30 +571,29 @@ impl From<Status> for MediaStatus {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 struct MediaDate {
-    year: Option<i32>,
-    month: Option<u32>,
-    day: Option<u32>,
+    year: u16,
+    month: u8,
+    day: u8,
 }
 
-impl TryInto<NaiveDate> for MediaDate {
-    type Error = ();
-
-    fn try_into(self) -> result::Result<NaiveDate, Self::Error> {
-        match (self.year, self.month, self.day) {
-            (Some(y), Some(m), Some(d)) => Ok(NaiveDate::from_ymd(y, m, d)),
-            _ => Err(()),
+impl From<SeriesDate> for MediaDate {
+    fn from(date: SeriesDate) -> Self {
+        Self {
+            year: date.year,
+            month: date.month,
+            day: date.day,
         }
     }
 }
 
-impl From<&NaiveDate> for MediaDate {
-    fn from(date: &NaiveDate) -> Self {
-        Self {
-            year: Some(date.year()),
-            month: Some(date.month()),
-            day: Some(date.day()),
+impl Into<SeriesDate> for MediaDate {
+    fn into(self) -> SeriesDate {
+        SeriesDate {
+            year: self.year,
+            month: self.month,
+            day: self.day,
         }
     }
 }
