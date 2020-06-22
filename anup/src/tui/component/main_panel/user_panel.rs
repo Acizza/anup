@@ -1,4 +1,4 @@
-use super::{Component, Draw};
+use super::{Component, Draw, ShouldReset};
 use crate::err::{self, Result};
 use crate::file::SerializedFile;
 use crate::try_opt_r;
@@ -339,12 +339,6 @@ where
         self.draw_user_selection_panel(state, horiz_split[0], frame);
         self.draw_add_user_panel(horiz_split[1], frame);
     }
-}
-
-#[derive(Copy, Clone)]
-pub enum ShouldReset {
-    Yes,
-    No,
 }
 
 #[derive(Copy, Clone, PartialEq)]

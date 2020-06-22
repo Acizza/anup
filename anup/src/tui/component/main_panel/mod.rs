@@ -1,6 +1,7 @@
 mod add_series;
 mod info;
 mod select_series;
+mod split_series;
 mod user_panel;
 
 use super::{Component, Draw};
@@ -15,12 +16,13 @@ use anime::local::SortedEpisodes;
 use anime::remote::RemoteService;
 use info::InfoPanel;
 use select_series::{SelectSeriesPanel, SelectSeriesResult, SelectState};
+use split_series::{SplitPanelResult, SplitSeriesPanel};
 use std::mem;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::terminal::Frame;
-use user_panel::{ShouldReset, UserPanel};
+use user_panel::UserPanel;
 
 pub struct MainPanel {
     current: Panel,
@@ -56,6 +58,20 @@ impl MainPanel {
         state.current_action = CurrentAction::FocusedOnMainPanel;
     }
 
+    pub fn switch_to_split_series(&mut self, state: &mut UIState) -> Result<()> {
+        if state.remote.is_offline() {
+            return Err(Error::MustBeOnlineTo {
+                reason: "split a series",
+            });
+        }
+
+        let panel = Panel::split_series();
+
+        self.current = panel;
+        state.current_action = CurrentAction::FocusedOnMainPanel;
+        Ok(())
+    }
+
     fn add_partial_series(&mut self, series: PartialSeries, state: &mut UIState) -> Result<()> {
         match series.info {
             InfoResult::Confident(info) => {
@@ -85,9 +101,24 @@ impl Component for MainPanel {
     type KeyResult = Result<()>;
 
     fn tick(&mut self, state: &mut UIState) -> Result<()> {
+        macro_rules! capture {
+            ($panel:expr) => {
+                match $panel.tick(state) {
+                    ok @ Ok(_) => ok,
+                    err @ Err(_) => {
+                        self.reset(state);
+                        err
+                    }
+                }
+            };
+        }
+
         match &mut self.current {
-            Panel::AddSeries(add) => add.tick(state),
-            _ => Ok(()),
+            Panel::Info(_) => Ok(()),
+            Panel::AddSeries(panel) => capture!(panel),
+            Panel::SelectSeries(panel) => capture!(panel),
+            Panel::User(panel) => capture!(panel),
+            Panel::SplitSeries(panel) => capture!(panel),
         }
     }
 
@@ -132,6 +163,17 @@ impl Component for MainPanel {
                 Ok(ShouldReset::No) => Ok(()),
                 Err(err) => Err(err),
             },
+            Panel::SplitSeries(split) => match split.process_key(key, state) {
+                Ok(SplitPanelResult::Ok) => Ok(()),
+                Ok(SplitPanelResult::Reset) => {
+                    self.reset(state);
+                    Ok(())
+                }
+                Ok(SplitPanelResult::AddSeries(info, cfg)) => {
+                    state.add_series(*cfg, (*info).into(), None)
+                }
+                Err(err) => Err(err),
+            },
         }
     }
 }
@@ -148,6 +190,7 @@ where
             Panel::AddSeries(add) => add.draw(&(), rect, frame),
             Panel::SelectSeries(panel) => panel.draw(&(), rect, frame),
             Panel::User(user) => user.draw(state, rect, frame),
+            Panel::SplitSeries(split) => split.draw(&(), rect, frame),
         }
     }
 }
@@ -157,6 +200,7 @@ enum Panel {
     AddSeries(Box<AddSeriesPanel>),
     SelectSeries(SelectSeriesPanel),
     User(UserPanel),
+    SplitSeries(SplitSeriesPanel),
 }
 
 impl Panel {
@@ -178,12 +222,23 @@ impl Panel {
     fn user() -> Self {
         Self::User(UserPanel::new())
     }
+
+    fn split_series() -> Self {
+        let panel = SplitSeriesPanel::new();
+        Self::SplitSeries(panel)
+    }
 }
 
 impl Default for Panel {
     fn default() -> Self {
         Self::info()
     }
+}
+
+#[derive(Copy, Clone)]
+pub enum ShouldReset {
+    Yes,
+    No,
 }
 
 #[derive(Debug)]

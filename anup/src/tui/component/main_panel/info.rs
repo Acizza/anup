@@ -1,8 +1,8 @@
 use crate::err::Error;
-use crate::series::Series;
+use crate::series::{LoadedSeries, Series};
 use crate::tui::component::Draw;
 use crate::tui::widget_util::{block, text};
-use crate::tui::{CurrentAction, SeriesStatus, UIState};
+use crate::tui::{CurrentAction, UIState};
 use crate::util;
 use anime::remote::ScoreParser;
 use chrono::Utc;
@@ -251,10 +251,12 @@ where
         }
 
         match state.series.selected() {
-            Some(SeriesStatus::Loaded(series)) => {
+            Some(LoadedSeries::Complete(series)) => {
                 Self::draw_series_info(state, series, rect, frame)
             }
-            Some(SeriesStatus::Error(_, err)) => Self::draw_series_error(err, rect, frame),
+            Some(LoadedSeries::Partial(_, err)) | Some(LoadedSeries::None(_, err)) => {
+                Self::draw_series_error(err, rect, frame)
+            }
             None => Self::draw_no_series_found(rect, frame),
         }
     }

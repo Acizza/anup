@@ -17,7 +17,7 @@ use crate::file::SerializedFile;
 use crate::series::config::SeriesConfig;
 use crate::series::entry::SeriesEntry;
 use crate::series::info::SeriesInfo;
-use crate::series::{LastWatched, Series};
+use crate::series::{LastWatched, LoadedSeries, Series};
 use crate::user::Users;
 use anime::remote::Remote;
 use chrono::Utc;
@@ -127,7 +127,10 @@ fn play_episode(args: CmdOptions) -> Result<()> {
                 name: desired_series.clone(),
             })?;
 
-        Series::load_from_config(cfg, &config, &db)?
+        match Series::load_from_config(cfg, &config, &db) {
+            LoadedSeries::Complete(series) => series,
+            LoadedSeries::Partial(_, err) | LoadedSeries::None(_, err) => return Err(err),
+        }
     };
 
     if last_watched.set(&series.data.config.nickname) {

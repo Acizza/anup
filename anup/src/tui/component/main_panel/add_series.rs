@@ -126,7 +126,7 @@ impl AddSeriesPanel {
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref());
 
-        let horiz_fields_top = horiz_fields.clone().split(vert_fields[0]);
+        let horiz_fields_top = horiz_fields.split(vert_fields[0]);
         let horiz_fields_bottom = horiz_fields.split(vert_fields[2]);
 
         let field_positions = horiz_fields_top

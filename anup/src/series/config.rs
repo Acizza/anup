@@ -4,6 +4,7 @@ use crate::database::{self, Database};
 use crate::err::{Error, Result};
 use anime::local::EpisodeParser;
 use diesel::prelude::*;
+use std::borrow::Cow;
 
 #[derive(Clone, Debug, Queryable, Insertable)]
 pub struct SeriesConfig {
@@ -107,5 +108,17 @@ impl SeriesConfig {
 impl PartialEq<String> for SeriesConfig {
     fn eq(&self, nickname: &String) -> bool {
         self.nickname == *nickname
+    }
+}
+
+impl<'a> Into<Cow<'a, Self>> for SeriesConfig {
+    fn into(self) -> Cow<'a, Self> {
+        Cow::Owned(self)
+    }
+}
+
+impl<'a> Into<Cow<'a, SeriesConfig>> for &'a SeriesConfig {
+    fn into(self) -> Cow<'a, SeriesConfig> {
+        Cow::Borrowed(self)
     }
 }

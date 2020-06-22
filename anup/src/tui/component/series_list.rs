@@ -1,8 +1,8 @@
 use super::{Component, Draw};
 use crate::err::Result;
-use crate::series::LastWatched;
+use crate::series::{LastWatched, LoadedSeries};
 use crate::tui::widget_util::{block, style, text};
-use crate::tui::{CurrentAction, SeriesStatus, UIState};
+use crate::tui::{CurrentAction, UIState};
 use crate::CmdOptions;
 use anime::remote::Status;
 use termion::event::Key;
@@ -39,9 +39,9 @@ impl SeriesList {
         }
     }
 
-    fn series_text(series: &SeriesStatus) -> Text {
+    fn series_text(series: &LoadedSeries) -> Text {
         match series {
-            SeriesStatus::Loaded(series) => {
+            LoadedSeries::Complete(series) => {
                 let color = match series.data.entry.status() {
                     Status::Watching => Color::Blue,
                     Status::Completed => Color::Green,
@@ -53,7 +53,10 @@ impl SeriesList {
 
                 text::with_color(series.data.config.nickname.as_str(), color)
             }
-            SeriesStatus::Error(cfg, _) => text::with_color(cfg.nickname.as_str(), Color::LightRed),
+            LoadedSeries::Partial(data, _) => {
+                text::with_color(data.config.nickname.as_str(), Color::LightRed)
+            }
+            LoadedSeries::None(cfg, _) => text::with_color(cfg.nickname.as_str(), Color::LightRed),
         }
     }
 }

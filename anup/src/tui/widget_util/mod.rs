@@ -1,4 +1,5 @@
 pub mod block;
+pub mod color;
 pub mod style;
 pub mod text;
 
@@ -38,6 +39,7 @@ impl SelectableWidget for TableState {
 }
 
 /// Common functionality for a widget that can be selected / indexed.
+#[derive(Default)]
 pub struct SelectWidgetState<T>(T)
 where
     T: SelectableWidget + Default;
@@ -50,6 +52,10 @@ where
         let mut state = T::default();
         state.select(Some(0));
         Self(state)
+    }
+
+    pub fn unselected() -> Self {
+        Self(T::default())
     }
 
     /// Scrolls the currently selected entry based off of `key`.

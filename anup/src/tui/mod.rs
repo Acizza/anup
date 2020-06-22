@@ -8,7 +8,7 @@ use crate::err::{self, Error, Result};
 use crate::file::SerializedFile;
 use crate::series::config::SeriesConfig;
 use crate::series::info::SeriesInfo;
-use crate::series::{LastWatched, Series, SeriesData};
+use crate::series::{LastWatched, LoadedSeries, Series, SeriesData};
 use crate::user::Users;
 use crate::CmdOptions;
 use crate::{try_opt_r, try_opt_ret};
@@ -52,7 +52,7 @@ pub fn run(args: CmdOptions) -> Result<()> {
 }
 
 pub struct UIState {
-    series: Selection<SeriesStatus>,
+    series: Selection<LoadedSeries>,
     current_action: CurrentAction,
     config: Config,
     users: Users,
@@ -68,7 +68,7 @@ impl UIState {
 
         let series = SeriesConfig::load_all(&db)?
             .into_iter()
-            .map(|sconfig| SeriesStatus::init(sconfig, &config, &db))
+            .map(|sconfig| Series::load_from_config(sconfig, &config, &db))
             .collect::<Vec<_>>();
 
         Ok(Self {
@@ -88,15 +88,15 @@ impl UIState {
         let data = SeriesData::from_remote(config, info, &self.remote)?;
 
         let series = match episodes.into() {
-            Some(episodes) => Series::with_episodes(data, episodes),
-            None => Series::new(data, &self.config)?,
+            Some(episodes) => LoadedSeries::Complete(Series::with_episodes(data, episodes)),
+            None => Series::init(data, &self.config),
         };
 
         series.save(&self.db)?;
 
-        let nickname = series.data.config.nickname.clone();
+        let nickname = series.nickname().to_string();
 
-        self.series.push(SeriesStatus::Loaded(series));
+        self.series.push(series);
         self.series
             .sort_unstable_by(|x, y| x.nickname().cmp(y.nickname()));
 
@@ -112,7 +112,7 @@ impl UIState {
 
     fn init_selected_series(&mut self) {
         let selected = try_opt_ret!(self.series.selected_mut());
-        selected.load(&self.config, &self.db)
+        selected.try_load(&self.config, &self.db)
     }
 
     fn delete_selected_series(&mut self) -> Result<()> {
@@ -290,6 +290,7 @@ where
                 }
                 Key::Char('a') => capture!(self.main_panel.switch_to_add_series(&mut self.state)),
                 Key::Char('u') => self.main_panel.switch_to_user_panel(&mut self.state),
+                Key::Char('s') => capture!(self.main_panel.switch_to_split_series(&mut self.state)),
                 Key::Char(COMMAND_KEY) => {
                     self.state.current_action = CurrentAction::EnteringCommand
                 }
@@ -338,12 +339,21 @@ where
                 let status = try_opt_r!(self.state.series.selected_mut());
 
                 match status {
-                    SeriesStatus::Loaded(series) => {
+                    LoadedSeries::Complete(series) => {
                         series.update(params, config, db, remote)?;
                         series.save(db)?;
                         Ok(())
                     }
-                    SeriesStatus::Error(_, _) => Ok(()),
+                    LoadedSeries::Partial(data, _) => {
+                        data.update(params, db, remote)?;
+                        data.save(db)?;
+                        Ok(())
+                    }
+                    LoadedSeries::None(cfg, _) => {
+                        cfg.update(params, db)?;
+                        cfg.save(db)?;
+                        Ok(())
+                    }
                 }
             }
             cmd @ Command::SyncFromRemote | cmd @ Command::SyncToRemote => {
@@ -489,10 +499,10 @@ impl<T> Selection<T> {
     }
 }
 
-impl Selection<SeriesStatus> {
+impl Selection<LoadedSeries> {
     #[inline(always)]
     fn valid_selection_mut(&mut self) -> Option<&mut Series> {
-        self.selected_mut().and_then(SeriesStatus::loaded_mut)
+        self.selected_mut().and_then(LoadedSeries::complete_mut)
     }
 }
 
@@ -573,50 +583,5 @@ impl<T> IndexMut<WrappingIndex> for Vec<T> {
 impl Into<usize> for WrappingIndex {
     fn into(self) -> usize {
         self.0
-    }
-}
-
-pub enum SeriesStatus {
-    Loaded(Series),
-    Error(SeriesConfig, Error),
-}
-
-impl SeriesStatus {
-    fn init(sconfig: SeriesConfig, config: &Config, db: &Database) -> Self {
-        match Series::load_from_config(sconfig.clone(), config, db) {
-            Ok(series) => Self::Loaded(series),
-            Err(err) => Self::Error(sconfig, err),
-        }
-    }
-
-    fn load(&mut self, config: &Config, db: &Database) {
-        match self {
-            Self::Loaded(_) => (),
-            Self::Error(cfg, cur_err) => match Series::load_from_config(cfg.clone(), config, db) {
-                Ok(series) => *self = Self::Loaded(series),
-                Err(err) => *cur_err = err,
-            },
-        }
-    }
-
-    fn config(&self) -> &SeriesConfig {
-        match self {
-            Self::Loaded(series) => &series.data.config,
-            Self::Error(cfg, _) => cfg,
-        }
-    }
-
-    fn loaded_mut(&mut self) -> Option<&mut Series> {
-        match self {
-            Self::Loaded(series) => Some(series),
-            Self::Error(_, _) => None,
-        }
-    }
-
-    fn nickname(&self) -> &str {
-        match self {
-            Self::Loaded(series) => series.data.config.nickname.as_ref(),
-            Self::Error(cfg, _) => cfg.nickname.as_ref(),
-        }
     }
 }

@@ -43,7 +43,7 @@ impl SeriesData {
         })
     }
 
-    pub fn load_from_config(db: &Database, config: SeriesConfig) -> diesel::QueryResult<Self> {
+    pub fn load_from_config(db: &Database, config: Cow<SeriesConfig>) -> diesel::QueryResult<Self> {
         use diesel::result::Error as DieselError;
 
         db.conn().transaction::<_, DieselError, _>(|| {
@@ -51,11 +51,33 @@ impl SeriesData {
             let entry = SeriesEntry::load(db, config.id)?;
 
             Ok(Self {
-                config,
+                config: config.into_owned(),
                 info,
                 entry,
             })
         })
+    }
+
+    pub fn update(&mut self, params: UpdateParams, db: &Database, remote: &Remote) -> Result<()> {
+        let id = params.id;
+
+        if id.is_some() && remote.is_offline() {
+            return Err(Error::MustBeOnlineTo {
+                reason: "set a new series id",
+            });
+        }
+
+        self.config.update(params, db)?;
+
+        if let Some(id) = id {
+            let info = SeriesInfo::from_remote_by_id(id, remote)?;
+            let entry = SeriesEntry::from_remote(remote, &info)?;
+
+            self.info = info;
+            self.entry = entry;
+        }
+
+        Ok(())
     }
 
     pub fn save(&self, db: &Database) -> diesel::QueryResult<()> {
@@ -84,9 +106,11 @@ pub struct Series {
 }
 
 impl Series {
-    pub fn new(data: SeriesData, config: &Config) -> Result<Self> {
-        let episodes = Self::scan_episodes(&data, config)?;
-        Ok(Self::with_episodes(data, episodes))
+    pub fn init(data: SeriesData, config: &Config) -> LoadedSeries {
+        match Self::scan_episodes(&data, config) {
+            Ok(eps) => LoadedSeries::Complete(Self::with_episodes(data, eps)),
+            Err(err) => LoadedSeries::Partial(data, err),
+        }
     }
 
     #[inline(always)]
@@ -102,24 +126,7 @@ impl Series {
         db: &Database,
         remote: &Remote,
     ) -> Result<()> {
-        let id = params.id;
-
-        if id.is_some() && remote.is_offline() {
-            return Err(Error::MustBeOnlineTo {
-                reason: "set a new series id",
-            });
-        }
-
-        self.data.config.update(params, db)?;
-
-        if let Some(id) = id {
-            let info = SeriesInfo::from_remote_by_id(id, remote)?;
-            let entry = SeriesEntry::from_remote(remote, &info)?;
-
-            self.data.info = info;
-            self.data.entry = entry;
-        }
-
+        self.data.update(params, db, remote)?;
         self.episodes = Self::scan_episodes(&self.data, config)?;
         Ok(())
     }
@@ -142,9 +149,18 @@ impl Series {
         self.data.save(db)
     }
 
-    pub fn load_from_config(sconfig: SeriesConfig, config: &Config, db: &Database) -> Result<Self> {
-        let data = SeriesData::load_from_config(db, sconfig)?;
-        Self::new(data, config)
+    pub fn load_from_config<'a, C>(sconfig: C, config: &Config, db: &Database) -> LoadedSeries
+    where
+        C: Into<Cow<'a, SeriesConfig>>,
+    {
+        let sconfig = sconfig.into();
+
+        let data = match SeriesData::load_from_config(db, sconfig.clone()) {
+            Ok(data) => data,
+            Err(err) => return LoadedSeries::None(sconfig.into_owned(), err.into()),
+        };
+
+        Self::init(data, config)
     }
 
     pub fn episode_path(&self, ep_num: u32, config: &Config) -> Option<PathBuf> {
@@ -276,6 +292,54 @@ impl Series {
         self.save(db)?;
 
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub enum LoadedSeries {
+    Complete(Series),
+    Partial(SeriesData, Error),
+    None(SeriesConfig, Error),
+}
+
+impl LoadedSeries {
+    pub fn try_load(&mut self, config: &Config, db: &Database) {
+        match self {
+            Self::Complete(_) => (),
+            Self::Partial(data, _) => *self = Series::load_from_config(&data.config, config, db),
+            Self::None(cfg, _) => *self = Series::load_from_config(cfg.clone(), config, db),
+        }
+    }
+
+    pub fn save(&self, db: &Database) -> diesel::QueryResult<()> {
+        match self {
+            Self::Complete(series) => series.save(db),
+            Self::Partial(data, _) => data.save(db),
+            Self::None(_, _) => Ok(()),
+        }
+    }
+
+    pub fn config(&self) -> &SeriesConfig {
+        match self {
+            Self::Complete(series) => &series.data.config,
+            Self::Partial(data, _) => &data.config,
+            Self::None(cfg, _) => cfg,
+        }
+    }
+
+    pub fn complete_mut(&mut self) -> Option<&mut Series> {
+        match self {
+            Self::Complete(series) => Some(series),
+            Self::Partial(_, _) | Self::None(_, _) => None,
+        }
+    }
+
+    pub fn nickname(&self) -> &str {
+        match self {
+            Self::Complete(series) => series.data.config.nickname.as_ref(),
+            Self::Partial(data, _) => data.config.nickname.as_ref(),
+            Self::None(cfg, _) => cfg.nickname.as_ref(),
+        }
     }
 }
 
@@ -432,7 +496,7 @@ impl SeriesPath {
         B: AsRef<Path>,
         P: Into<Cow<'a, Path>>,
     {
-        let path = Self::stripped_path(base, path).into();
+        let path = Self::stripped_path(base, path);
         Self(path)
     }
 
@@ -441,14 +505,27 @@ impl SeriesPath {
         self.absolute_base(&config.series_dir)
     }
 
+    #[inline(always)]
     pub fn absolute_base<B>(&self, base: B) -> Cow<Path>
     where
         B: AsRef<Path>,
     {
-        if self.0.is_relative() {
-            Cow::Owned(base.as_ref().join(&self.0))
+        Self::absolute_from_path_base(&self.0, base)
+    }
+
+    #[inline(always)]
+    pub fn absolute_from_path<'a>(path: &'a Path, config: &Config) -> Cow<'a, Path> {
+        Self::absolute_from_path_base(path, &config.series_dir)
+    }
+
+    pub fn absolute_from_path_base<B>(path: &Path, base: B) -> Cow<Path>
+    where
+        B: AsRef<Path>,
+    {
+        if path.is_relative() {
+            Cow::Owned(base.as_ref().join(path))
         } else {
-            Cow::Borrowed(&self.0)
+            Cow::Borrowed(path)
         }
     }
 
@@ -496,7 +573,7 @@ impl SeriesPath {
         B: AsRef<Path>,
         P: Into<Cow<'a, Path>>,
     {
-        self.0 = Self::stripped_path(base, path).into();
+        self.0 = Self::stripped_path(base, path);
     }
 
     fn stripped_path<'a, B, P>(base: B, path: P) -> PathBuf

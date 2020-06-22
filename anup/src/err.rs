@@ -148,6 +148,21 @@ pub enum Error {
         "multiple non-seasonal episode categories found\nyou must split this series with anisplit first"
     ))]
     SeriesNeedsSplitting,
+
+    #[snafu(display("cannot split a series with errors"))]
+    CannotSplitErrorSeries,
+
+    #[snafu(display(
+        "failed to symlink files:\nfrom: {}\nto: {}\nreason: {}",
+        from.display(),
+        to.display(),
+        source
+    ))]
+    FileLinkFailed {
+        source: io::Error,
+        from: path::PathBuf,
+        to: path::PathBuf,
+    },
 }
 
 impl Error {
