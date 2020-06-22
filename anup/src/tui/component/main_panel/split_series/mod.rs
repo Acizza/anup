@@ -171,10 +171,6 @@ impl MergedSeries {
             &data.config.episode_parser,
         )?;
 
-        if !episodes.has_multiple_categories() {
-            return Ok(Vec::new());
-        }
-
         let base_info = remote.search_info_by_id(data.info.id as u32)?;
 
         if base_info.sequels.is_empty() {
