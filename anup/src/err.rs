@@ -120,7 +120,7 @@ pub enum Error {
     CommandNotFound { command: String },
 
     #[snafu(display("{} argument(s) specified, need at least {}", has, need))]
-    NotEnoughArguments { has: usize, need: usize },
+    NotEnoughArguments { has: usize, need: u8 },
 
     #[snafu(display("unknown argument: {}", value))]
     UnknownCmdPromptArg { value: String },

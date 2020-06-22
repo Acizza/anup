@@ -80,6 +80,7 @@ impl From<anime::remote::SeriesInfo> for SeriesInfo {
     }
 }
 
+#[allow(variant_size_differences)]
 pub enum InfoSelector {
     Name(String),
     ID(i32),

@@ -290,7 +290,7 @@ macro_rules! impl_command_matching {
                             has_min_args,
                             err::NotEnoughArguments {
                                 has: args.len(),
-                                need: $min_args as usize,
+                                need: $min_args,
                             }
                         );
 

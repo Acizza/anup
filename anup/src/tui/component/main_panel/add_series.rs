@@ -208,7 +208,7 @@ impl AddSeriesPanel {
 
 impl Component for AddSeriesPanel {
     type State = UIState;
-    type KeyResult = AddSeriesResult;
+    type KeyResult = Result<AddSeriesResult>;
 
     fn tick(&mut self, state: &mut UIState) -> Result<()> {
         let last_update = try_opt_r!(self.last_update);
@@ -225,17 +225,17 @@ impl Component for AddSeriesPanel {
 
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
         match key {
-            Key::Esc => AddSeriesResult::Reset,
+            Key::Esc => Ok(AddSeriesResult::Reset),
             Key::Char('\n') => {
                 self.validate_selected();
 
                 if self.error.is_some() {
-                    return AddSeriesResult::Ok;
+                    return Ok(AddSeriesResult::Ok);
                 }
 
                 match self.series_builder.build(&self.inputs, state) {
-                    Ok(partial) => AddSeriesResult::AddSeries(Box::new(partial)),
-                    Err(err) => AddSeriesResult::Error(err),
+                    Ok(partial) => Ok(AddSeriesResult::AddSeries(Box::new(partial))),
+                    Err(err) => Err(err),
                 }
             }
             Key::Char('\t') => {
@@ -245,14 +245,14 @@ impl Component for AddSeriesPanel {
                 self.selected_input = (self.selected_input + 1) % self.inputs.len();
                 self.current_input().input_mut().selected = true;
 
-                AddSeriesResult::Ok
+                Ok(AddSeriesResult::Ok)
             }
             key => {
                 self.current_input().input_mut().process_key(key);
                 self.validate_selected();
 
                 self.last_update = Some(Instant::now());
-                AddSeriesResult::Ok
+                Ok(AddSeriesResult::Ok)
             }
         }
     }
@@ -283,7 +283,6 @@ pub enum AddSeriesResult {
     Ok,
     Reset,
     AddSeries(Box<PartialSeries>),
-    Error(Error),
 }
 
 struct SeriesBuilder {

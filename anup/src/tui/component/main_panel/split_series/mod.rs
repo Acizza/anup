@@ -81,7 +81,7 @@ impl Component for SplitSeriesPanel {
                         Err(err) => return Err(err),
                     };
 
-                self.state = PanelState::Splitting(SplitPanel::new(merged_series));
+                self.state = PanelState::Splitting(SplitPanel::new(merged_series).into());
                 Ok(())
             }
             PanelState::Splitting(split_panel) => split_panel.tick(state),
@@ -99,7 +99,7 @@ impl Component for SplitSeriesPanel {
                     let add_panel = AddPanel::new(info, path);
                     let split_panel = mem::take(split_panel);
 
-                    self.state = PanelState::AddingSeries(add_panel, split_panel);
+                    self.state = PanelState::AddingSeries(add_panel.into(), split_panel.into());
 
                     Ok(SplitPanelResult::Ok)
                 }
@@ -141,8 +141,8 @@ where
 
 enum PanelState {
     Loading,
-    Splitting(SplitPanel),
-    AddingSeries(AddPanel, SplitPanel),
+    Splitting(Box<SplitPanel>),
+    AddingSeries(Box<AddPanel>, Box<SplitPanel>),
 }
 
 pub enum SplitPanelResult {
@@ -159,12 +159,18 @@ impl SplitPanelResult {
 }
 
 #[derive(Debug)]
+#[allow(variant_size_differences)]
 enum MergedSeries {
-    Resolved(ResolvedSeries),
+    Resolved(Box<ResolvedSeries>),
     Failed(SeriesKind),
 }
 
 impl MergedSeries {
+    #[inline(always)]
+    fn resolved(resolved: ResolvedSeries) -> Self {
+        Self::Resolved(Box::new(resolved))
+    }
+
     fn resolve(data: &SeriesData, remote: &Remote, config: &Config) -> Result<Vec<Self>> {
         let episodes = CategorizedEpisodes::parse(
             data.config.path.absolute(config),
@@ -212,7 +218,7 @@ impl MergedSeries {
             let resolved =
                 ResolvedSeries::new(sequel_info, data.config.path.clone(), eps, 0, config);
 
-            results.push(Self::Resolved(resolved));
+            results.push(Self::resolved(resolved));
         }
 
         Ok(results)
@@ -260,7 +266,7 @@ impl MergedSeries {
                 config,
             );
 
-            results.push(Self::Resolved(resolved));
+            results.push(Self::resolved(resolved));
 
             // We don't need to sleep if there isn't another sequel
             if info.sequels.is_empty() {
@@ -387,7 +393,7 @@ impl SplitAction {
         let mut actions = Vec::new();
 
         let sequel_start = 1 + offset;
-        let sequel_end = offset + info.episodes as EpisodeOffset;
+        let sequel_end = offset + info.episodes;
 
         for real_ep_num in sequel_start..=sequel_end {
             let episode = match episodes.find(real_ep_num) {

@@ -126,16 +126,16 @@ impl Component for MainPanel {
         match &mut self.current {
             Panel::Info(_) => Ok(()),
             Panel::AddSeries(add) => match add.process_key(key, state) {
-                AddSeriesResult::Ok => Ok(()),
-                AddSeriesResult::Reset => {
+                Ok(AddSeriesResult::Ok) => Ok(()),
+                Ok(AddSeriesResult::Reset) => {
                     self.reset(state);
                     Ok(())
                 }
-                AddSeriesResult::AddSeries(partial) => {
+                Ok(AddSeriesResult::AddSeries(partial)) => {
                     self.add_partial_series(*partial, state)?;
                     Ok(())
                 }
-                AddSeriesResult::Error(err) => Err(err),
+                Err(err) => Err(err),
             },
             Panel::SelectSeries(panel) => match panel.process_key(key, &mut ()) {
                 SelectSeriesResult::Ok => Ok(()),
