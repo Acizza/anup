@@ -27,9 +27,10 @@ optional = true
 default-features = false
 features = [ "sqlite" ]
 
-[dependencies.ureq]
-version = "~1.2.0"
-features = [ "json" ]
+[dependencies.attohttpc]
+version = "~0.14.0"
+default-features = false
+features = [ "json", "tls-rustls" ]
 
 [features]
 default = []

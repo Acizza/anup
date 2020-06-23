@@ -10,6 +10,7 @@ use snafu::ResultExt;
 use std::borrow::Cow;
 use std::convert::TryInto;
 use std::result;
+use std::time::Duration;
 
 /// The URL to the API endpoint.
 pub const API_URL: &str = "https://graphql.anilist.co";
@@ -296,7 +297,7 @@ fn send_gql_request<S>(
 where
     S: Into<String>,
 {
-    const REQ_TIMEOUT_MS: u64 = 15_000;
+    const REQ_TIMEOUT_SEC: u64 = 15;
 
     let query = minimize_query(query);
 
@@ -305,24 +306,15 @@ where
         "variables": vars,
     });
 
-    let mut request = ureq::post(API_URL);
-    request.timeout_connect(REQ_TIMEOUT_MS);
-    request.timeout_read(REQ_TIMEOUT_MS);
-    request.timeout_write(REQ_TIMEOUT_MS);
-    request.set("Content-Type", "application/json");
-    request.set("Accept", "application/json");
+    let mut request = attohttpc::post(API_URL)
+        .timeout(Duration::from_secs(REQ_TIMEOUT_SEC))
+        .json(&body)?;
 
     if let Some(token) = token {
-        request.auth_kind("Bearer", &token.decode()?);
+        request = request.bearer_auth(&token.decode()?);
     }
 
-    let resp = request.send_json(body);
-
-    if let Some(err) = resp.synthetic_error() {
-        return Err(err.into());
-    }
-
-    let json = resp.into_json().context(err::HttpIO)?;
+    let json: json::Value = request.send()?.json()?;
 
     if json["errors"] != json::Value::Null {
         let err = &json["errors"][0];

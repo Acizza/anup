@@ -48,16 +48,9 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("http error: {}", msg))]
+    #[snafu(display("http error: {}", source))]
     Http {
-        msg: String,
-        status: u16,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display("http io error: {}", source))]
-    HttpIO {
-        source: io::Error,
+        source: attohttpc::Error,
         backtrace: Backtrace,
     },
 
@@ -100,19 +93,23 @@ pub enum Error {
 
 impl Error {
     pub fn is_http_code(&self, http_code: u16) -> bool {
+        use attohttpc::ErrorKind;
+
         match self {
             Error::BadAniListResponse { code, .. } if http_code == *code => true,
-            Error::Http { status, .. } => *status == http_code,
+            Error::Http { source, .. } => match source.kind() {
+                ErrorKind::StatusCode(status) => status.as_u16() == http_code,
+                _ => false,
+            },
             _ => false,
         }
     }
 }
 
-impl From<&ureq::Error> for Error {
-    fn from(source: &ureq::Error) -> Self {
+impl From<attohttpc::Error> for Error {
+    fn from(source: attohttpc::Error) -> Self {
         Self::Http {
-            msg: format!("{}", source),
-            status: source.status(),
+            source,
             backtrace: Backtrace::generate(),
         }
     }
