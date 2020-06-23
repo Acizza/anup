@@ -504,9 +504,9 @@ struct MediaEntry {
     progress: u32,
     repeat: u32,
     #[serde(rename = "startedAt")]
-    start_date: Option<MediaDate>,
+    start_date: MediaDate,
     #[serde(rename = "completedAt")]
-    complete_date: Option<MediaDate>,
+    complete_date: MediaDate,
 }
 
 impl MediaEntry {
@@ -523,8 +523,8 @@ impl MediaEntry {
             score,
             status: self.status.into(),
             times_rewatched: self.repeat,
-            start_date: self.start_date.map(Into::into),
-            end_date: self.complete_date.map(Into::into),
+            start_date: self.start_date.try_into().ok(),
+            end_date: self.complete_date.try_into().ok(),
         }
     }
 }
@@ -573,27 +573,28 @@ impl From<Status> for MediaStatus {
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 struct MediaDate {
-    year: u16,
-    month: u8,
-    day: u8,
+    year: Option<u16>,
+    month: Option<u8>,
+    day: Option<u8>,
 }
 
 impl From<SeriesDate> for MediaDate {
     fn from(date: SeriesDate) -> Self {
         Self {
-            year: date.year,
-            month: date.month,
-            day: date.day,
+            year: Some(date.year),
+            month: Some(date.month),
+            day: Some(date.day),
         }
     }
 }
 
-impl Into<SeriesDate> for MediaDate {
-    fn into(self) -> SeriesDate {
-        SeriesDate {
-            year: self.year,
-            month: self.month,
-            day: self.day,
+impl TryInto<SeriesDate> for MediaDate {
+    type Error = ();
+
+    fn try_into(self) -> result::Result<SeriesDate, Self::Error> {
+        match (self.year, self.month, self.day) {
+            (Some(y), Some(m), Some(d)) => Ok(SeriesDate::from_ymd(y, m, d)),
+            _ => Err(()),
         }
     }
 }
