@@ -2,11 +2,10 @@ use super::{
     AccessToken, RemoteService, ScoreParser, Sequel, SeriesDate, SeriesEntry, SeriesID, SeriesInfo,
     SeriesKind, SeriesTitle, Status,
 };
-use crate::err::{self, Error, Result};
+use crate::err::{Error, Result};
 use serde_derive::{Deserialize, Serialize};
 use serde_json as json;
 use serde_json::json;
-use snafu::ResultExt;
 use std::borrow::Cow;
 use std::convert::TryInto;
 use std::result;
@@ -56,7 +55,7 @@ macro_rules! send {
 macro_rules! query {
     ($token:expr, $file:expr, {$($vars:tt)*}, $($resp_root:expr)=>*) => {
         send!($token, $file, {$($vars)*}, $($resp_root)=>*).and_then(|json| {
-            json::from_value(json).context(err::JsonDecode)
+            json::from_value(json).map_err(Into::into)
         })
     };
 }

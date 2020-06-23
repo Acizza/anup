@@ -2,9 +2,8 @@ pub mod detect;
 
 pub use detect::{EpisodeParser, EpisodeRegex, ParsedEpisode};
 
-use crate::err::{self, Result};
+use crate::err::{Error, Result};
 use crate::SeriesKind;
-use snafu::{ensure, ResultExt};
 use std::cmp::{Ord, Ordering, PartialOrd};
 use std::collections::HashMap;
 use std::fs;
@@ -158,7 +157,9 @@ impl CategorizedEpisodes {
     where
         P: AsRef<Path>,
     {
-        ensure!(parser.has_title(), err::NeedTitleGroup);
+        if !parser.has_title() {
+            return Err(Error::NeedTitleGroup);
+        }
 
         let mut results = HashMap::with_capacity(1);
 
@@ -196,13 +197,14 @@ impl CategorizedEpisodes {
         Self::parse_eps_in_dir_with(dir, parser, |parsed, filename| {
             if let Some(series_name) = parsed.title {
                 match &mut last_title {
-                    Some(last_title) => ensure!(
-                        *last_title == series_name,
-                        err::MultipleTitles {
-                            expecting: last_title.clone(),
-                            found: series_name
+                    Some(last_title) => {
+                        if *last_title != series_name {
+                            return Err(Error::MultipleTitles {
+                                expecting: last_title.clone(),
+                                found: series_name,
+                            });
                         }
-                    ),
+                    }
                     None => last_title = Some(series_name),
                 }
             }
@@ -228,11 +230,22 @@ impl CategorizedEpisodes {
         F: FnMut(ParsedEpisode, String) -> Result<()>,
     {
         let dir = dir.as_ref();
-        let entries = fs::read_dir(dir).context(err::FileIO { path: dir })?;
+
+        let entries = fs::read_dir(dir).map_err(|source| Error::FileIO {
+            source,
+            path: dir.into(),
+        })?;
 
         for entry in entries {
-            let entry = entry.context(err::EntryIO { dir })?;
-            let entry_type = entry.file_type().context(err::EntryIO { dir })?;
+            let entry = entry.map_err(|source| Error::EntryIO {
+                source,
+                dir: dir.into(),
+            })?;
+
+            let entry_type = entry.file_type().map_err(|source| Error::EntryIO {
+                source,
+                dir: dir.into(),
+            })?;
 
             if entry_type.is_dir() {
                 continue;

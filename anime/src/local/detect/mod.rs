@@ -3,10 +3,9 @@ pub mod episode;
 
 mod common;
 
-use crate::err::{self, Error, Result};
+use crate::err::{Error, Result};
 use crate::SeriesKind;
 use regex::Regex;
-use snafu::{OptionExt, ResultExt};
 use std::borrow::Cow;
 use std::str;
 
@@ -58,7 +57,10 @@ impl EpisodeRegex {
             return Err(Error::MissingMatcherGroups);
         }
 
-        let regex = Regex::new(pattern).context(err::Regex { pattern })?;
+        let regex = Regex::new(pattern).map_err(|source| Error::Regex {
+            source,
+            pattern: pattern.into(),
+        })?;
 
         Ok(Self {
             regex,
@@ -247,7 +249,9 @@ impl EpisodeParser {
         episode::title_and_episode::parse(filename)
             .or_else(|| episode::episode_and_title::parse(filename))
             .or_else(|| episode::title_episode_desc::parse(filename))
-            .context(err::EpisodeParseFailed { filename })
+            .ok_or_else(|| Error::EpisodeParseFailed {
+                filename: filename.into(),
+            })
     }
 
     fn parse_with_regex<S>(regex: &EpisodeRegex, filename: S) -> Result<ParsedEpisode>
@@ -259,11 +263,15 @@ impl EpisodeParser {
         let caps = regex
             .get()
             .captures(filename)
-            .context(err::EpisodeParseFailed { filename })?;
+            .ok_or_else(|| Error::EpisodeParseFailed {
+                filename: filename.into(),
+            })?;
 
         let series_name = if regex.has_title {
             caps.name("title")
-                .context(err::NoEpisodeTitle { filename })?
+                .ok_or_else(|| Error::NoEpisodeTitle {
+                    filename: filename.into(),
+                })?
                 .as_str()
                 .trim()
                 .to_string()
@@ -275,7 +283,9 @@ impl EpisodeParser {
         let num = caps
             .name("episode")
             .and_then(|val| val.as_str().parse::<u32>().ok())
-            .context(err::ExpectedEpNumber { filename })?;
+            .ok_or_else(|| Error::ExpectedEpNumber {
+                filename: filename.into(),
+            })?;
 
         // TODO: look for special / OVA / ONA / movie in the title to categorize properly
         let episode = ParsedEpisode::new(series_name, num, SeriesKind::Season);

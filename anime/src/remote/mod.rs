@@ -1,13 +1,12 @@
 pub mod anilist;
 pub mod offline;
 
-use crate::err::{self, Result};
+use crate::err::Result;
 use crate::SeriesKind;
 use anilist::AniList;
 use enum_dispatch::enum_dispatch;
 use offline::Offline;
 use serde_derive::{Deserialize, Serialize};
-use snafu::ResultExt;
 use std::borrow::Cow;
 use std::fmt;
 
@@ -403,8 +402,8 @@ impl AccessToken {
     /// ```
     #[inline]
     pub fn decode(&self) -> Result<String> {
-        let bytes = base64::decode(&self.encoded_token).context(err::Base64Decode)?;
-        let string = String::from_utf8(bytes).context(err::UTF8Decode)?;
+        let bytes = base64::decode(&self.encoded_token)?;
+        let string = String::from_utf8(bytes)?;
 
         Ok(string)
     }

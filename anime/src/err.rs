@@ -1,93 +1,71 @@
-use snafu::{Backtrace, GenerateBacktrace, Snafu};
 use std::io;
 use std::path;
 use std::result;
 use std::string;
+use thiserror::Error;
 
 pub type Result<T> = result::Result<T, Error>;
 
-#[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
+#[derive(Debug, Error)]
 pub enum Error {
-    #[snafu(display("file io error [{:?}]: {}", path, source))]
+    #[error("file io error [{}]: {source}", .path.display())]
     FileIO {
+        source: io::Error,
         path: path::PathBuf,
-        source: io::Error,
-        backtrace: Backtrace,
     },
 
-    #[snafu(display("dir entry error [{:?}]: {}", dir, source))]
+    #[error("dir entry error [{}]: {source}", .dir.display())]
     EntryIO {
-        dir: path::PathBuf,
         source: io::Error,
-        backtrace: Backtrace,
+        dir: path::PathBuf,
     },
 
-    #[snafu(display("base64 decode error: {}", source))]
-    Base64Decode {
-        source: base64::DecodeError,
-        backtrace: Backtrace,
-    },
+    #[error("base64 decode error: {0}")]
+    Base64Decode(#[from] base64::DecodeError),
 
-    #[snafu(display("utf8 decode error: {}", source))]
-    UTF8Decode {
-        source: string::FromUtf8Error,
-        backtrace: Backtrace,
-    },
+    #[error("utf8 decode error: {0}")]
+    UTF8Decode(#[from] string::FromUtf8Error),
 
-    #[snafu(display("json decode error: {}", source))]
-    JsonDecode {
-        source: serde_json::Error,
-        backtrace: Backtrace,
-    },
+    #[error("json decode error: {0}")]
+    JsonDecode(#[from] serde_json::Error),
 
-    #[snafu(display("failed to create regex pattern \"{}\": {}", pattern, source))]
+    #[error("failed to create regex pattern \"{pattern}\": {source}")]
     Regex {
-        pattern: String,
         source: regex::Error,
-        backtrace: Backtrace,
+        pattern: String,
     },
 
-    #[snafu(display("http error: {}", source))]
-    Http {
-        source: attohttpc::Error,
-        backtrace: Backtrace,
-    },
+    #[error("http error: {0}")]
+    Http(#[from] attohttpc::Error),
 
-    #[snafu(display("failed to parse episode title: {}", filename))]
+    #[error("failed to parse episode title: {filename}")]
     NoEpisodeTitle { filename: String },
 
-    #[snafu(display("expected episode number for file: {}", filename))]
+    #[error("expected episode number for file: {filename}")]
     ExpectedEpNumber { filename: String },
 
-    #[snafu(display("failed to parse episode: {}", filename))]
+    #[error("failed to parse episode: {filename}")]
     EpisodeParseFailed { filename: String },
 
-    #[snafu(display(
-        "found different episode titles:\n\texpecting: {}\n\tfound: {}",
-        expecting,
-        found
-    ))]
+    #[error("found different episode titles:\n\texpecting: {expecting}\n\tfound: {found}")]
     MultipleTitles { expecting: String, found: String },
 
-    #[snafu(display("need existing series info to use offline backend"))]
+    #[error("need existing series info to use offline backend")]
     NeedExistingSeriesData,
 
-    #[snafu(display("bad AniList response ({}): {}", code, message))]
+    #[error("bad AniList response ({code}): {message}")]
     BadAniListResponse { code: u16, message: String },
 
-    #[snafu(display(
-        "custom episode matcher must specify the episode and (optionally) the title group"
-    ))]
+    #[error("custom episode matcher must specify the episode and (optionally) the title group")]
     MissingMatcherGroups,
 
-    #[snafu(display("title group must be specified to parse episodes"))]
+    #[error("title group must be specified to parse episodes")]
     NeedTitleGroup,
 
-    #[snafu(display("must be authorized to make this request"))]
+    #[error("must be authorized to make this request")]
     NeedAuthentication,
 
-    #[snafu(display("requested series is not an anime"))]
+    #[error("requested series is not an anime")]
     NotAnAnime,
 }
 
@@ -97,20 +75,11 @@ impl Error {
 
         match self {
             Error::BadAniListResponse { code, .. } if http_code == *code => true,
-            Error::Http { source, .. } => match source.kind() {
+            Error::Http(source) => match source.kind() {
                 ErrorKind::StatusCode(status) => status.as_u16() == http_code,
                 _ => false,
             },
             _ => false,
-        }
-    }
-}
-
-impl From<attohttpc::Error> for Error {
-    fn from(source: attohttpc::Error) -> Self {
-        Self::Http {
-            source,
-            backtrace: Backtrace::generate(),
         }
     }
 }
