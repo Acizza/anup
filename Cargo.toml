@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "anime",
-    "anisplit",
     "anup",
 ]
 

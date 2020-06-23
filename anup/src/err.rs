@@ -145,7 +145,7 @@ pub enum Error {
     NoEpisodesFound,
 
     #[snafu(display(
-        "multiple non-seasonal episode categories found\nyou must split this series with anisplit first"
+        "multiple OVA / ONA / special / movie episode categories found without season episodes\nplease isolate each episode set into its own folder"
     ))]
     SeriesNeedsSplitting,
 
