@@ -99,7 +99,7 @@ impl Component for SplitSeriesPanel {
                     let add_panel = AddPanel::new(info, path);
                     let split_panel = mem::take(split_panel);
 
-                    self.state = PanelState::AddingSeries(add_panel.into(), split_panel.into());
+                    self.state = PanelState::AddingSeries(add_panel.into(), split_panel);
 
                     Ok(SplitPanelResult::Ok)
                 }
