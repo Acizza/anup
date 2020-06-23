@@ -3,9 +3,6 @@
 #![deny(trivial_numeric_casts)]
 #![deny(unused_import_braces)]
 #![deny(variant_size_differences)]
-#![warn(warnings, rust_2018_idioms)]
-#![warn(clippy::all, clippy::pedantic, clippy::restriction)]
-#![allow(elided_lifetimes_in_paths)]
 
 #[cfg(feature = "diesel-support")]
 #[macro_use]

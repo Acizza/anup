@@ -321,17 +321,17 @@ where
 
         let year = separator
             .next()
-            .ok_or_else(|| format!("no year found while parsing date"))?
+            .ok_or_else(|| "no year found while parsing date")?
             .parse()?;
 
         let month = separator
             .next()
-            .ok_or_else(|| format!("no month found while parsing date"))?
+            .ok_or_else(|| "no month found while parsing date")?
             .parse()?;
 
         let day = separator
             .next()
-            .ok_or_else(|| format!("no day found while parsing date"))?
+            .ok_or_else(|| "no day found while parsing date")?
             .parse()?;
 
         Ok(Self::from_ymd(year, month, day))
