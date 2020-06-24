@@ -1,6 +1,5 @@
 use super::PartialSeries;
 use crate::config::Config;
-use crate::err::{Error, Result};
 use crate::series::info::{InfoSelector, SeriesInfo};
 use crate::series::{SeriesParams, SeriesPath};
 use crate::tui::component::input::{
@@ -11,6 +10,7 @@ use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
 use crate::{try_opt_r, try_opt_ret};
 use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
+use anyhow::Result;
 use std::borrow::Cow;
 use std::mem;
 use std::time::Instant;
@@ -387,10 +387,12 @@ impl ParsedEpisodes {
     }
 
     fn take_episodes(self) -> Result<SortedEpisodes> {
+        use crate::series::EpisodeScanError;
+
         match self {
             Self::Parsed(episodes, _) => Ok(episodes),
-            Self::NoneFound => Err(Error::NoEpisodesFound),
-            Self::NeedsSplitting => Err(Error::SeriesNeedsSplitting),
+            Self::NoneFound => Err(EpisodeScanError::NoEpisodes.into()),
+            Self::NeedsSplitting => Err(EpisodeScanError::SeriesNeedsSplitting.into()),
         }
     }
 

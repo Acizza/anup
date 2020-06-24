@@ -4,12 +4,12 @@ pub mod info;
 
 use crate::config::Config;
 use crate::database::Database;
-use crate::err::{self, Error, Result};
 use crate::file;
 use crate::file::SaveDir;
 use crate::{try_opt_r, SERIES_EPISODE_REP, SERIES_TITLE_REP};
 use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
 use anime::remote::{Remote, RemoteService, Status};
+use anyhow::{anyhow, Context, Error, Result};
 use chrono::{DateTime, Duration, Utc};
 use config::SeriesConfig;
 use diesel::deserialize::{self, FromSql};
@@ -18,12 +18,25 @@ use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::Text;
 use entry::SeriesEntry;
 use info::SeriesInfo;
-use snafu::{OptionExt, ResultExt};
 use std::borrow::Cow;
 use std::fs;
 use std::io::Write;
 use std::path::{self, Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::result;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum EpisodeScanError {
+    #[error("failed to parse episodes at {path}: {source}")]
+    EpisodeParseFailed { source: anime::Error, path: PathBuf },
+
+    #[error("no episodes found")]
+    NoEpisodes,
+
+    #[error("multiple OVA / ONA / special / movie episode categories found without season episodes\nplease isolate each episode set into its own folder")]
+    SeriesNeedsSplitting,
+}
 
 #[derive(Debug)]
 pub struct SeriesData {
@@ -62,16 +75,14 @@ impl SeriesData {
         let id = params.id;
 
         if id.is_some() && remote.is_offline() {
-            return Err(Error::MustBeOnlineTo {
-                reason: "set a new series id",
-            });
+            return Err(anyhow!("must be online to set a new series id"));
         }
 
         self.config.update(params, db)?;
 
         if let Some(id) = id {
-            let info = SeriesInfo::from_remote_by_id(id, remote)?;
-            let entry = SeriesEntry::from_remote(remote, &info)?;
+            let info = SeriesInfo::from_remote_by_id(id, remote).context("getting series info")?;
+            let entry = SeriesEntry::from_remote(remote, &info).context("getting series entry")?;
 
             self.info = info;
             self.entry = entry;
@@ -131,17 +142,27 @@ impl Series {
         Ok(())
     }
 
-    fn scan_episodes(data: &SeriesData, config: &Config) -> Result<SortedEpisodes> {
+    fn scan_episodes(
+        data: &SeriesData,
+        config: &Config,
+    ) -> result::Result<SortedEpisodes, EpisodeScanError> {
         let path = data.config.path.absolute(config);
-        let episodes = CategorizedEpisodes::parse(path, &data.config.episode_parser)?;
+
+        let episodes =
+            CategorizedEpisodes::parse(&path, &data.config.episode_parser).map_err(|source| {
+                EpisodeScanError::EpisodeParseFailed {
+                    source,
+                    path: path.into(),
+                }
+            })?;
 
         if episodes.is_empty() {
-            return Err(Error::NoEpisodesFound);
+            return Err(EpisodeScanError::NoEpisodes);
         }
 
         episodes
             .take_season_episodes_or_present()
-            .ok_or(Error::SeriesNeedsSplitting)
+            .ok_or(EpisodeScanError::SeriesNeedsSplitting)
     }
 
     #[inline(always)]
@@ -170,10 +191,10 @@ impl Series {
         path.canonicalize().ok()
     }
 
-    pub fn play_episode_cmd(&self, episode: u32, config: &Config) -> Result<Command> {
+    pub fn play_episode(&self, episode: u32, config: &Config) -> Result<Child> {
         let episode_path = self
             .episode_path(episode, config)
-            .context(err::EpisodeNotFound { episode })?;
+            .with_context(|| anyhow!("episode {} not found", episode))?;
 
         let mut cmd = Command::new(&config.episode.player);
         cmd.arg(episode_path);
@@ -183,7 +204,8 @@ impl Series {
         cmd.stderr(Stdio::null());
         cmd.stdin(Stdio::null());
 
-        Ok(cmd)
+        cmd.spawn()
+            .with_context(|| anyhow!("failed to play episode {}", episode))
     }
 
     pub fn begin_watching(
@@ -298,7 +320,7 @@ impl Series {
 #[derive(Debug)]
 pub enum LoadedSeries {
     Complete(Series),
-    Partial(SeriesData, Error),
+    Partial(SeriesData, EpisodeScanError),
     None(SeriesConfig, Error),
 }
 
@@ -437,7 +459,7 @@ impl LastWatched {
             return Ok(Self(None));
         }
 
-        let last_watched = fs::read_to_string(&path).context(err::FileIO { path })?;
+        let last_watched = fs::read_to_string(&path).context("reading file")?;
         Ok(Self(Some(last_watched)))
     }
 
@@ -467,8 +489,8 @@ impl LastWatched {
 
     pub fn save(&self) -> Result<()> {
         let contents = try_opt_r!(&self.0);
-        let path = Self::validated_path()?;
-        fs::write(&path, contents).context(err::FileIO { path })
+        let path = Self::validated_path().context("getting path")?;
+        fs::write(&path, contents).context("writing file")
     }
 
     pub fn validated_path() -> Result<PathBuf> {
@@ -541,7 +563,7 @@ impl SeriesPath {
         let files = file::read_dir(&config.series_dir)?;
 
         dir::closest_match(name, MIN_CONFIDENCE, files.into_iter()).map_or_else(
-            || Err(Error::NoMatchingSeriesOnDisk { name: name.into() }),
+            || Err(anyhow!("no series found on disk matching {}", name)),
             |dir| Ok(Self::new(dir.path(), config)),
         )
     }

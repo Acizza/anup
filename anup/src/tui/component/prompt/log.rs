@@ -1,6 +1,6 @@
-use crate::err::Error;
 use crate::tui::component::Draw;
 use crate::tui::widget_util::{block, text};
+use anyhow::Error;
 use std::collections::VecDeque;
 use tui::backend::Backend;
 use tui::layout::Rect;
@@ -48,6 +48,14 @@ impl<'a> Log<'a> {
         let item = item.into();
         self.draw_items.extend(item.text_items().iter().cloned());
         self.items.push_back(item);
+    }
+
+    pub fn push_err(&mut self, err: &Error) {
+        self.push(LogItem::error(format!("{}", err)));
+
+        for cause in err.chain().skip(1) {
+            self.push_context(format!("{}", cause));
+        }
     }
 
     pub fn push_context<S>(&mut self, context: S)
@@ -141,26 +149,5 @@ impl<'a> LogItem<'a> {
     /// This method is useful for drawing the `LogItem`.
     pub fn text_items(&self) -> &[Text<'a>; 2] {
         &self.0
-    }
-}
-
-impl<'a, T> From<T> for LogItem<'a>
-where
-    T: AsRef<str>,
-{
-    fn from(value: T) -> Self {
-        Self::info(value)
-    }
-}
-
-impl<'a> From<Error> for LogItem<'a> {
-    fn from(value: Error) -> Self {
-        Self::error(format!("{}", value))
-    }
-}
-
-impl<'a> From<&Error> for LogItem<'a> {
-    fn from(value: &Error) -> Self {
-        Self::error(format!("{}", value))
     }
 }

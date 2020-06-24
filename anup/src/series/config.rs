@@ -1,8 +1,8 @@
 use super::{SeriesParams, SeriesPath, UpdateParams};
 use crate::database::schema::series_configs;
 use crate::database::{self, Database};
-use crate::err::{Error, Result};
 use anime::local::EpisodeParser;
+use anyhow::{anyhow, Result};
 use diesel::prelude::*;
 use std::borrow::Cow;
 
@@ -18,7 +18,7 @@ pub struct SeriesConfig {
 impl SeriesConfig {
     pub fn new(id: i32, params: SeriesParams, db: &Database) -> Result<Self> {
         if let Some(existing) = Self::exists(db, id, &params) {
-            return Err(Error::SeriesAlreadyExists { name: existing });
+            return Err(anyhow!("series already exists as {}", existing));
         }
 
         Ok(Self {
@@ -33,7 +33,7 @@ impl SeriesConfig {
     pub fn update(&mut self, params: UpdateParams, db: &Database) -> Result<()> {
         if let Some(id) = params.id {
             if let Some(existing) = Self::id_exists(db, id) {
-                return Err(Error::SeriesAlreadyExists { name: existing });
+                return Err(anyhow!("series already exists as {}", existing));
             }
 
             self.id = id;

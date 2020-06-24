@@ -1,12 +1,11 @@
 use crate::config::Config;
-use crate::err::{self, Error, Result};
 use crate::series::UpdateParams;
 use crate::tui::component::input::Input;
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, style};
 use crate::tui::UIState;
+use anyhow::{anyhow, Result};
 use smallvec::{smallvec, SmallVec};
-use snafu::ensure;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::result;
@@ -34,16 +33,12 @@ impl CommandPrompt {
         }
     }
 
-    fn process_key(&mut self, key: Key, config: &Config) -> InputResult {
+    fn process_key(&mut self, key: Key, config: &Config) -> Result<InputResult> {
         match key {
             Key::Char('\n') => {
-                let command = match Command::from_str(self.buffer.as_ref(), config) {
-                    Ok(cmd) => cmd,
-                    Err(err) => return InputResult::Error(err),
-                };
-
+                let command = Command::from_str(self.buffer.as_ref(), config)?;
                 self.reset();
-                return InputResult::Command(command);
+                return Ok(InputResult::Command(command));
             }
             Key::Char('\t') => {
                 if let Some(hint_cmd) = &self.hint_cmd {
@@ -79,12 +74,12 @@ impl CommandPrompt {
             }
             Key::Esc => {
                 self.reset();
-                return InputResult::Done;
+                return Ok(InputResult::Done);
             }
             _ => (),
         }
 
-        InputResult::Continue
+        Ok(InputResult::Continue)
     }
 
     pub fn reset(&mut self) {
@@ -115,7 +110,7 @@ impl CommandPrompt {
 
 impl Component for CommandPrompt {
     type State = UIState;
-    type KeyResult = InputResult;
+    type KeyResult = Result<InputResult>;
 
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
         self.process_key(key, &state.config)
@@ -183,7 +178,6 @@ pub enum InputResult {
     Done,
     /// More input is needed.
     Continue,
-    Error(Error),
 }
 
 /// Split `string` into shell words.
@@ -272,7 +266,9 @@ macro_rules! impl_command_matching {
             pub fn from_str(value: &str, config: &Config) -> Result<Self> {
                 let fragments = split_shell_words(value);
 
-                ensure!(!fragments.is_empty(), err::NoCommandSpecified);
+                if fragments.is_empty() {
+                    return Err(anyhow!("no command specified"));
+                }
 
                 let name = fragments[0].to_ascii_lowercase();
                 let args = if fragments.len() > 1 {
@@ -284,21 +280,13 @@ macro_rules! impl_command_matching {
                 match name.as_ref() {
                     $($name => {
                         #[allow(unused_comparisons)]
-                        let has_min_args = args.len() >= $min_args;
-
-                        ensure!(
-                            has_min_args,
-                            err::NotEnoughArguments {
-                                has: args.len(),
-                                need: $min_args,
-                            }
-                        );
+                        if args.len() < $min_args {
+                            return Err(anyhow!("{} argument(s) specified, need at least {}", args.len(), $min_args))
+                        }
 
                         $parse_fn(args, config)
                     },)+
-                    _ => Err(err::Error::CommandNotFound {
-                        command: value.into(),
-                    }),
+                    _ => Err(anyhow!("command not found: {}", value)),
                 }
             }
         }
@@ -400,9 +388,7 @@ impl_command_matching!(Command, 8,
                 "p" | "plan" => Status::PlanToWatch,
                 "r" | "rewatch" => Status::Rewatching,
                 _ => {
-                    return Err(err::Error::UnknownCmdPromptArg {
-                        value: args[0].into(),
-                    })
+                    return Err(anyhow!("unknown argument: {}", args[0]))
                 }
             };
 
@@ -436,15 +422,13 @@ pub enum ProgressDirection {
 }
 
 impl TryFrom<&str> for ProgressDirection {
-    type Error = err::Error;
+    type Error = anyhow::Error;
 
     fn try_from(value: &str) -> result::Result<Self, Self::Error> {
         match value {
             "f" | "forward" => Ok(Self::Forwards),
             "b" | "backward" => Ok(Self::Backwards),
-            _ => Err(err::Error::UnknownCmdPromptArg {
-                value: value.into(),
-            }),
+            _ => Err(anyhow!("unknown argument: {}", value)),
         }
     }
 }
@@ -462,10 +446,10 @@ mod tests {
         let mut enter_command = |name: &str| {
             for ch in name.chars() {
                 match prompt.process_key(Key::Char(ch), &Config::default()) {
-                    InputResult::Continue => (),
-                    InputResult::Done => panic!("expected {} command, got nothing", name),
-                    InputResult::Command(cmd) => return cmd,
-                    InputResult::Error(err) => panic!("error processing command: {}", err),
+                    Ok(InputResult::Continue) => (),
+                    Ok(InputResult::Done) => panic!("expected {} command, got nothing", name),
+                    Ok(InputResult::Command(cmd)) => return cmd,
+                    Err(err) => panic!("error processing command: {}", err),
                 }
             }
 

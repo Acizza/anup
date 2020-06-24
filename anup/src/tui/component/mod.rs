@@ -6,7 +6,7 @@ pub mod series_list;
 mod input;
 
 use super::UIState;
-use crate::err::Result;
+use anyhow::Result;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;

@@ -1,10 +1,10 @@
 use super::{Component, Draw};
-use crate::err::Result;
 use crate::series::{LastWatched, LoadedSeries};
 use crate::tui::widget_util::{block, style, text};
 use crate::tui::{CurrentAction, UIState};
 use crate::CmdOptions;
 use anime::remote::Status;
+use anyhow::Result;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;

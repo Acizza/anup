@@ -4,7 +4,6 @@ mod widget_util;
 
 use crate::config::Config;
 use crate::database::Database;
-use crate::err::{self, Error, Result};
 use crate::file::SerializedFile;
 use crate::series::config::SeriesConfig;
 use crate::series::info::SeriesInfo;
@@ -14,6 +13,7 @@ use crate::CmdOptions;
 use crate::{try_opt_r, try_opt_ret};
 use anime::local::SortedEpisodes;
 use anime::remote::{Remote, ScoreParser};
+use anyhow::{anyhow, Context, Result};
 use backend::{TermionBackend, UIBackend, UIEvent, UIEvents};
 use chrono::Duration;
 use component::episode_watcher::{EpisodeWatcher, ProgressTime};
@@ -23,7 +23,6 @@ use component::prompt::log::Log;
 use component::prompt::{Prompt, PromptResult, COMMAND_KEY};
 use component::series_list::SeriesList;
 use component::{Component, Draw};
-use snafu::ResultExt;
 use std::mem;
 use std::ops::{Index, IndexMut};
 use std::process;
@@ -32,14 +31,14 @@ use tui::backend::Backend;
 use tui::layout::{Constraint, Direction, Layout};
 
 pub fn run(args: CmdOptions) -> Result<()> {
-    let backend = UIBackend::init()?;
-    let mut ui = UIWorld::<TermionBackend>::init(&args, backend)?;
+    let backend = UIBackend::init().context("failed to init backend")?;
+    let mut ui = UIWorld::<TermionBackend>::init(&args, backend).context("failed to load UI")?;
     let events = UIEvents::new(Duration::seconds(1));
 
     loop {
-        ui.draw()?;
+        ui.draw().context("UI draw failed")?;
 
-        match events.next()? {
+        match events.next().context("failed to receive UI event")? {
             UIEvent::Input(key) => {
                 if ui.process_key(key) {
                     ui.exit();
@@ -62,11 +61,12 @@ pub struct UIState {
 
 impl UIState {
     fn init(remote: Remote) -> Result<Self> {
-        let config = Config::load_or_create()?;
-        let users = Users::load_or_create()?;
-        let db = Database::open()?;
+        let config = Config::load_or_create().context("failed to load / create config")?;
+        let users = Users::load_or_create().context("failed to load / create users")?;
+        let db = Database::open().context("failed to open database")?;
 
-        let series = SeriesConfig::load_all(&db)?
+        let series = SeriesConfig::load_all(&db)
+            .context("failed to load series configs")?
             .into_iter()
             .map(|sconfig| Series::load_from_config(sconfig, &config, &db))
             .collect::<Vec<_>>();
@@ -167,7 +167,7 @@ macro_rules! capture_err {
         match $result {
             value @ Ok(_) => value,
             Err(err) => {
-                $self.prompt.log.push(&err);
+                $self.prompt.log.push_err(&err);
                 Err(err)
             }
         }
@@ -182,9 +182,9 @@ where
         let mut prompt = Prompt::new();
         let remote = Self::init_remote(args, &mut prompt.log);
 
-        let mut state = UIState::init(remote)?;
+        let mut state = UIState::init(remote).context("UI state init")?;
 
-        let last_watched = LastWatched::load()?;
+        let last_watched = LastWatched::load().context("last watched series")?;
         let series_list = SeriesList::init(args, &mut state, &last_watched);
 
         Ok(Self {
@@ -198,11 +198,11 @@ where
     }
 
     fn init_remote(args: &CmdOptions, log: &mut Log) -> Remote {
-        match crate::init_remote(args, true) {
-            Ok(remote) => remote,
-            Err(Error::MustAddAccount) => Remote::offline(),
+        match crate::init_remote(args) {
+            Ok(Some(remote)) => remote,
+            Ok(None) => Remote::offline(),
             Err(err) => {
-                log.push(err);
+                log.push_err(&err);
                 log.push_context(
                     "enter user management with 'u' and add your account again if a new token is needed",
                 );
@@ -260,7 +260,7 @@ where
             self.prompt
                 .draw(&self.state, info_panel_splitter[1], &mut frame);
         })
-        .context(err::IO)
+        .map_err(Into::into)
     }
 
     /// Process a key input for all UI components.
@@ -298,14 +298,12 @@ where
             },
             CurrentAction::WatchingEpisode(_, _) => (),
             CurrentAction::FocusedOnMainPanel => process_key!(main_panel),
-            CurrentAction::EnteringCommand => match self.prompt.process_key(key, &mut self.state) {
-                PromptResult::Ok => (),
-                PromptResult::HasCommand(cmd) => capture!(self.process_command(cmd)),
-                PromptResult::Error(err) => {
-                    self.prompt.log.push(err);
-                    return false;
+            CurrentAction::EnteringCommand => {
+                match capture!(self.prompt.process_key(key, &mut self.state)) {
+                    PromptResult::Ok => (),
+                    PromptResult::HasCommand(cmd) => capture!(self.process_command(cmd)),
                 }
-            },
+            }
         }
 
         false
@@ -374,7 +372,7 @@ where
                 let score = match remote.parse_score(&raw_score) {
                     Some(score) if score == 0 => None,
                     Some(score) => Some(score),
-                    None => return Err(Error::InvalidScore),
+                    None => return Err(anyhow!("invalid score")),
                 };
 
                 series.data.entry.set_score(score.map(|s| s as i16));

@@ -1,5 +1,5 @@
-use crate::err::Result;
 use crate::file::SaveDir;
+use anyhow::{Context, Result};
 use diesel::connection::SimpleConnection;
 use diesel::deserialize::{self, FromSql};
 use diesel::prelude::*;
@@ -49,13 +49,16 @@ pub struct Database(SqliteConnection);
 
 impl Database {
     pub fn open() -> Result<Self> {
-        let path = Self::validated_path()?;
+        let path = Self::validated_path().context("getting path")?;
         let conn = SqliteConnection::establish(&path.to_string_lossy())?;
 
-        conn.batch_execute(include_str!("../sql/pragmas.sql"))?;
-        let db_version = Self::user_version(&conn)?;
+        conn.batch_execute(include_str!("../sql/pragmas.sql"))
+            .context("executing pragmas")?;
 
-        conn.batch_execute(include_str!("../sql/schema.sql"))?;
+        let db_version = Self::user_version(&conn).context("getting user version")?;
+
+        conn.batch_execute(include_str!("../sql/schema.sql"))
+            .context("executing schema")?;
 
         // Migrations for June 15th, 2020
         if db_version == 0 {

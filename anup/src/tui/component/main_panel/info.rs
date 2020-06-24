@@ -1,4 +1,3 @@
-use crate::err::Error;
 use crate::series::{LoadedSeries, Series};
 use crate::tui::component::Draw;
 use crate::tui::widget_util::{block, text};
@@ -8,6 +7,7 @@ use anime::remote::{ScoreParser, SeriesDate};
 use chrono::Utc;
 use smallvec::SmallVec;
 use std::borrow::Cow;
+use std::fmt;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
@@ -100,15 +100,16 @@ impl InfoPanel {
         Self::draw_text_panel(&[text::bold("No Series Found")], &body, rect, frame);
     }
 
-    fn draw_series_error<B>(err: &Error, rect: Rect, frame: &mut Frame<B>)
+    fn draw_series_error<B, E>(err: E, rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
+        E: fmt::Display,
     {
         let header = [text::bold_with("Error Loading Series", |s| {
             s.fg(Color::Red)
         })];
 
-        let body = [text::with_color(format!("{}", err), Color::Red)];
+        let body = [text::with_color(err.to_string(), Color::Red)];
 
         Self::draw_text_panel(&header, &body, rect, frame);
     }
@@ -259,9 +260,8 @@ where
             Some(LoadedSeries::Complete(series)) => {
                 Self::draw_series_info(state, series, rect, frame)
             }
-            Some(LoadedSeries::Partial(_, err)) | Some(LoadedSeries::None(_, err)) => {
-                Self::draw_series_error(err, rect, frame)
-            }
+            Some(LoadedSeries::Partial(_, err)) => Self::draw_series_error(err, rect, frame),
+            Some(LoadedSeries::None(_, err)) => Self::draw_series_error(err, rect, frame),
             None => Self::draw_no_series_found(rect, frame),
         }
     }

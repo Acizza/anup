@@ -1,5 +1,4 @@
 use super::{Component, Draw, ShouldReset};
-use crate::err::{self, Result};
 use crate::file::SerializedFile;
 use crate::try_opt_r;
 use crate::tui::component::input::Input;
@@ -8,8 +7,8 @@ use crate::tui::UIState;
 use crate::user::{RemoteType, UserInfo};
 use anime::remote::anilist::AniList;
 use anime::remote::{AccessToken, Remote, RemoteService};
+use anyhow::{anyhow, Context, Result};
 use smallvec::SmallVec;
-use snafu::ResultExt;
 use std::borrow::Cow;
 use std::process::Command;
 use termion::event::Key;
@@ -50,13 +49,13 @@ impl UserPanel {
         match self.service_list.selected() {
             Some(service @ RemoteType::AniList) => {
                 let token = AccessToken::encode(token_text);
-                let auth = Auth::retrieve(token.clone())?;
+                let auth = Auth::retrieve(token.clone()).context("failed to get new user auth")?;
 
                 let info = UserInfo::new(service, &auth.user.name);
 
                 state.remote = AniList::Authenticated(auth).into();
                 state.users.add_and_set_last(info, token);
-                state.users.save()?;
+                state.users.save().context("failed to save new user")?;
 
                 self.token_input.clear();
                 Ok(())
@@ -121,7 +120,7 @@ impl UserPanel {
         Command::new(opener)
             .arg(url)
             .spawn()
-            .context(err::OpenURL { opener })
+            .with_context(|| anyhow!("failed to open URL in browser with {}", opener))
             .map(|_| ())
     }
 

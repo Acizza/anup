@@ -2,8 +2,8 @@ pub mod command;
 pub mod log;
 
 use super::{Component, Draw};
-use crate::err::Error;
 use crate::tui::{CurrentAction, UIState};
+use anyhow::Result;
 use command::{Command, CommandPrompt, InputResult};
 use log::Log;
 use termion::event::Key;
@@ -36,26 +36,26 @@ impl<'a> Prompt<'a> {
 
 impl<'a> Component for Prompt<'a> {
     type State = UIState;
-    type KeyResult = PromptResult;
+    type KeyResult = Result<PromptResult>;
 
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
         match &mut state.current_action {
             CurrentAction::EnteringCommand => match self.command.process_key(key, state) {
-                InputResult::Done => {
+                Ok(InputResult::Done) => {
                     self.reset(state);
-                    PromptResult::Ok
+                    Ok(PromptResult::Ok)
                 }
-                InputResult::Command(cmd) => {
+                Ok(InputResult::Command(cmd)) => {
                     self.reset(state);
-                    PromptResult::HasCommand(cmd)
+                    Ok(PromptResult::HasCommand(cmd))
                 }
-                InputResult::Continue => PromptResult::Ok,
-                InputResult::Error(err) => {
+                Ok(InputResult::Continue) => Ok(PromptResult::Ok),
+                Err(err) => {
                     self.reset(state);
-                    PromptResult::Error(err)
+                    Err(err)
                 }
             },
-            _ => PromptResult::Ok,
+            _ => Ok(PromptResult::Ok),
         }
     }
 }
@@ -79,5 +79,4 @@ where
 pub enum PromptResult {
     Ok,
     HasCommand(Command),
-    Error(Error),
 }

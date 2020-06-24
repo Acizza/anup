@@ -1,6 +1,5 @@
-use crate::err::{self, Result};
+use anyhow::{Context, Result};
 use chrono::Duration;
-use snafu::ResultExt;
 use std::io;
 use std::sync::mpsc;
 use std::thread;
@@ -23,7 +22,7 @@ where
 {
     #[inline(always)]
     pub fn clear(&mut self) -> Result<()> {
-        self.terminal.clear().context(err::IO)
+        self.terminal.clear().map_err(Into::into)
     }
 }
 
@@ -31,12 +30,12 @@ pub type TermionBackend = backend::TermionBackend<RawTerminal<io::Stdout>>;
 
 impl UIBackend<TermionBackend> {
     pub fn init() -> Result<Self> {
-        let stdout = io::stdout().into_raw_mode().context(err::IO)?;
+        let stdout = io::stdout().into_raw_mode().context("terminal raw mode")?;
         let backend = TermionBackend::new(stdout);
-        let mut terminal = Terminal::new(backend).context(err::IO)?;
+        let mut terminal = Terminal::new(backend).context("terminal init")?;
 
-        terminal.clear().context(err::IO)?;
-        terminal.hide_cursor().context(err::IO)?;
+        terminal.clear().context("clearing terminal")?;
+        terminal.hide_cursor().context("hiding cursor")?;
 
         Ok(Self { terminal })
     }
@@ -65,7 +64,9 @@ impl UIEvents {
         thread::spawn(move || {
             for event in stdin.keys() {
                 if let Ok(key) = event {
-                    tx.send(UIEvent::Input(key)).unwrap();
+                    if tx.send(UIEvent::Input(key)).is_err() {
+                        break;
+                    }
                 }
             }
         })
@@ -81,12 +82,15 @@ impl UIEvents {
 
         thread::spawn(move || loop {
             thread::sleep(tick_rate);
-            tx.send(UIEvent::Tick).unwrap();
+
+            if tx.send(UIEvent::Tick).is_err() {
+                break;
+            }
         })
     }
 
     #[inline(always)]
     pub fn next(&self) -> Result<UIEvent> {
-        self.0.recv().context(err::MPSCRecv)
+        self.0.recv().map_err(Into::into)
     }
 }

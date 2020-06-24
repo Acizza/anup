@@ -1,8 +1,8 @@
-use crate::err::{self, Result};
+use crate::err;
+use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use snafu::ResultExt;
 use std::fs::{self, DirEntry, File};
 use std::path::{Path, PathBuf};
 
@@ -19,19 +19,22 @@ pub trait SerializedFile: DeserializeOwned + Serialize + Default {
     }
 
     fn load() -> Result<Self> {
-        let path = Self::validated_save_path()?;
-        Self::format().deserialize(path)
+        let path = Self::validated_save_path().context("getting path")?;
+
+        Self::format()
+            .deserialize(path)
+            .context("deserializing file")
     }
 
     fn load_or_create() -> Result<Self> {
         match Self::load() {
             Ok(data) => Ok(data),
-            Err(ref err) if err.is_file_nonexistant() => {
+            Err(err) if err::is_file_nonexistant(&err) => {
                 let data = Self::default();
                 data.save()?;
                 Ok(data)
             }
-            Err(err) => Err(err),
+            err @ Err(_) => err,
         }
     }
 
@@ -64,12 +67,12 @@ impl FileFormat {
 
         match self {
             Self::Toml => {
-                let contents = fs::read_to_string(&path).context(err::FileIO { path })?;
-                toml::from_str(&contents).context(err::TomlDecode { path })
+                let contents = fs::read_to_string(&path).context("reading file")?;
+                toml::from_str(&contents).context("decoding TOML")
             }
             Self::MessagePack => {
-                let file = File::open(path).context(err::FileIO { path })?;
-                rmp_serde::from_read(file).context(err::RMPDecode { path })
+                let file = File::open(path).context("opening file")?;
+                rmp_serde::from_read(file).context("decoding MessagePack")
             }
         }
     }
@@ -83,12 +86,12 @@ impl FileFormat {
 
         match self {
             Self::Toml => {
-                let serialized = toml::to_string_pretty(data).context(err::TomlEncode { path })?;
-                fs::write(&path, serialized).context(err::FileIO { path })
+                let serialized = toml::to_string_pretty(data).context("encoding TOML")?;
+                fs::write(&path, serialized).context("writing file")
             }
             Self::MessagePack => {
-                let mut file = File::create(path).context(err::FileIO { path })?;
-                rmp_serde::encode::write(&mut file, data).context(err::RMPEncode { path })
+                let mut file = File::create(path).context("creating / opening file")?;
+                rmp_serde::encode::write(&mut file, data).context("encoding MessagePack")
             }
         }
     }
@@ -125,7 +128,7 @@ impl SaveDir {
         let dir = self.dir_path();
 
         if !dir.exists() {
-            fs::create_dir_all(dir).context(err::FileIO { path: dir })?;
+            fs::create_dir_all(dir).context("creating directory")?;
         }
 
         Ok(dir)
@@ -137,13 +140,13 @@ where
     D: AsRef<Path>,
 {
     let dir = dir.as_ref();
-    let entries = fs::read_dir(dir).context(err::FileIO { path: dir })?;
+    let entries = fs::read_dir(dir).context("reading directory")?;
 
     let mut dirs = Vec::new();
 
     for entry in entries {
-        let entry = entry.context(err::EntryIO { dir })?;
-        let etype = entry.file_type().context(err::EntryIO { dir })?;
+        let entry = entry.context("getting dir entry")?;
+        let etype = entry.file_type().context("getting dir entry file type")?;
 
         if !etype.is_dir() {
             continue;

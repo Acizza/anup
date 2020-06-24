@@ -2,8 +2,6 @@ mod add;
 mod split;
 
 use crate::config::Config;
-use crate::err;
-use crate::err::{Error, Result};
 use crate::series::config::SeriesConfig;
 use crate::series::SeriesData;
 use crate::series::{LoadedSeries, SeriesPath};
@@ -14,7 +12,7 @@ use add::AddPanel;
 use anime::local::{CategorizedEpisodes, SortedEpisodes};
 use anime::remote::{Remote, RemoteService, SeriesInfo as RemoteInfo};
 use anime::SeriesKind;
-use snafu::ResultExt;
+use anyhow::{anyhow, Context, Result};
 use split::{SplitPanel, SplitResult};
 use std::borrow::Cow;
 use std::mem;
@@ -71,7 +69,7 @@ impl Component for SplitSeriesPanel {
                     Some(LoadedSeries::Complete(series)) => &series.data,
                     Some(LoadedSeries::Partial(data, _)) => data,
                     Some(LoadedSeries::None(_, _)) | None => {
-                        return Err(Error::CannotSplitErrorSeries)
+                        return Err(anyhow!("cannot split a series with errors"))
                     }
                 };
 
@@ -284,7 +282,9 @@ impl MergedSeries {
                 Self::Failed(_) => continue,
             };
 
-            series.perform_split_actions(config)?;
+            series
+                .perform_split_actions(config)
+                .context("performing split actions")?;
         }
 
         Ok(())
@@ -333,17 +333,13 @@ impl ResolvedSeries {
         let base_dir = self.base_dir.absolute(config);
 
         if !base_dir.exists() {
-            fs::create_dir_all(&base_dir).context(err::FileIO {
-                path: base_dir.to_owned(),
-            })?;
+            fs::create_dir_all(&base_dir).context("dir creation")?;
         }
 
         let out_dir = self.out_dir.absolute(config);
 
         if !out_dir.exists() {
-            fs::create_dir_all(&out_dir).context(err::FileIO {
-                path: out_dir.to_owned(),
-            })?;
+            fs::create_dir_all(&out_dir).context("dir creation")?;
         }
 
         for action in &self.actions {
@@ -355,11 +351,12 @@ impl ResolvedSeries {
                     continue;
                 }
 
-                return Err(Error::FileLinkFailed {
-                    source: err,
-                    from: from_path,
-                    to: to_path,
-                });
+                return Err(anyhow!(
+                    "failed to symlink files:\nfrom: {}\nto: {}\nreason: {}",
+                    from_path.display(),
+                    to_path.display(),
+                    err
+                ));
             }
         }
 

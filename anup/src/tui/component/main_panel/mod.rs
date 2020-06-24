@@ -6,7 +6,6 @@ mod user_panel;
 
 use super::{Component, Draw};
 use crate::config::Config;
-use crate::err::{Error, Result};
 use crate::series::config::SeriesConfig;
 use crate::series::info::InfoResult;
 use crate::series::SeriesParams;
@@ -14,6 +13,7 @@ use crate::tui::{CurrentAction, UIState};
 use add_series::{AddSeriesPanel, AddSeriesResult};
 use anime::local::SortedEpisodes;
 use anime::remote::RemoteService;
+use anyhow::{anyhow, Result};
 use info::InfoPanel;
 use select_series::{SelectSeriesPanel, SelectSeriesResult, SelectState};
 use split_series::{SplitPanelResult, SplitSeriesPanel};
@@ -37,9 +37,7 @@ impl MainPanel {
 
     pub fn switch_to_add_series(&mut self, state: &mut UIState) -> Result<()> {
         if state.remote.is_offline() {
-            return Err(Error::MustBeOnlineTo {
-                reason: "add a series",
-            });
+            return Err(anyhow!("must be online to add a series"));
         }
 
         self.current = Panel::add_series(&state.config);
@@ -60,9 +58,7 @@ impl MainPanel {
 
     pub fn switch_to_split_series(&mut self, state: &mut UIState) -> Result<()> {
         if state.remote.is_offline() {
-            return Err(Error::MustBeOnlineTo {
-                reason: "split a series",
-            });
+            return Err(anyhow!("must be online to split a series"));
         }
 
         let panel = Panel::split_series();

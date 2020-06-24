@@ -1,10 +1,9 @@
 use super::Component;
-use crate::err::{self, Result};
 use crate::series::LastWatched;
 use crate::try_opt_r;
 use crate::tui::{CurrentAction, UIState};
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use snafu::ResultExt;
 use std::mem;
 use termion::event::Key;
 
@@ -31,15 +30,9 @@ impl EpisodeWatcher {
         series.begin_watching(&state.remote, &state.config, &state.db)?;
 
         let next_ep = series.data.entry.watched_episodes() + 1;
-
-        let child = series
-            .play_episode_cmd(next_ep as u32, &state.config)?
-            .spawn()
-            .context(err::FailedToPlayEpisode {
-                episode: next_ep as u32,
-            })?;
-
+        let child = series.play_episode(next_ep as u32, &state.config)?;
         let progress_time = series.data.next_watch_progress_time(&state.config);
+
         state.current_action = CurrentAction::WatchingEpisode(progress_time, child);
 
         Ok(())
@@ -53,7 +46,7 @@ impl Component for EpisodeWatcher {
     fn tick(&mut self, state: &mut Self::State) -> Result<()> {
         match &mut state.current_action {
             CurrentAction::WatchingEpisode(_, child) => {
-                match child.try_wait().context(err::IO) {
+                match child.try_wait().context("waiting for episode to finish") {
                     Ok(Some(_)) => (),
                     Ok(None) => return Ok(()),
                     Err(err) => return Err(err),
@@ -74,7 +67,9 @@ impl Component for EpisodeWatcher {
                 };
 
                 if Utc::now() >= progress_time {
-                    series.episode_completed(&state.remote, &state.config, &state.db)?;
+                    series
+                        .episode_completed(&state.remote, &state.config, &state.db)
+                        .context("marking episode as completed")?;
                 }
 
                 state.current_action.reset();

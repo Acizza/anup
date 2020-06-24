@@ -2,8 +2,8 @@ use super::info::SeriesInfo;
 use crate::config::Config;
 use crate::database::schema::series_entries;
 use crate::database::Database;
-use crate::err::Result;
 use anime::remote::{Remote, RemoteService, SeriesDate, Status};
+use anyhow::Result;
 use chrono::Local;
 use diesel::prelude::*;
 

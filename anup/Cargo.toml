@@ -6,11 +6,13 @@ edition = "2018"
 default-run = "anup"
 
 [dependencies]
+anyhow = "~1.0.0"
 chrono = "~0.4.0"
 dirs-next = "~1.0.0"
 gumdrop = "~0.8.0"
 once_cell = "~1.4.0"
 termion = "~1.5.0"
+thiserror = "~1.0.0"
 toml = "~0.5.0"
 # Pinned until version 0.10 so we can use this feature: https://github.com/fdehau/tui-rs/pull/309
 tui = { git = "https://github.com/fdehau/tui-rs", rev = "8c2ee0ed8516be887f5f68355c325fadecb5d2dc" }
@@ -29,7 +31,3 @@ features = [ "diesel-support", "chrono-support" ]
 version = "~1.4.0"
 default-features = false
 features = [ "sqlite" ]
-
-[dependencies.snafu]
-version = "~0.6.0"
-features = [ "backtraces" ]

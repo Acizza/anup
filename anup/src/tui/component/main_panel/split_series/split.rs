@@ -1,11 +1,11 @@
 use super::MergedSeries;
-use crate::err::Result;
 use crate::series::SeriesPath;
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, color, style, text, SelectWidgetState};
 use crate::tui::UIState;
 use anime::remote::SeriesInfo as RemoteInfo;
 use anime::SeriesKind;
+use anyhow::Result;
 use smallvec::SmallVec;
 use std::borrow::Cow;
 use termion::event::Key;

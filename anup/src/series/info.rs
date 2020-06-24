@@ -1,8 +1,8 @@
 use super::SeriesPath;
 use crate::database::schema::series_info;
 use crate::database::Database;
-use crate::err::Result;
 use anime::remote::{Remote, RemoteService, SeriesInfo as RemoteInfo};
+use anyhow::Result;
 use diesel::prelude::*;
 use std::borrow::Cow;
 

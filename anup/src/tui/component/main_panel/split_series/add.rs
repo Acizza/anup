@@ -1,5 +1,4 @@
 use super::SplitPanelResult;
-use crate::err::Result;
 use crate::series::config::SeriesConfig;
 use crate::series::{SeriesParams, SeriesPath};
 use crate::try_opt_ret;
@@ -9,6 +8,7 @@ use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
 use anime::local::EpisodeParser;
 use anime::remote::SeriesInfo as RemoteInfo;
+use anyhow::Result;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};

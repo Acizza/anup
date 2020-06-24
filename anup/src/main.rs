@@ -17,7 +17,6 @@ mod util;
 
 use crate::config::Config;
 use crate::database::Database;
-use crate::err::{Error, Result};
 use crate::file::SerializedFile;
 use crate::series::config::SeriesConfig;
 use crate::series::entry::SeriesEntry;
@@ -25,9 +24,9 @@ use crate::series::info::SeriesInfo;
 use crate::series::{LastWatched, LoadedSeries, Series};
 use crate::user::Users;
 use anime::remote::Remote;
+use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
 use gumdrop::Options;
-use snafu::{ensure, OptionExt, ResultExt};
 use std::str;
 
 const ANILIST_CLIENT_ID: u32 = 427;
@@ -48,16 +47,9 @@ pub struct CmdOptions {
     pub sync: bool,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let args = CmdOptions::parse_args_default_or_exit();
 
-    if let Err(err) = run(args) {
-        err::display_error(err);
-        std::process::exit(1);
-    }
-}
-
-fn run(args: CmdOptions) -> Result<()> {
     if args.single {
         play_episode(args)
     } else if args.sync {
@@ -67,32 +59,39 @@ fn run(args: CmdOptions) -> Result<()> {
     }
 }
 
-fn init_remote(args: &CmdOptions, can_use_offline: bool) -> Result<Remote> {
+/// Initialize a new remote service specified by `args`.
+///
+/// If there are no users, returns Ok(None).
+fn init_remote(args: &CmdOptions) -> Result<Option<Remote>> {
     use anime::remote::anilist::{AniList, Auth};
 
     if args.offline {
-        ensure!(can_use_offline, err::MustRunOnline);
-        Ok(Remote::offline())
+        Ok(Some(Remote::offline()))
     } else {
-        let token = match Users::load_or_create() {
-            Ok(users) => users.take_last_used_token().context(err::MustAddAccount)?,
-            Err(err) => return Err(err),
+        let token = match Users::load_or_create()?.take_last_used_token() {
+            Some(token) => token,
+            None => return Ok(None),
         };
 
         let auth = Auth::retrieve(token)?;
-        Ok(AniList::Authenticated(auth).into())
+        Ok(Some(AniList::Authenticated(auth).into()))
     }
 }
 
 fn sync(args: CmdOptions) -> Result<()> {
-    let db = Database::open()?;
+    if args.offline {
+        return Err(anyhow!("must be online to run this command"));
+    }
+
+    let db = Database::open().context("failed to open database")?;
     let mut list_entries = SeriesEntry::entries_that_need_sync(&db)?;
 
     if list_entries.is_empty() {
         return Ok(());
     }
 
-    let remote = init_remote(&args, false)?;
+    let remote =
+        init_remote(&args)?.ok_or_else(|| anyhow!("no users found\nadd one in the TUI"))?;
 
     for entry in &mut list_entries {
         match SeriesInfo::load(&db, entry.id()) {
@@ -115,26 +114,30 @@ fn play_episode(args: CmdOptions) -> Result<()> {
     use anime::remote::Status;
 
     let config = Config::load_or_create()?;
-    let db = Database::open()?;
+    let db = Database::open().context("failed to open database")?;
     let mut last_watched = LastWatched::load()?;
 
-    let remote = init_remote(&args, true)?;
+    let remote =
+        init_remote(&args)?.ok_or_else(|| anyhow!("no users found\nadd one in the TUI"))?;
 
     let desired_series = args
         .series
         .as_ref()
         .or_else(|| last_watched.get())
-        .ok_or(Error::MustSpecifySeriesName)?;
+        .ok_or_else(|| anyhow!("series name must be specified"))?;
 
     let mut series = {
-        let cfg =
-            SeriesConfig::load_by_name(&db, desired_series).map_err(|_| Error::MustAddSeries {
-                name: desired_series.clone(),
-            })?;
+        let cfg = SeriesConfig::load_by_name(&db, desired_series).with_context(|| {
+            format!(
+                "{} must be added to the program in the TUI first",
+                desired_series
+            )
+        })?;
 
         match Series::load_from_config(cfg, &config, &db) {
             LoadedSeries::Complete(series) => series,
-            LoadedSeries::Partial(_, err) | LoadedSeries::None(_, err) => return Err(err),
+            LoadedSeries::Partial(_, err) => return Err(err.into()),
+            LoadedSeries::None(_, err) => return Err(err),
         }
     };
 
@@ -148,11 +151,9 @@ fn play_episode(args: CmdOptions) -> Result<()> {
     let next_episode_num = series.data.entry.watched_episodes() + 1;
 
     series
-        .play_episode_cmd(next_episode_num as u32, &config)?
-        .status()
-        .context(err::FailedToPlayEpisode {
-            episode: next_episode_num as u32,
-        })?;
+        .play_episode(next_episode_num as u32, &config)?
+        .wait()
+        .context("waiting for episode to finish failed")?;
 
     if Utc::now() >= progress_time {
         series.episode_completed(&remote, &config, &db)?;
