@@ -38,7 +38,6 @@ pub enum EpisodeScanError {
     SeriesNeedsSplitting,
 }
 
-#[derive(Debug)]
 pub struct SeriesData {
     pub config: SeriesConfig,
     pub info: SeriesInfo,
@@ -110,7 +109,6 @@ impl SeriesData {
     }
 }
 
-#[derive(Debug)]
 pub struct Series {
     pub data: SeriesData,
     pub episodes: SortedEpisodes,
@@ -317,7 +315,6 @@ impl Series {
     }
 }
 
-#[derive(Debug)]
 pub enum LoadedSeries {
     Complete(Series),
     Partial(SeriesData, EpisodeScanError),
@@ -365,7 +362,7 @@ impl LoadedSeries {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SeriesParams {
     pub name: String,
     pub path: SeriesPath,
@@ -407,7 +404,8 @@ impl SeriesParams {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub struct UpdateParams {
     pub id: Option<i32>,
     pub path: Option<SeriesPath>,

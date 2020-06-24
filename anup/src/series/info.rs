@@ -6,7 +6,7 @@ use anyhow::Result;
 use diesel::prelude::*;
 use std::borrow::Cow;
 
-#[derive(Clone, Debug, Queryable, Insertable)]
+#[derive(Clone, Queryable, Insertable)]
 #[table_name = "series_info"]
 pub struct SeriesInfo {
     pub id: i32,
@@ -98,7 +98,6 @@ impl InfoSelector {
     }
 }
 
-#[derive(Debug)]
 pub enum InfoResult {
     Confident(SeriesInfo),
     Unconfident(Vec<SeriesInfo>),

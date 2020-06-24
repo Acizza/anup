@@ -237,7 +237,6 @@ pub enum ShouldReset {
     No,
 }
 
-#[derive(Debug)]
 pub struct PartialSeries {
     info: InfoResult,
     params: SeriesParams,

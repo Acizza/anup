@@ -6,7 +6,7 @@ use std::ops::Mul;
 use std::path::PathBuf;
 use std::result;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Config {
     pub series_dir: PathBuf,
     pub reset_dates_on_rewatch: bool,
@@ -55,7 +55,7 @@ impl SerializedFile for Config {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct EpisodeConfig {
     #[serde(rename = "percent_watched_to_progress")]
     pub pcnt_must_watch: Percentage,
@@ -73,7 +73,7 @@ impl Default for EpisodeConfig {
     }
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Deserialize, Serialize)]
 pub struct Percentage(#[serde(with = "Percentage")] f32);
 
 impl Percentage {
@@ -150,12 +150,12 @@ impl Mul<Percentage> for f32 {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Default, Deserialize, Serialize)]
 pub struct TuiConfig {
     pub keys: TuiKeys,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct TuiKeys {
     pub play_next_episode: char,
 }

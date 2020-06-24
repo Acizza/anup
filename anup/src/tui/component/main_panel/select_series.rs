@@ -83,7 +83,6 @@ where
     }
 }
 
-#[derive(Debug)]
 pub struct SelectState {
     pub series_list: Selection<SeriesInfo>,
     pub params: SeriesParams,

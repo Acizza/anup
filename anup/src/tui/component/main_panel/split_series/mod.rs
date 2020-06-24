@@ -156,7 +156,6 @@ impl SplitPanelResult {
     }
 }
 
-#[derive(Debug)]
 #[allow(variant_size_differences)]
 enum MergedSeries {
     Resolved(Box<ResolvedSeries>),
@@ -293,12 +292,10 @@ impl MergedSeries {
 
 pub type EpisodeOffset = u32;
 
-#[derive(Debug)]
 struct ResolvedSeries {
     info: RemoteInfo,
     base_dir: SeriesPath,
     out_dir: SeriesPath,
-    offset: EpisodeOffset,
     actions: Vec<SplitAction>,
 }
 
@@ -318,7 +315,6 @@ impl ResolvedSeries {
             info,
             base_dir,
             out_dir,
-            offset,
             actions,
         }
     }
@@ -364,7 +360,6 @@ impl ResolvedSeries {
     }
 }
 
-#[derive(Debug)]
 struct SplitAction {
     old_name: String,
     new_name: String,

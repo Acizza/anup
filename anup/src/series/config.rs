@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use diesel::prelude::*;
 use std::borrow::Cow;
 
-#[derive(Clone, Debug, Queryable, Insertable)]
+#[derive(Clone, Queryable, Insertable)]
 pub struct SeriesConfig {
     pub id: i32,
     pub nickname: String,

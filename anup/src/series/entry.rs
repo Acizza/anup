@@ -7,7 +7,7 @@ use anyhow::Result;
 use chrono::Local;
 use diesel::prelude::*;
 
-#[derive(Debug, Queryable, Insertable)]
+#[derive(Queryable, Insertable)]
 #[table_name = "series_entries"]
 pub struct SeriesEntry {
     id: i32,

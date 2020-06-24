@@ -294,7 +294,8 @@ macro_rules! impl_command_matching {
 }
 
 /// A parsed command with its arguments.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub enum Command {
     /// Remove the selected series from the program.
     Delete,
@@ -413,7 +414,8 @@ impl Command {
 }
 
 /// Indicates which way to advance the episode count of a season.
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub enum ProgressDirection {
     /// Increase the episode count.
     Forwards,

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 /// When dealing with users, this type should be used instead of the
 /// `Remote` type from the anime library as it does not make sense to
 /// associate a user with an offline service.
-#[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Copy, Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RemoteType {
     AniList,
@@ -30,7 +30,7 @@ impl RemoteType {
 }
 
 /// Unique user information for a remote service.
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct UserInfo {
     /// The remote service the user is registered on.
     pub service: RemoteType,
@@ -65,7 +65,7 @@ impl UserInfo {
 pub type UserMap = HashMap<UserInfo, AccessToken>;
 
 /// A map containing all users along with the last used one.
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Default, Deserialize, Serialize)]
 pub struct Users {
     users: UserMap,
     pub last_used: Option<UserInfo>,

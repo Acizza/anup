@@ -126,7 +126,6 @@ impl UIState {
     }
 }
 
-#[derive(Debug)]
 pub enum CurrentAction {
     Idle,
     WatchingEpisode(ProgressTime, process::Child),
@@ -394,7 +393,6 @@ where
     }
 }
 
-#[derive(Debug)]
 pub struct Selection<T> {
     items: Vec<T>,
     index: WrappingIndex,
@@ -524,7 +522,7 @@ impl<T> From<Vec<T>> for Selection<T> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct WrappingIndex(usize);
 
 impl WrappingIndex {
