@@ -26,29 +26,60 @@ use crate::user::Users;
 use anime::remote::Remote;
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
-use gumdrop::Options;
 use std::str;
 
 const ANILIST_CLIENT_ID: u32 = 427;
 const SERIES_TITLE_REP: &str = "{title}";
 const SERIES_EPISODE_REP: &str = "{episode}";
 
-#[derive(Options)]
 pub struct CmdOptions {
-    #[options(help = "print help message")]
-    help: bool,
-    #[options(free, help = "the nickname of the series to watch")]
-    pub series: Option<String>,
-    #[options(help = "run in offline mode")]
     pub offline: bool,
-    #[options(help = "play a single episode from the specified or last watched series")]
     pub single: bool,
-    #[options(no_short, help = "syncronize changes made while offline to AniList")]
     pub sync: bool,
+    pub series: Option<String>,
+}
+
+impl CmdOptions {
+    fn from_env() -> Result<Self> {
+        let mut args = pico_args::Arguments::from_env();
+
+        if args.contains(["-h", "--help"]) {
+            Self::print_help();
+        }
+
+        let result = Self {
+            offline: args.contains(["-o", "--offline"]),
+            single: args.contains("--play-one"),
+            sync: args.contains("--sync"),
+            series: args.free()?.into_iter().next(),
+        };
+
+        Ok(result)
+    }
+
+    fn print_help() {
+        println!(concat!(
+            "Usage: ",
+            env!("CARGO_PKG_NAME"),
+            " [series] [OPTIONS]\n"
+        ));
+
+        println!("Free arguments:");
+        println!("  series - the nickname of the series to watch");
+
+        println!();
+
+        println!("Optional arguments:");
+        println!("  -o, --offline  run the program in offline mode");
+        println!("  --play-one     play a single episode from the last played series");
+        println!("  --sync         syncronize changes made while offline to AniList");
+
+        std::process::exit(0);
+    }
 }
 
 fn main() -> Result<()> {
-    let args = CmdOptions::parse_args_default_or_exit();
+    let args = CmdOptions::from_env()?;
 
     if args.single {
         play_episode(args)
