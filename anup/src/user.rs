@@ -126,7 +126,7 @@ impl SerializedFile for Users {
     }
 
     fn format() -> FileFormat {
-        FileFormat::MessagePack
+        FileFormat::Bincode
     }
 }
 

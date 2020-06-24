@@ -47,14 +47,14 @@ pub trait SerializedFile: DeserializeOwned + Serialize + Default {
 #[derive(Copy, Clone)]
 pub enum FileFormat {
     Toml,
-    MessagePack,
+    Bincode,
 }
 
 impl FileFormat {
     pub fn extension(self) -> &'static str {
         match self {
             Self::Toml => "toml",
-            Self::MessagePack => "mpack",
+            Self::Bincode => "bin",
         }
     }
 
@@ -70,9 +70,9 @@ impl FileFormat {
                 let contents = fs::read_to_string(&path).context("reading file")?;
                 toml::from_str(&contents).context("decoding TOML")
             }
-            Self::MessagePack => {
+            Self::Bincode => {
                 let file = File::open(path).context("opening file")?;
-                rmp_serde::from_read(file).context("decoding MessagePack")
+                bincode::deserialize_from(file).context("decoding bincode")
             }
         }
     }
@@ -89,9 +89,9 @@ impl FileFormat {
                 let serialized = toml::to_string_pretty(data).context("encoding TOML")?;
                 fs::write(&path, serialized).context("writing file")
             }
-            Self::MessagePack => {
+            Self::Bincode => {
                 let mut file = File::create(path).context("creating / opening file")?;
-                rmp_serde::encode::write(&mut file, data).context("encoding MessagePack")
+                bincode::serialize_into(&mut file, data).context("encoding bincode")
             }
         }
     }
