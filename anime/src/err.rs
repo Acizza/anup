@@ -1,5 +1,4 @@
 use std::io;
-use std::path;
 use std::result;
 use std::string;
 use thiserror::Error;
@@ -8,17 +7,8 @@ pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("file io error [{}]: {source}", .path.display())]
-    FileIO {
-        source: io::Error,
-        path: path::PathBuf,
-    },
-
-    #[error("dir entry error [{}]: {source}", .dir.display())]
-    EntryIO {
-        source: io::Error,
-        dir: path::PathBuf,
-    },
+    #[error(transparent)]
+    IO(#[from] io::Error),
 
     #[error("base64 decode error: {0}")]
     Base64Decode(#[from] base64::DecodeError),

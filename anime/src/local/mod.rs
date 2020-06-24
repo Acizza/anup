@@ -230,22 +230,11 @@ impl CategorizedEpisodes {
         F: FnMut(ParsedEpisode, String) -> Result<()>,
     {
         let dir = dir.as_ref();
-
-        let entries = fs::read_dir(dir).map_err(|source| Error::FileIO {
-            source,
-            path: dir.into(),
-        })?;
+        let entries = fs::read_dir(dir)?;
 
         for entry in entries {
-            let entry = entry.map_err(|source| Error::EntryIO {
-                source,
-                dir: dir.into(),
-            })?;
-
-            let entry_type = entry.file_type().map_err(|source| Error::EntryIO {
-                source,
-                dir: dir.into(),
-            })?;
+            let entry = entry?;
+            let entry_type = entry.file_type()?;
 
             if entry_type.is_dir() {
                 continue;
