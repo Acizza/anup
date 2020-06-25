@@ -3,7 +3,7 @@ use crate::series::SeriesPath;
 use crate::try_opt_ret;
 use crate::tui::component::Draw;
 use crate::tui::widget_util::{block, style, text};
-use crate::{SERIES_EPISODE_REP, SERIES_TITLE_REP};
+use anime::local::detect::CustomPattern;
 use anime::local::EpisodeParser;
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -480,17 +480,24 @@ pub struct ParserInput {
 }
 
 impl ParserInput {
+    const LABEL: &'static str = "Episode Pattern";
+
     pub fn new(selected: bool) -> Self {
         Self {
-            input: Input::with_label(selected, "Episode Regex"),
+            input: Input::with_label(selected, Self::LABEL),
             parser: EpisodeParser::default(),
         }
+    }
+
+    fn reset(&mut self, with_error: bool) {
+        self.parser = EpisodeParser::default();
+        self.input.error = with_error;
     }
 }
 
 impl ValidatedInput for ParserInput {
     fn label(&self) -> &'static str {
-        "Episode Regex"
+        Self::LABEL
     }
 
     fn input_mut(&mut self) -> &mut Input {
@@ -501,17 +508,19 @@ impl ValidatedInput for ParserInput {
         let text = self.input.text();
 
         if text.is_empty() {
-            self.parser = EpisodeParser::default();
-            self.input.error = false;
+            self.reset(false);
             return;
         }
 
-        let parser =
-            EpisodeParser::custom_with_replacements(text, SERIES_TITLE_REP, SERIES_EPISODE_REP)
-                .ok();
+        let pattern = CustomPattern::new(text);
 
-        self.input.error = parser.is_none();
-        self.parser = parser.unwrap_or_else(Default::default);
+        if !pattern.has_episode_marker() {
+            self.reset(true);
+            return;
+        }
+
+        self.parser = EpisodeParser::Custom(pattern);
+        self.input.error = false;
     }
 
     fn has_error(&self) -> bool {
@@ -521,8 +530,8 @@ impl ValidatedInput for ParserInput {
     fn error_message(&self) -> Cow<'static, str> {
         // TODO: use concat! macro if/when it can accept constants, or when a similiar crate doesn't require nightly
         format!(
-            "Regex must contain \"{}\" and be valid",
-            crate::SERIES_EPISODE_REP
+            "Must mark episode location with {}",
+            CustomPattern::EPISODE_MARKER,
         )
         .into()
     }

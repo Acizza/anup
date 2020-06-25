@@ -26,11 +26,8 @@ use crate::user::Users;
 use anime::remote::Remote;
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
-use std::str;
 
 const ANILIST_CLIENT_ID: u32 = 427;
-const SERIES_TITLE_REP: &str = "{title}";
-const SERIES_EPISODE_REP: &str = "{episode}";
 
 pub struct CmdOptions {
     pub offline: bool,

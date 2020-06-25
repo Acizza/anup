@@ -345,7 +345,7 @@ impl_command_matching!(Command, 8,
     },
     Set(_) => {
         name: "set",
-        usage: "[id=value] [path=\"value\"] [matcher=\"regex with {episode} value\"]",
+        usage: "[id=value] [path=\"value\"] [pattern=\"pattern with # marker\"]",
         min_args: 1,
         fn: |args: &[&str], config| {
             let mut pairs = parse_name_value_pairs(args);

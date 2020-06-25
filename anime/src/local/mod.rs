@@ -1,6 +1,6 @@
 pub mod detect;
 
-pub use detect::{EpisodeParser, EpisodeRegex, ParsedEpisode};
+pub use detect::{EpisodeParser, ParsedEpisode};
 
 use crate::err::{Error, Result};
 use crate::SeriesKind;
@@ -148,42 +148,6 @@ impl CategorizedEpisodes {
     #[inline(always)]
     pub fn take(self) -> EpisodeMap {
         self.0
-    }
-
-    /// Find all series and episodes in `dir` with the specified `parser`.
-    ///
-    /// The matcher must have the title group specified, or a `NeedTitleGroup` error will be returned.
-    pub fn parse_all<P>(dir: P, parser: &EpisodeParser) -> Result<HashMap<String, Self>>
-    where
-        P: AsRef<Path>,
-    {
-        if !parser.has_title() {
-            return Err(Error::NeedTitleGroup);
-        }
-
-        let mut results = HashMap::with_capacity(1);
-
-        Self::parse_eps_in_dir_with(dir, parser, |parsed, filename| {
-            let title_entry = results
-                .entry(parsed.title.unwrap())
-                .or_insert_with(|| Self(HashMap::with_capacity(1)));
-
-            let cat_eps = title_entry
-                .0
-                .entry(parsed.category)
-                .or_insert_with(|| SortedEpisodes::with_capacity(1));
-
-            let episode = Episode::new(parsed.episode, filename);
-            cat_eps.push(episode);
-
-            Ok(())
-        })?;
-
-        for series in results.values_mut() {
-            Self::sort_all(&mut series.0);
-        }
-
-        Ok(results)
     }
 
     /// Find the first matching series episodes in `dir` with the specified `parser`.

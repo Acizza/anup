@@ -6,7 +6,7 @@ use crate::config::Config;
 use crate::database::Database;
 use crate::file;
 use crate::file::SaveDir;
-use crate::{try_opt_r, SERIES_EPISODE_REP, SERIES_TITLE_REP};
+use crate::try_opt_r;
 use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
 use anime::remote::{Remote, RemoteService, Status};
 use anyhow::{anyhow, Context, Error, Result};
@@ -429,11 +429,7 @@ impl UpdateParams {
                 let parser = if pattern.is_empty() {
                     EpisodeParser::default()
                 } else {
-                    EpisodeParser::custom_with_replacements(
-                        pattern,
-                        SERIES_TITLE_REP,
-                        SERIES_EPISODE_REP,
-                    )?
+                    EpisodeParser::custom(pattern)
                 };
 
                 Some(parser)

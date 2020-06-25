@@ -5,8 +5,9 @@ mod common;
 
 use crate::err::{Error, Result};
 use crate::SeriesKind;
-use regex::Regex;
+use smallvec::SmallVec;
 use std::borrow::Cow;
+use std::ops::{Deref, DerefMut};
 use std::str;
 
 #[cfg(feature = "diesel-support")]
@@ -19,129 +20,9 @@ use {
     std::io::Write,
 };
 
-/// A regex pattern to parse episode files.
-#[derive(Clone, Debug)]
-#[cfg_attr(
-    feature = "diesel-support",
-    derive(AsExpression, FromSqlRow),
-    sql_type = "Text"
-)]
-pub struct EpisodeRegex {
-    regex: Regex,
-    has_title: bool,
-}
-
-impl EpisodeRegex {
-    /// Create a new [EpisodeRegex](#struct.EpisodeRegex) with a specified regex pattern.
-    ///
-    /// The pattern must have a group named `episode` and optional one named `title`. If the episode
-    /// group is not present, a `MissingMatcherGroups` error will be returned.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use anime::local::EpisodeRegex;
-    ///
-    /// let regex = EpisodeRegex::from_pattern(r"(?P<title>.+?) - (?P<episode>\d+)").unwrap();
-    /// let pattern = r"(?P<title>.+?) - (?P<episode>\d+)";
-    ///
-    /// assert_eq!(regex.get().as_str(), pattern);
-    /// ```
-    pub fn from_pattern<S>(pattern: S) -> Result<Self>
-    where
-        S: AsRef<str>,
-    {
-        let pattern = pattern.as_ref();
-
-        if !pattern.contains("(?P<episode>") {
-            return Err(Error::MissingMatcherGroups);
-        }
-
-        let regex = Regex::new(pattern).map_err(|source| Error::Regex {
-            source,
-            pattern: pattern.into(),
-        })?;
-
-        Ok(Self {
-            regex,
-            has_title: pattern.contains("(?P<title>"),
-        })
-    }
-
-    /// Create a new [EpisodeRegex](#struct.EpisodeRegex) with the specified regex pattern containing arbitrary `title` and `episode` groups.
-    ///
-    /// This works the same as [from_pattern](#method.from_pattern), but replaces text in the pattern matching `title` and `episode` to their regex
-    /// representation first.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use anime::local::EpisodeRegex;
-    ///
-    /// let regex = EpisodeRegex::from_pattern_replacements("{title} - {episode}", "{title}", "{episode}").unwrap();
-    /// let actual_pattern = r"(?P<title>.+) - (?P<episode>\d+)";
-    ///
-    /// assert_eq!(regex.get().as_str(), actual_pattern);
-    /// ```
-    #[inline]
-    pub fn from_pattern_replacements<S, T, E>(pattern: S, title: T, episode: E) -> Result<Self>
-    where
-        S: AsRef<str>,
-        T: AsRef<str>,
-        E: AsRef<str>,
-    {
-        let pattern = pattern
-            .as_ref()
-            .replace(title.as_ref(), r"(?P<title>.+)")
-            .replace(episode.as_ref(), r"(?P<episode>\d+)");
-
-        Self::from_pattern(pattern)
-    }
-
-    /// Returns a reference to the inner `Regex` for the `EpisodeRegex`.
-    #[inline(always)]
-    pub fn get(&self) -> &Regex {
-        &self.regex
-    }
-}
-
-impl PartialEq for EpisodeRegex {
-    fn eq(&self, other: &Self) -> bool {
-        self.get().as_str() == other.get().as_str()
-    }
-}
-
-#[cfg(feature = "diesel-support")]
-impl<DB> FromSql<Text, DB> for EpisodeRegex
-where
-    DB: diesel::backend::Backend,
-    String: FromSql<Text, DB>,
-{
-    fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
-        let pattern = String::from_sql(bytes)?;
-        let matcher = Self::from_pattern(pattern)
-            .map_err(|err| format!("invalid episode regex pattern: {}", err))?;
-
-        Ok(matcher)
-    }
-}
-
-#[cfg(feature = "diesel-support")]
-impl<DB> ToSql<Text, DB> for EpisodeRegex
-where
-    DB: diesel::backend::Backend,
-    str: ToSql<Text, DB>,
-{
-    fn to_sql<W: Write>(&self, out: &mut Output<W, DB>) -> serialize::Result {
-        let value = self.regex.as_str();
-        value.to_sql(out)
-    }
-}
-
 /// An episode file parser.
 ///
-/// It can be used with a default parser that tries to match as many formats as (reasonably) possible, or a custom one that
-/// takes a regex pattern.
+/// It can be used with a default parser that tries to match as many formats as (reasonably) possible, or with a custom pattern.
 ///
 /// The default parser works well with files that are in one of the following formats:
 ///
@@ -162,36 +43,30 @@ where
 )]
 pub enum EpisodeParser {
     Default,
-    Custom(EpisodeRegex),
+    Custom(CustomPattern),
 }
 
 impl EpisodeParser {
-    /// Create a new [EpisodeParser::Custom](#variant.Custom) with the specified regex pattern containing arbitrary `title` and `episode` groups.
-    ///
-    /// Refer to [EpisodeRegex::from_pattern_replacements](struct.EpisodeRegex.html#method.from_pattern_replacements) for more information.
+    /// Create a new [EpisodeParser::Custom](#variant.Custom) with the specified custom pattern.
     ///
     /// # Example
     ///
     /// ```
     /// use anime::local::EpisodeParser;
     ///
-    /// let parser = EpisodeParser::custom_with_replacements("{title} - {episode}", "{title}", "{episode}").unwrap();
-    /// let actual_pattern = r"(?P<title>.+) - (?P<episode>\d+)";
+    /// let parser = EpisodeParser::custom("Series Title - #.mkv");
+    /// let value = "Series Title - 12.mkv";
     ///
-    /// match parser {
-    ///     EpisodeParser::Default => unreachable!(),
-    ///     EpisodeParser::Custom(regex) => assert_eq!(regex.get().as_str(), actual_pattern),
-    /// }
+    /// let result = parser.parse("Series Title - 12.mkv").unwrap();
+    /// assert_eq!(result.episode, 12);
     /// ```
     #[inline]
-    pub fn custom_with_replacements<S, T, E>(pattern: S, title: T, episode: E) -> Result<Self>
+    pub fn custom<S>(pattern: S) -> Self
     where
-        S: AsRef<str>,
-        T: AsRef<str>,
-        E: AsRef<str>,
+        S: Into<String>,
     {
-        let regex = EpisodeRegex::from_pattern_replacements(pattern, title, episode)?;
-        Ok(Self::Custom(regex))
+        let pattern = CustomPattern::new(pattern);
+        Self::Custom(pattern)
     }
 
     /// Attempt to parse the given `filename` with the currently selected parser.
@@ -207,19 +82,6 @@ impl EpisodeParser {
     /// assert_eq!(result.title, Some("Series Title".into()));
     /// assert_eq!(result.episode, 2);
     /// ```
-    ///
-    /// # Example With Custom Parser
-    ///
-    /// ```
-    /// use anime::local::{EpisodeParser, EpisodeRegex};
-    ///
-    /// let regex = EpisodeRegex::from_pattern(r"Surrounded (?P<episode>\d+) Episode").unwrap();
-    /// let parser = EpisodeParser::Custom(regex);
-    /// let result = parser.parse("Surrounded 123 Episode").unwrap();
-    ///
-    /// assert_eq!(result.title, None);
-    /// assert_eq!(result.episode, 123);
-    /// ```
     #[inline]
     pub fn parse<'a, S>(&self, filename: S) -> Result<ParsedEpisode>
     where
@@ -229,7 +91,7 @@ impl EpisodeParser {
 
         match self {
             Self::Default => Self::parse_with_default(filename),
-            Self::Custom(regex) => Self::parse_with_regex(regex, filename),
+            Self::Custom(pattern) => Self::parse_with_pattern(pattern, filename),
         }
     }
 
@@ -254,53 +116,21 @@ impl EpisodeParser {
             })
     }
 
-    fn parse_with_regex<S>(regex: &EpisodeRegex, filename: S) -> Result<ParsedEpisode>
+    fn parse_with_pattern<S>(pattern: &CustomPattern, filename: S) -> Result<ParsedEpisode>
     where
         S: AsRef<str>,
     {
         let filename = filename.as_ref();
 
-        let caps = regex
-            .get()
-            .captures(filename)
+        let ep_num = pattern
+            .detect_episode(filename)
             .ok_or_else(|| Error::EpisodeParseFailed {
                 filename: filename.into(),
             })?;
 
-        let series_name = if regex.has_title {
-            caps.name("title")
-                .ok_or_else(|| Error::NoEpisodeTitle {
-                    filename: filename.into(),
-                })?
-                .as_str()
-                .trim()
-                .to_string()
-                .into()
-        } else {
-            None
-        };
-
-        let num = caps
-            .name("episode")
-            .and_then(|val| val.as_str().parse::<u32>().ok())
-            .ok_or_else(|| Error::ExpectedEpNumber {
-                filename: filename.into(),
-            })?;
-
         // TODO: look for special / OVA / ONA / movie in the title to categorize properly
-        let episode = ParsedEpisode::new(series_name, num, SeriesKind::Season);
+        let episode = ParsedEpisode::new(None, ep_num, SeriesKind::Season);
         Ok(episode)
-    }
-
-    /// Returns true if the current parser supports title parsing.
-    ///
-    /// The default parser will always return true.
-    #[inline]
-    pub fn has_title(&self) -> bool {
-        match self {
-            Self::Default => true,
-            Self::Custom(regex) => regex.has_title,
-        }
     }
 }
 
@@ -337,12 +167,12 @@ impl<'a> Into<Cow<'a, EpisodeParser>> for &'a EpisodeParser {
 impl<DB> FromSql<Nullable<Text>, DB> for EpisodeParser
 where
     DB: diesel::backend::Backend,
-    EpisodeRegex: FromSql<Text, DB>,
+    CustomPattern: FromSql<Text, DB>,
 {
     fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
         if bytes.is_some() {
-            let regex = EpisodeRegex::from_sql(bytes)?;
-            Ok(Self::Custom(regex))
+            let pattern = CustomPattern::from_sql(bytes)?;
+            Ok(Self::Custom(pattern))
         } else {
             Ok(Self::default())
         }
@@ -353,15 +183,176 @@ where
 impl<DB> ToSql<Text, DB> for EpisodeParser
 where
     DB: diesel::backend::Backend,
-    EpisodeRegex: ToSql<Text, DB>,
+    CustomPattern: ToSql<Text, DB>,
 {
     fn to_sql<W: Write>(&self, out: &mut Output<W, DB>) -> serialize::Result {
         use diesel::serialize::IsNull;
 
         match self {
             Self::Default => Ok(IsNull::Yes),
-            Self::Custom(regex) => regex.to_sql(out),
+            Self::Custom(pattern) => pattern.to_sql(out),
         }
+    }
+}
+
+/// A custom pattern to match episodes with.
+///
+/// This is intended to be a very simple regex replacement.
+/// The pattern matches given input 1-to-1, except when `*` and `#` are encountered.
+
+/// * `*` is a wildcard and will match everything up to the next character in the pattern.
+/// * `#` is an episode marker and will only match digits. Everything after this character is ignored.
+///
+/// Both pattern characters can be escaped by having at least two of them next to each other, like so:
+/// * `**`
+/// * `##`
+///
+/// # Example
+///
+/// ```
+/// use anime::local::detect::CustomPattern;
+///
+/// let pattern = CustomPattern::new("[*] Series Title - EP#");
+/// assert_eq!(pattern.detect_episode("[Test Tag] Series Title - ep12"), Some(12));
+/// ```
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "diesel-support",
+    derive(AsExpression, FromSqlRow),
+    sql_type = "Text"
+)]
+pub struct CustomPattern(String);
+
+impl CustomPattern {
+    /// The character used to represent a wildcard.
+    pub const WILDCARD: char = '*';
+    /// The character used to mark where episodes are.
+    pub const EPISODE_MARKER: char = '#';
+
+    /// Create a new `CustomPattern` with the specified `pattern`.
+    #[inline(always)]
+    pub fn new<S>(pattern: S) -> Self
+    where
+        S: Into<String>,
+    {
+        Self(pattern.into())
+    }
+
+    fn sum_char_digits(first: char, value_chars: impl Iterator<Item = char>) -> u32 {
+        let rest = value_chars
+            .take_while(char::is_ascii_digit)
+            .collect::<SmallVec<[_; 3]>>();
+
+        let first = [first];
+
+        first
+            .iter()
+            .chain(rest.iter())
+            .rev()
+            .enumerate()
+            .map(|(base, ch)| ch.to_digit(10).unwrap_or(0) * 10u32.pow(base as u32))
+            .sum::<u32>()
+    }
+
+    /// Executes the current pattern to find an episode number in the specified `value`.
+    ///
+    /// This will always return `None` if the current pattern does not have a `#` character to mark the location of episodes.
+    pub fn detect_episode<S>(&self, value: S) -> Option<u32>
+    where
+        S: AsRef<str>,
+    {
+        let mut value_chars = value.as_ref().chars();
+        let mut pattern_chars = self.0.chars().peekable();
+        let mut cur_pattern_char = pattern_chars.next();
+
+        while let Some(value_ch) = value_chars.next() {
+            match cur_pattern_char {
+                Some(Self::WILDCARD) => match pattern_chars.peek() {
+                    Some(&Self::EPISODE_MARKER) if value_ch.is_ascii_digit() => {
+                        return Some(Self::sum_char_digits(value_ch, value_chars))
+                    }
+                    Some(wildcard_end) => {
+                        if value_ch.eq_ignore_ascii_case(wildcard_end) {
+                            // Our next pattern character should be after both the wildcard and ending character
+                            cur_pattern_char =
+                                pattern_chars.next().and_then(|_| pattern_chars.next());
+                        }
+                    }
+                    None => break,
+                },
+                Some(Self::EPISODE_MARKER) => match pattern_chars.peek() {
+                    // Interpret another episode marker as an escape
+                    Some(&Self::EPISODE_MARKER) => cur_pattern_char = pattern_chars.next(),
+                    Some(_) | None => {
+                        if value_ch.is_ascii_digit() {
+                            return Some(Self::sum_char_digits(value_ch, value_chars));
+                        }
+                    }
+                },
+                // Test for a 1-to-1 character match
+                Some(ch) if ch.eq_ignore_ascii_case(&value_ch) => {
+                    cur_pattern_char = pattern_chars.next()
+                }
+                Some(_) | None => break,
+            }
+        }
+
+        None
+    }
+
+    /// Returns true if the current pattern contains the episode marker character.
+    #[inline]
+    pub fn has_episode_marker(&self) -> bool {
+        self.0.contains(Self::EPISODE_MARKER)
+    }
+
+    /// Returns a reference to the pattern string.
+    #[inline(always)]
+    pub fn inner(&self) -> &String {
+        &self.0
+    }
+
+    /// Returns a mutable reference to the pattern string.
+    #[inline(always)]
+    pub fn inner_mut(&mut self) -> &mut String {
+        &mut self.0
+    }
+}
+
+impl Deref for CustomPattern {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner()
+    }
+}
+
+impl DerefMut for CustomPattern {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner_mut()
+    }
+}
+
+#[cfg(feature = "diesel-support")]
+impl<DB> FromSql<Text, DB> for CustomPattern
+where
+    DB: diesel::backend::Backend,
+    String: FromSql<Text, DB>,
+{
+    fn from_sql(bytes: Option<&DB::RawValue>) -> deserialize::Result<Self> {
+        let pattern = String::from_sql(bytes)?;
+        Ok(Self::new(pattern))
+    }
+}
+
+#[cfg(feature = "diesel-support")]
+impl<DB> ToSql<Text, DB> for CustomPattern
+where
+    DB: diesel::backend::Backend,
+    String: ToSql<Text, DB>,
+{
+    fn to_sql<W: Write>(&self, out: &mut Output<W, DB>) -> serialize::Result {
+        self.0.to_sql(out)
     }
 }
 
@@ -620,19 +611,65 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn episode_regex_detect_no_group() {
-        EpisodeRegex::from_pattern("useless").unwrap();
-    }
+    fn custom_pattern_detection() {
+        let pairs = vec![
+            ("", "", None),
+            ("Series Title - #.mkv", "Series Title - 12.mkv", Some(12)),
+            ("Series*- #", "Series Title - 12.mkv", Some(12)),
+            ("*#", "Series Title - 12.mkv", Some(12)),
+            (
+                "[*] Series Title -*- #.mkv",
+                "[Tag] Series Title - Episode Description - 12.mkv",
+                Some(12),
+            ),
+            ("[*] Series*Title - #", "[Tag] Series Title - 1", Some(1)),
+            (
+                "[*] Series*Title*-*#",
+                "[Tag] Series Title - 123",
+                Some(123),
+            ),
+            (
+                "[*] Series Title - # This Doesn't Matter",
+                "[Tag Test] Series Title - 1234 - Different Suffix",
+                Some(1234),
+            ),
+            (
+                "[*] Series With Asterisk** -*-*#",
+                "[Tag] Series With Asterisk* - Description - 12",
+                Some(12),
+            ),
+            (
+                "[*] Series With Asterisk*** -*-*#",
+                "[Tag] Series With Asterisk** - Description - 12",
+                Some(12),
+            ),
+            (
+                "[*] Series With Asterisk**#",
+                "[Tag] Series With Asterisk*12",
+                Some(12),
+            ),
+            (
+                "[*] Series With Dash## #",
+                "[Tag] Series With Dash# 12",
+                Some(12),
+            ),
+            ("series title - ep#", "SeRiEs TiTle - EP12", Some(12)),
+            ("**S*e**#", "*Series Title*12", Some(12)),
+            ("[*] Series Title - #", "[Tag] Series Title - FOILED!", None),
+            ("Series Title", "Series Title", None),
+            ("Series Title #", "Series Title", None),
+            ("*", "Test 12", None),
+        ];
 
-    #[test]
-    fn episode_regex_detect_no_title_group() {
-        EpisodeRegex::from_pattern(r"(.+?) - (?P<episode>\d+)").unwrap();
-    }
+        for (format, value, expected) in pairs {
+            let pattern = CustomPattern::new(format);
+            let result = pattern.detect_episode(value);
 
-    #[test]
-    #[should_panic]
-    fn episode_regex_detect_no_episode_group() {
-        EpisodeRegex::from_pattern(r"(?P<title>.+?) - \d+").unwrap();
+            assert_eq!(
+                result, expected,
+                "custom pattern mismatch:\n\tpattern: {}\n\tvalue: {}",
+                format, value
+            );
+        }
     }
 }

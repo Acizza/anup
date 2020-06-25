@@ -19,20 +19,8 @@ pub enum Error {
     #[error("json decode error: {0}")]
     JsonDecode(#[from] serde_json::Error),
 
-    #[error("failed to create regex pattern \"{pattern}\": {source}")]
-    Regex {
-        source: regex::Error,
-        pattern: String,
-    },
-
     #[error("http error: {0}")]
     Http(#[from] attohttpc::Error),
-
-    #[error("failed to parse episode title: {filename}")]
-    NoEpisodeTitle { filename: String },
-
-    #[error("expected episode number for file: {filename}")]
-    ExpectedEpNumber { filename: String },
 
     #[error("failed to parse episode: {filename}")]
     EpisodeParseFailed { filename: String },
@@ -45,12 +33,6 @@ pub enum Error {
 
     #[error("bad AniList response ({code}): {message}")]
     BadAniListResponse { code: u16, message: String },
-
-    #[error("custom episode matcher must specify the episode and (optionally) the title group")]
-    MissingMatcherGroups,
-
-    #[error("title group must be specified to parse episodes")]
-    NeedTitleGroup,
 
     #[error("must be authorized to make this request")]
     NeedAuthentication,
