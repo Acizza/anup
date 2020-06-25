@@ -13,7 +13,7 @@ Current features include:
 * TUI interface to view, play, and modify all series added to the program
 * Offline mode
 * Multi-user support
-* Built-in series splitter for [merged seasons](###Merged-Seasons) and integrated specials, OVA's, ONA's, and movies
+* Built-in series splitter for [merged seasons](#merged-seasons) and integrated specials, OVA's, ONA's, and movies
 * Automatic series status handling (watching, rewatching, completed, etc)
 * Automatic series start / end date handling
 
@@ -113,7 +113,7 @@ You can modify a series that has already been added to the program by using the 
 
 ### ID
 
-You can modify the series ID by adding `id=<series id>` to the command. To get the series ID, follow the steps shown [here](###ID).
+You can modify the series ID by adding `id=<series id>` to the command. To get the series ID, follow the steps shown [here](#id).
 
 ### Path
 
@@ -121,7 +121,7 @@ The relative / absolute path to the series can be changed by adding `path="<path
 
 ### Episode Pattern
 
-The episode pattern can be changed by adding `pattern="<custom pattern>"` to the command. More information on the required pattern can be found [here](###Episode-Pattern).
+The episode pattern can be changed by adding `pattern="<custom pattern>"` to the command. More information on the required pattern can be found [here](#episode-pattern).
 
 ### Combining Options
 
@@ -135,7 +135,7 @@ The above command will set the currently selected series to `Cowboy Bebop`, and 
 
 In order to watch merged seasons, specials, OVA's, ONA's, and (numbered) movies that are in the same folder as the main series, you will need to split them up into their own folders first.
 
-If you are unfamiliar with the concept of a merged season, please read about them [below](###Merged-Seasons).
+If you are unfamiliar with the concept of a merged season, please read about them [below](#merged-seasons).
 
 You can split a series by selecting it in the program and pressing the `s` key to open the split series panel. Once loaded, the panel will show you all of the detected series within the folder that were found from AniList. You can then press the `s` key again to split each series into its own folder within the series path set in your config. Splitting a series does **not** move or copy any files; it only creates symbolic links.
 
