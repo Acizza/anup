@@ -349,7 +349,7 @@ impl_command_matching!(Command, 8,
         min_args: 1,
         fn: |args: &[&str], config| {
             let mut pairs = parse_name_value_pairs(args);
-            let params = UpdateParams::from_strings(pairs.remove("id"), pairs.remove("path"), pairs.remove("matcher"), config)?;
+            let params = UpdateParams::from_strings(pairs.remove("id"), pairs.remove("path"), pairs.remove("pattern"), config)?;
             Ok(Command::Set(params))
         },
     },
