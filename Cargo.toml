@@ -8,3 +8,31 @@ members = [
 lto = true
 codegen-units = 1
 panic = "abort"
+
+[profile.release.package.syn]
+opt-level = 0
+codegen-units = 256
+
+[profile.release.package.quote]
+opt-level = 0
+codegen-units = 256
+
+[profile.release.package.proc-macro2]
+opt-level = 0
+codegen-units = 256
+
+[profile.release.package.serde_derive]
+opt-level = 0
+codegen-units = 256
+
+[profile.release.package.enum_dispatch]
+opt-level = 0
+codegen-units = 256
+
+[profile.release.package.diesel_derives]
+opt-level = 0
+codegen-units = 256
+
+[profile.release.package.thiserror-impl]
+opt-level = 0
+codegen-units = 256
