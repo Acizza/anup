@@ -23,8 +23,14 @@ pub struct AddPanel {
 
 impl AddPanel {
     pub fn new(info: RemoteInfo, path: SeriesPath) -> Self {
+        use anime::local::detect::dir as anime_dir;
+
+        let name_input = anime_dir::generate_nickname(&info.title.preferred)
+            .map(|nickname| NameInput::with_placeholder(true, nickname))
+            .unwrap_or_else(|| NameInput::new(true));
+
         Self {
-            name_input: NameInput::new(true),
+            name_input,
             data: Some(PartialData::new(info, path)),
         }
     }
