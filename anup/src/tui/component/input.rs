@@ -1,6 +1,5 @@
 use crate::config::Config;
 use crate::series::SeriesPath;
-use crate::try_opt_ret;
 use crate::tui::component::Draw;
 use crate::tui::widget_util::{block, style, text};
 use anime::local::detect::CustomPattern;
@@ -14,12 +13,13 @@ use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::widgets::{Paragraph, Text};
+use unicode_segmentation::GraphemeCursor;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub struct Input {
     caret: Caret,
     visible_width: u16,
-    offset: usize,
+    visible_offset: usize,
     pub selected: bool,
     pub error: bool,
     pub draw_mode: DrawMode,
@@ -46,7 +46,7 @@ impl Input {
         Self {
             caret,
             visible_width: 0,
-            offset: 0,
+            visible_offset: 0,
             selected,
             error: false,
             draw_mode,
@@ -81,7 +81,7 @@ impl Input {
             Key::Left => self.caret.move_left(),
             Key::Right => match (self.caret.is_empty(), self.placeholder.as_ref()) {
                 // Fill our input with the placeholder if present and we don't currently have user input
-                (true, Some(placeholder)) => self.caret.push_str(&placeholder[self.caret.pos..]),
+                (true, Some(placeholder)) => self.caret.push_str(&placeholder[self.caret.pos()..]),
                 _ => self.caret.move_right(),
             },
             Key::Home => self.caret.move_front(),
@@ -95,12 +95,24 @@ impl Input {
     fn update_visible_slice(&mut self) {
         let max_width = self.visible_width - Self::BORDER_SIZE - 1;
 
-        if self.caret.pos < max_width as usize {
-            self.offset = 0;
+        if self.caret.display_offset < max_width as usize {
+            self.visible_offset = 0;
             return;
         }
 
-        self.offset = self.caret.pos - max_width as usize;
+        let desired_offset = self.caret.display_offset - max_width as usize;
+        let mut cursor = GraphemeCursor::new(0, self.caret.buffer.len(), true);
+
+        // TODO: this can probably be optimized
+        for _ in 0..desired_offset {
+            match cursor.next_boundary(&self.caret.buffer, 0) {
+                Ok(Some(_)) => (),
+                Ok(None) => break,
+                Err(_) => return,
+            }
+        }
+
+        self.visible_offset = cursor.cur_cursor();
     }
 
     pub fn calculate_cursor_pos(column: u16, rect: Rect) -> (u16, u16) {
@@ -139,7 +151,7 @@ impl Input {
             return;
         }
 
-        let width = (self.caret.cur_width as u16).min(rect.width);
+        let width = (self.caret.display_offset as u16).min(rect.width);
         let (x, y) = Self::calculate_cursor_pos(width, rect);
 
         frame.set_cursor(x, y);
@@ -147,7 +159,7 @@ impl Input {
 
     pub fn clear(&mut self) {
         self.caret.clear();
-        self.offset = 0;
+        self.visible_offset = 0;
     }
 
     pub fn text(&self) -> &str {
@@ -163,7 +175,7 @@ impl Input {
 
     #[inline(always)]
     pub fn visible(&self) -> &str {
-        &self.caret.buffer[self.offset..]
+        &self.caret.buffer[self.visible_offset..]
     }
 
     #[inline(always)]
@@ -217,7 +229,7 @@ where
 
         if self.caret.is_empty() && self.use_placeholder {
             if let Some(placeholder) = &self.placeholder {
-                let slice = &placeholder[self.caret.pos..];
+                let slice = &placeholder[self.caret.pos()..];
                 text.push(text::with_color(slice, Color::DarkGray));
             }
         }
@@ -242,101 +254,94 @@ impl Default for DrawMode {
 
 struct Caret {
     buffer: String,
-    cur_width: usize,
-    total_width: usize,
-    pos: usize,
+    cursor: GraphemeCursor,
+    display_offset: usize,
 }
 
 impl Caret {
     fn new() -> Self {
         Self {
             buffer: String::new(),
-            cur_width: 0,
-            total_width: 0,
-            pos: 0,
+            cursor: GraphemeCursor::new(0, 0, true),
+            display_offset: 0,
         }
     }
 
     fn push(&mut self, ch: char) {
-        self.buffer.insert(self.cur_width, ch);
+        let pos = self.pos();
 
-        let width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        self.buffer.insert(pos, ch);
+        self.cursor = GraphemeCursor::new(pos + ch.len_utf8(), self.buffer.len(), true);
 
-        self.cur_width += width;
-        self.total_width += width;
-        self.pos += 1;
+        self.display_offset += UnicodeWidthChar::width(ch).unwrap_or(0);
     }
 
     fn push_str(&mut self, value: &str) {
         self.buffer.push_str(value);
+        self.cursor = GraphemeCursor::new(self.pos() + value.len(), self.buffer.len(), true);
 
-        let width = UnicodeWidthStr::width(value);
-
-        self.cur_width += width;
-        self.total_width += width;
-        self.pos += value.len();
+        self.display_offset += UnicodeWidthStr::width(value);
     }
 
     fn pop(&mut self) {
-        if self.is_empty() || self.pos == 0 {
+        if self.pos() == 0 {
             return;
         }
 
-        let ch = if self.pos == self.buffer.len() {
-            try_opt_ret!(self.buffer.pop())
-        } else {
-            self.buffer.remove(self.pos - 1)
+        let pos = match self.cursor.prev_boundary(&self.buffer, 0).ok().flatten() {
+            Some(pos) => pos,
+            None => return,
         };
 
+        let ch = self.buffer.remove(pos);
         let width = UnicodeWidthChar::width(ch).unwrap_or(0);
 
-        self.cur_width -= width;
-        self.total_width -= width;
-        self.pos -= 1;
+        self.display_offset = self.display_offset.saturating_sub(width);
+        self.cursor = GraphemeCursor::new(pos, self.buffer.len(), true);
     }
 
     fn move_left(&mut self) {
-        if self.pos == 0 {
+        if self.pos() == 0 {
             return;
         }
 
-        let left_char = try_opt_ret!(self.buffer.chars().nth(self.pos - 1));
-
-        self.cur_width -= UnicodeWidthChar::width(left_char).unwrap_or(0);
-        self.pos -= 1;
+        self.cursor.prev_boundary(&self.buffer, 0).ok();
+        self.display_offset = self.display_offset.saturating_sub(1);
     }
 
     fn move_right(&mut self) {
-        if self.pos > self.buffer.len() {
+        if self.pos() >= self.buffer.len() {
             return;
         }
 
-        let right_char = try_opt_ret!(self.buffer.chars().nth(self.pos));
-
-        self.cur_width += UnicodeWidthChar::width(right_char).unwrap_or(0);
-        self.pos += 1;
+        self.cursor.next_boundary(&self.buffer, 0).ok();
+        self.display_offset += 1;
     }
 
     fn move_front(&mut self) {
-        self.cur_width = 0;
-        self.pos = 0;
+        self.cursor.set_cursor(0);
+        self.display_offset = 0;
     }
 
     fn move_end(&mut self) {
-        self.cur_width = self.total_width;
-        self.pos = self.buffer.len();
+        self.cursor.set_cursor(self.buffer.len());
+        self.display_offset = UnicodeWidthStr::width(self.buffer.as_str());
     }
 
     fn clear(&mut self) {
         self.buffer.clear();
-        self.cur_width = 0;
-        self.total_width = 0;
-        self.pos = 0;
+        self.cursor = GraphemeCursor::new(0, 0, true);
+        self.display_offset = 0;
     }
 
     #[inline(always)]
     fn is_empty(&self) -> bool {
         self.buffer.is_empty()
+    }
+
+    #[inline(always)]
+    fn pos(&self) -> usize {
+        self.cursor.cur_cursor()
     }
 }
 
