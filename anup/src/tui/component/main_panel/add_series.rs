@@ -36,7 +36,7 @@ impl PanelInputs {
 
     /// Creates all panel inputs.
     ///
-    /// Returns a new `PanelInputs` and a boolean indicating whether any inputs had their placeholders set.
+    /// Returns a new `PanelInputs` and a boolean indicating whether any inputs had their placeholder set.
     fn init(config: &Config) -> (Self, bool) {
         use anime::local::detect::dir as anime_dir;
 
@@ -107,7 +107,7 @@ impl AddSeriesPanel {
             series_builder: SeriesBuilder::new(),
         };
 
-        // If the inputs have placeholders, we should update our detected series now
+        // If any inputs have a placeholder, we should update our detected series now
         if placeholder_set {
             result.series_builder.update(&result.inputs, state).ok();
         }
