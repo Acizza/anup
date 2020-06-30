@@ -2,7 +2,7 @@ use super::PartialSeries;
 use crate::config::Config;
 use crate::file;
 use crate::series::info::{InfoSelector, SeriesInfo};
-use crate::series::{SeriesParams, SeriesPath};
+use crate::series::{self, SeriesParams, SeriesPath};
 use crate::tui::component::input::{
     IDInput, Input, NameInput, ParsedValue, ParserInput, PathInput, ValidatedInput,
 };
@@ -52,7 +52,7 @@ impl PanelInputs {
 
         let name = detected_path
             .and_then(anime_dir::parse_title)
-            .and_then(anime_dir::generate_nickname)
+            .and_then(series::generate_nickname)
             .map(|nickname| NameInput::with_placeholder(true, nickname))
             .unwrap_or_else(|| NameInput::new(true));
 

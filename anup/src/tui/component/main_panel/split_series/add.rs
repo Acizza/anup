@@ -1,6 +1,6 @@
 use super::SplitPanelResult;
 use crate::series::config::SeriesConfig;
-use crate::series::{SeriesParams, SeriesPath};
+use crate::series::{self, SeriesParams, SeriesPath};
 use crate::try_opt_ret;
 use crate::tui::component::input::{Input, NameInput, ParsedValue, ValidatedInput};
 use crate::tui::component::{Component, Draw};
@@ -23,9 +23,7 @@ pub struct AddPanel {
 
 impl AddPanel {
     pub fn new(info: RemoteInfo, path: SeriesPath) -> Self {
-        use anime::local::detect::dir as anime_dir;
-
-        let name_input = anime_dir::generate_nickname(&info.title.preferred)
+        let name_input = series::generate_nickname(&info.title.preferred)
             .map(|nickname| NameInput::with_placeholder(true, nickname))
             .unwrap_or_else(|| NameInput::new(true));
 
