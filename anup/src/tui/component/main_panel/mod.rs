@@ -5,7 +5,6 @@ mod split_series;
 mod user_panel;
 
 use super::{Component, Draw};
-use crate::config::Config;
 use crate::series::config::SeriesConfig;
 use crate::series::info::InfoResult;
 use crate::series::SeriesParams;
@@ -40,7 +39,7 @@ impl MainPanel {
             return Err(anyhow!("must be online to add a series"));
         }
 
-        self.current = Panel::add_series(&state.config);
+        self.current = Panel::add_series(state);
         state.current_action = CurrentAction::FocusedOnMainPanel;
 
         Ok(())
@@ -205,8 +204,8 @@ impl Panel {
         Self::Info(InfoPanel::new())
     }
 
-    fn add_series(config: &Config) -> Self {
-        Self::AddSeries(Box::new(AddSeriesPanel::new(config)))
+    fn add_series(state: &UIState) -> Self {
+        Self::AddSeries(AddSeriesPanel::init(state).into())
     }
 
     #[inline(always)]

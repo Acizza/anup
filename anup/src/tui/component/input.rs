@@ -5,6 +5,7 @@ use crate::tui::component::Draw;
 use crate::tui::widget_util::{block, style, text};
 use anime::local::detect::CustomPattern;
 use anime::local::EpisodeParser;
+use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::path::PathBuf;
 use termion::event::Key;
@@ -13,7 +14,7 @@ use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::widgets::{Paragraph, Text};
-use unicode_width::UnicodeWidthChar;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub struct Input {
     caret: Caret,
@@ -22,6 +23,11 @@ pub struct Input {
     pub selected: bool,
     pub error: bool,
     pub draw_mode: DrawMode,
+    /// A string to display in the input when there is no input.
+    pub placeholder: Option<String>,
+    /// Indicates whether the placeholder should be used if present.
+    /// Mainly used for toggling.
+    pub use_placeholder: bool,
 }
 
 impl Input {
@@ -29,15 +35,29 @@ impl Input {
 
     const BORDER_SIZE: u16 = 2;
 
-    pub fn new(selected: bool, draw_mode: DrawMode) -> Self {
+    fn with_caret(
+        selected: bool,
+        draw_mode: DrawMode,
+        placeholder: Option<String>,
+        caret: Caret,
+    ) -> Self {
+        let use_placeholder = placeholder.is_some();
+
         Self {
-            caret: Caret::new(),
+            caret,
             visible_width: 0,
             offset: 0,
             selected,
             error: false,
             draw_mode,
+            placeholder,
+            use_placeholder,
         }
+    }
+
+    #[inline(always)]
+    pub fn new(selected: bool, draw_mode: DrawMode) -> Self {
+        Self::with_caret(selected, draw_mode, None, Caret::new())
     }
 
     #[inline(always)]
@@ -45,12 +65,25 @@ impl Input {
         Self::new(selected, DrawMode::Label(label))
     }
 
+    #[inline(always)]
+    pub fn with_label_and_hint<S>(selected: bool, label: &'static str, hint: S) -> Self
+    where
+        S: Into<String>,
+    {
+        let caret = Caret::new();
+        Self::with_caret(selected, DrawMode::Label(label), Some(hint.into()), caret)
+    }
+
     pub fn process_key(&mut self, key: Key) {
         match key {
             Key::Char(ch) => self.caret.push(ch),
             Key::Backspace => self.caret.pop(),
             Key::Left => self.caret.move_left(),
-            Key::Right => self.caret.move_right(),
+            Key::Right => match (self.caret.is_empty(), self.placeholder.as_ref()) {
+                // Fill our input with the placeholder if present and we don't currently have user input
+                (true, Some(placeholder)) => self.caret.push_str(&placeholder[self.caret.pos..]),
+                _ => self.caret.move_right(),
+            },
             Key::Home => self.caret.move_front(),
             Key::End => self.caret.move_end(),
             _ => (),
@@ -117,14 +150,25 @@ impl Input {
         self.offset = 0;
     }
 
-    #[inline(always)]
     pub fn text(&self) -> &str {
-        &self.caret.buffer
+        if !self.caret.is_empty() || !self.use_placeholder {
+            return &self.caret.buffer;
+        }
+
+        match self.placeholder.as_ref() {
+            Some(placeholder) => placeholder,
+            None => &self.caret.buffer,
+        }
     }
 
     #[inline(always)]
     pub fn visible(&self) -> &str {
         &self.caret.buffer[self.offset..]
+    }
+
+    #[inline(always)]
+    pub fn has_input(&self) -> bool {
+        self.caret.is_empty()
     }
 }
 
@@ -169,7 +213,15 @@ where
             DrawMode::Blank => rect,
         };
 
-        let text = [Text::raw(self.visible())];
+        let mut text: SmallVec<[_; 2]> = smallvec![Text::raw(self.visible())];
+
+        if self.caret.is_empty() && self.use_placeholder {
+            if let Some(placeholder) = &self.placeholder {
+                let slice = &placeholder[self.caret.pos..];
+                text.push(text::with_color(slice, Color::DarkGray));
+            }
+        }
+
         let widget = Paragraph::new(text.iter()).block(block).wrap(false);
 
         frame.render_widget(widget, input_pos);
@@ -215,8 +267,18 @@ impl Caret {
         self.pos += 1;
     }
 
+    fn push_str(&mut self, value: &str) {
+        self.buffer.push_str(value);
+
+        let width = UnicodeWidthStr::width(value);
+
+        self.cur_width += width;
+        self.total_width += width;
+        self.pos += value.len();
+    }
+
     fn pop(&mut self) {
-        if self.buffer.is_empty() || self.pos == 0 {
+        if self.is_empty() || self.pos == 0 {
             return;
         }
 
@@ -271,10 +333,16 @@ impl Caret {
         self.total_width = 0;
         self.pos = 0;
     }
+
+    #[inline(always)]
+    fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
 }
 
 pub trait ValidatedInput {
     fn label(&self) -> &'static str;
+
     fn input_mut(&mut self) -> &mut Input;
 
     fn validate(&mut self);
@@ -315,15 +383,25 @@ macro_rules! impl_draw_for_input {
 pub struct NameInput(Input);
 
 impl NameInput {
+    const LABEL: &'static str = "Name";
+
     #[inline(always)]
     pub fn new(selected: bool) -> Self {
-        Self(Input::with_label(selected, "Name"))
+        Self(Input::with_label(selected, Self::LABEL))
+    }
+
+    #[inline(always)]
+    pub fn with_placeholder<S>(selected: bool, name: S) -> Self
+    where
+        S: Into<String>,
+    {
+        Self(Input::with_label_and_hint(selected, Self::LABEL, name))
     }
 }
 
 impl ValidatedInput for NameInput {
     fn label(&self) -> &'static str {
-        "Name"
+        Self::LABEL
     }
 
     fn input_mut(&mut self) -> &mut Input {
@@ -360,9 +438,11 @@ pub struct IDInput {
 }
 
 impl IDInput {
+    const LABEL: &'static str = "ID";
+
     pub fn new(selected: bool) -> Self {
         Self {
-            input: Input::with_label(selected, "ID"),
+            input: Input::with_label(selected, Self::LABEL),
             id: None,
         }
     }
@@ -370,7 +450,7 @@ impl IDInput {
 
 impl ValidatedInput for IDInput {
     fn label(&self) -> &'static str {
-        "ID"
+        Self::LABEL
     }
 
     fn input_mut(&mut self) -> &mut Input {
@@ -421,9 +501,25 @@ pub struct PathInput {
 }
 
 impl PathInput {
+    const LABEL: &'static str = "Path";
+
     pub fn new(selected: bool, config: &Config) -> Self {
         Self {
-            input: Input::with_label(selected, "Path"),
+            input: Input::with_label(selected, Self::LABEL),
+            base_path: config.series_dir.clone(),
+            path: None,
+        }
+    }
+
+    pub fn with_placeholder<P>(selected: bool, config: &Config, path: P) -> Self
+    where
+        P: Into<PathBuf>,
+    {
+        let path = SeriesPath::new(path.into(), config);
+        let path_display = path.inner().to_string_lossy();
+
+        Self {
+            input: Input::with_label_and_hint(selected, Self::LABEL, path_display),
             base_path: config.series_dir.clone(),
             path: None,
         }
@@ -432,7 +528,7 @@ impl PathInput {
 
 impl ValidatedInput for PathInput {
     fn label(&self) -> &'static str {
-        "Path"
+        Self::LABEL
     }
 
     fn input_mut(&mut self) -> &mut Input {

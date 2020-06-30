@@ -1,5 +1,6 @@
 use super::PartialSeries;
 use crate::config::Config;
+use crate::file;
 use crate::series::info::{InfoSelector, SeriesInfo};
 use crate::series::{SeriesParams, SeriesPath};
 use crate::tui::component::input::{
@@ -33,13 +34,36 @@ struct PanelInputs {
 impl PanelInputs {
     const TOTAL: usize = 4;
 
-    fn new(config: &Config) -> Self {
-        Self {
-            name: NameInput::new(true),
+    /// Creates all panel inputs.
+    ///
+    /// Returns a new `PanelInputs` and a boolean indicating whether any inputs had their placeholders set.
+    fn init(config: &Config) -> (Self, bool) {
+        use anime::local::detect::dir as anime_dir;
+
+        let detected_path = file::last_modified_dir(&config.series_dir).ok().flatten();
+
+        // We only set a placeholder if detected_path is some
+        let placeholder_set = detected_path.is_some();
+
+        let path = detected_path
+            .as_ref()
+            .map(|path| PathInput::with_placeholder(false, config, path))
+            .unwrap_or_else(|| PathInput::new(false, config));
+
+        let name = detected_path
+            .and_then(anime_dir::parse_title)
+            .and_then(anime_dir::generate_nickname)
+            .map(|nickname| NameInput::with_placeholder(true, nickname))
+            .unwrap_or_else(|| NameInput::new(true));
+
+        let result = Self {
+            name,
             id: IDInput::new(false),
-            path: PathInput::new(false, config),
+            path,
             parser: ParserInput::new(false),
-        }
+        };
+
+        (result, placeholder_set)
     }
 
     #[inline(always)]
@@ -72,14 +96,23 @@ pub struct AddSeriesPanel {
 }
 
 impl AddSeriesPanel {
-    pub fn new(config: &Config) -> Self {
-        Self {
-            inputs: PanelInputs::new(config),
+    pub fn init(state: &UIState) -> Self {
+        let (inputs, placeholder_set) = PanelInputs::init(&state.config);
+
+        let mut result = Self {
+            inputs,
             selected_input: 0,
             error: None,
             last_update: None,
             series_builder: SeriesBuilder::new(),
+        };
+
+        // If the inputs have placeholders, we should update our detected series now
+        if placeholder_set {
+            result.series_builder.update(&result.inputs, state).ok();
         }
+
+        result
     }
 
     #[inline(always)]
@@ -250,6 +283,13 @@ impl Component for AddSeriesPanel {
             key => {
                 self.current_input().input_mut().process_key(key);
                 self.validate_selected();
+
+                let path_input = self.inputs.path.input_mut();
+                let name_has_input = self.inputs.name.input_mut().has_input();
+
+                // Our path should only use a placeholder if the user hasn't changed the name input
+                // This is to avoid locking the detected series in unless the user changes the path as well.
+                path_input.use_placeholder = name_has_input;
 
                 self.last_update = Some(Instant::now());
                 Ok(AddSeriesResult::Ok)

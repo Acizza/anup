@@ -139,10 +139,49 @@ pub fn read_dir<D>(dir: D) -> Result<Vec<DirEntry>>
 where
     D: AsRef<Path>,
 {
+    let mut dirs = Vec::new();
+
+    subdirectories_each(dir, |entry| {
+        dirs.push(entry);
+        Ok(())
+    })?;
+
+    Ok(dirs)
+}
+
+pub fn last_modified_dir<P>(base: P) -> Result<Option<PathBuf>>
+where
+    P: AsRef<Path>,
+{
+    let mut result = None;
+
+    subdirectories_each(base, |entry| {
+        let last_modified = entry.metadata()?.modified()?;
+        let path = entry.path();
+
+        match &mut result {
+            Some((cur_path, cur_last)) => {
+                if last_modified > *cur_last {
+                    *cur_path = path;
+                    *cur_last = last_modified;
+                }
+            }
+            None => result = Some((path, last_modified)),
+        }
+
+        Ok(())
+    })?;
+
+    Ok(result.map(|(path, _)| path))
+}
+
+fn subdirectories_each<D, F>(dir: D, mut func: F) -> Result<()>
+where
+    D: AsRef<Path>,
+    F: FnMut(DirEntry) -> Result<()>,
+{
     let dir = dir.as_ref();
     let entries = fs::read_dir(dir).context("reading directory")?;
-
-    let mut dirs = Vec::new();
 
     for entry in entries {
         let entry = entry.context("getting dir entry")?;
@@ -152,8 +191,8 @@ where
             continue;
         }
 
-        dirs.push(entry);
+        func(entry)?;
     }
 
-    Ok(dirs)
+    Ok(())
 }
