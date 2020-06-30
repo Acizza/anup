@@ -135,7 +135,7 @@ impl SaveDir {
     }
 }
 
-pub fn read_dir<D>(dir: D) -> Result<Vec<DirEntry>>
+pub fn subdirectories<D>(dir: D) -> Result<Vec<DirEntry>>
 where
     D: AsRef<Path>,
 {

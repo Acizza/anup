@@ -554,9 +554,9 @@ impl SeriesPath {
         const MIN_CONFIDENCE: f32 = 0.6;
 
         let name = name.as_ref();
-        let files = file::read_dir(&config.series_dir)?;
+        let dirs = file::subdirectories(&config.series_dir)?;
 
-        dir::closest_match(name, MIN_CONFIDENCE, files.into_iter()).map_or_else(
+        dir::closest_match(name, MIN_CONFIDENCE, dirs.into_iter()).map_or_else(
             || Err(anyhow!("no series found on disk matching {}", name)),
             |dir| Ok(Self::new(dir.path(), config)),
         )
