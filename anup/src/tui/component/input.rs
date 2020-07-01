@@ -305,8 +305,14 @@ impl Caret {
             return;
         }
 
-        self.cursor.prev_boundary(&self.buffer, 0).ok();
-        self.display_offset = self.display_offset.saturating_sub(1);
+        let old_pos = self.pos();
+
+        if let Some(new_pos) = self.cursor.prev_boundary(&self.buffer, 0).ok().flatten() {
+            let slice = &self.buffer[new_pos..old_pos];
+            let width = UnicodeWidthStr::width(slice);
+
+            self.display_offset = self.display_offset.saturating_sub(width);
+        }
     }
 
     fn move_right(&mut self) {
@@ -314,8 +320,14 @@ impl Caret {
             return;
         }
 
-        self.cursor.next_boundary(&self.buffer, 0).ok();
-        self.display_offset += 1;
+        let old_pos = self.pos();
+
+        if let Some(new_pos) = self.cursor.next_boundary(&self.buffer, 0).ok().flatten() {
+            let slice = &self.buffer[old_pos..new_pos];
+            let width = UnicodeWidthStr::width(slice);
+
+            self.display_offset += width;
+        }
     }
 
     fn move_front(&mut self) {
