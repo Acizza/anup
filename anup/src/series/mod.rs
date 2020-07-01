@@ -91,6 +91,16 @@ impl SeriesData {
         Ok(())
     }
 
+    pub fn force_sync_from_remote(&mut self, remote: &Remote) -> Result<()> {
+        // We don't want to set the new info now incase the entry sync fails
+        let info = SeriesInfo::from_remote_by_id(self.info.id, remote)?;
+
+        self.entry.force_sync_from_remote(remote)?;
+        self.info = info;
+
+        Ok(())
+    }
+
     pub fn save(&self, db: &Database) -> diesel::QueryResult<()> {
         db.conn()
             .transaction(|| {

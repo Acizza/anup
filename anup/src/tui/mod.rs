@@ -357,7 +357,7 @@ where
                 let series = try_opt_r!(self.state.series.valid_selection_mut());
 
                 match cmd {
-                    Command::SyncFromRemote => series.data.entry.force_sync_from_remote(remote)?,
+                    Command::SyncFromRemote => series.data.force_sync_from_remote(remote)?,
                     Command::SyncToRemote => series.data.entry.force_sync_to_remote(remote)?,
                     _ => unreachable!(),
                 }
