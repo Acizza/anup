@@ -85,6 +85,10 @@ impl AniList {
         }
     }
 
+    fn auth_token(&self) -> Result<&AccessToken> {
+        self.auth().map(|auth| &auth.token)
+    }
+
     fn score_format(&self) -> ScoreFormat {
         match &self {
             Self::Authenticated(auth) => auth.user.options.score_format,
@@ -96,7 +100,7 @@ impl AniList {
 impl RemoteService for AniList {
     fn search_info_by_name(&self, name: &str) -> Result<Vec<SeriesInfo>> {
         let entries: Vec<Media> = query!(
-            None,
+            self.auth_token().ok(),
             "info_by_name",
             { "name": name },
             "data" => "Page" => "media"
@@ -111,7 +115,9 @@ impl RemoteService for AniList {
     }
 
     fn search_info_by_id(&self, id: SeriesID) -> Result<SeriesInfo> {
-        let info: Media = query!(None, "info_by_id", { "id": id }, "data" => "Media")?;
+        let info: Media =
+            query!(self.auth_token().ok(), "info_by_id", { "id": id }, "data" => "Media")?;
+
         info.try_into().map_err(|_| Error::NotAnAnime)
     }
 
@@ -133,7 +139,7 @@ impl RemoteService for AniList {
     }
 
     fn update_list_entry(&self, entry: &SeriesEntry) -> Result<()> {
-        let token = self.auth().map(|auth| &auth.token)?;
+        let token = self.auth_token()?;
 
         send!(
             Some(token),
