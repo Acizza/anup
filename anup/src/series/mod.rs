@@ -8,7 +8,7 @@ use crate::file;
 use crate::file::SaveDir;
 use crate::try_opt_r;
 use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
-use anime::remote::{Remote, RemoteService, Status};
+use anime::remote::{Remote, SeriesID, Status};
 use anyhow::{anyhow, Context, Error, Result};
 use chrono::{DateTime, Duration, Utc};
 use config::SeriesConfig;
@@ -22,6 +22,7 @@ use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::fs;
 use std::io::Write;
+use std::mem;
 use std::path::{self, Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::result;
@@ -72,16 +73,12 @@ impl SeriesData {
     }
 
     pub fn update(&mut self, params: UpdateParams, db: &Database, remote: &Remote) -> Result<()> {
-        let id = params.id;
+        let id_changed = self.config.update(params, db, remote)?;
 
-        if id.is_some() && remote.is_offline() {
-            return Err(anyhow!("must be online to set a new series id"));
-        }
+        if id_changed {
+            let info = SeriesInfo::from_remote_by_id(self.config.id as SeriesID, remote)
+                .context("getting series info")?;
 
-        self.config.update(params, db)?;
-
-        if let Some(id) = id {
-            let info = SeriesInfo::from_remote_by_id(id, remote).context("getting series info")?;
             let entry = SeriesEntry::from_remote(remote, &info).context("getting series entry")?;
 
             self.info = info;
@@ -93,7 +90,7 @@ impl SeriesData {
 
     pub fn force_sync_from_remote(&mut self, remote: &Remote) -> Result<()> {
         // We don't want to set the new info now in case the entry sync fails
-        let info = SeriesInfo::from_remote_by_id(self.info.id, remote)?;
+        let info = SeriesInfo::from_remote_by_id(self.info.id as SeriesID, remote)?;
 
         self.entry.force_sync_from_remote(remote)?;
         self.info = info;
@@ -141,13 +138,20 @@ impl Series {
     /// Sets the specified parameters on the series and reloads any neccessary state.
     pub fn update(
         &mut self,
-        params: UpdateParams,
+        mut params: UpdateParams,
         config: &Config,
         db: &Database,
         remote: &Remote,
     ) -> Result<()> {
+        let episodes = mem::take(&mut params.episodes);
+
         self.data.update(params, db, remote)?;
-        self.episodes = Self::scan_episodes(&self.data, config)?;
+
+        self.episodes = match episodes {
+            Some(episodes) => episodes,
+            None => Self::scan_episodes(&self.data, config)?,
+        };
+
         Ok(())
     }
 
@@ -357,6 +361,14 @@ impl LoadedSeries {
         }
     }
 
+    pub fn info(&self) -> Option<&SeriesInfo> {
+        match self {
+            Self::Complete(series) => Some(&series.data.info),
+            Self::Partial(data, _) => Some(&data.info),
+            Self::None(_, _) => None,
+        }
+    }
+
     pub fn complete_mut(&mut self) -> Option<&mut Series> {
         match self {
             Self::Complete(series) => Some(series),
@@ -364,12 +376,49 @@ impl LoadedSeries {
         }
     }
 
+    #[inline(always)]
+    pub fn id(&self) -> Option<i32> {
+        self.info().map(|info| info.id)
+    }
+
+    #[inline(always)]
     pub fn nickname(&self) -> &str {
+        self.config().nickname.as_ref()
+    }
+
+    #[inline(always)]
+    pub fn path(&self) -> &SeriesPath {
+        &self.config().path
+    }
+
+    #[inline(always)]
+    pub fn parser(&self) -> &EpisodeParser {
+        &self.config().episode_parser
+    }
+
+    pub fn update(
+        &mut self,
+        params: UpdateParams,
+        config: &Config,
+        db: &Database,
+        remote: &Remote,
+    ) -> Result<()> {
         match self {
-            Self::Complete(series) => series.data.config.nickname.as_ref(),
-            Self::Partial(data, _) => data.config.nickname.as_ref(),
-            Self::None(cfg, _) => cfg.nickname.as_ref(),
+            Self::Complete(series) => {
+                series.update(params, config, db, remote)?;
+                series.save(db)?;
+            }
+            Self::Partial(data, _) => {
+                data.update(params, db, remote)?;
+                data.save(db)?;
+            }
+            Self::None(cfg, _) => {
+                cfg.update(params, db, remote)?;
+                cfg.save(db)?;
+            }
         }
+
+        Ok(())
     }
 }
 
@@ -415,43 +464,12 @@ impl SeriesParams {
     }
 }
 
-#[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
 pub struct UpdateParams {
-    pub id: Option<i32>,
+    pub id: Option<SeriesID>,
     pub path: Option<SeriesPath>,
     pub parser: Option<EpisodeParser>,
-}
-
-impl UpdateParams {
-    pub fn from_strings(
-        id: Option<String>,
-        path: Option<String>,
-        parser: Option<String>,
-        config: &Config,
-    ) -> Result<Self> {
-        let id = match id {
-            Some(id) => Some(id.parse::<i32>()?),
-            None => None,
-        };
-
-        let parser = match parser {
-            Some(pattern) => {
-                let parser = if pattern.is_empty() {
-                    EpisodeParser::default()
-                } else {
-                    EpisodeParser::custom(pattern)
-                };
-
-                Some(parser)
-            }
-            None => None,
-        };
-
-        let path = path.map(|path| SeriesPath::new(PathBuf::from(path), config));
-
-        Ok(Self { id, path, parser })
-    }
+    pub episodes: Option<SortedEpisodes>,
 }
 
 pub struct LastWatched(Option<String>);

@@ -2,6 +2,7 @@ use super::{SeriesParams, SeriesPath, UpdateParams};
 use crate::database::schema::series_configs;
 use crate::database::{self, Database};
 use anime::local::EpisodeParser;
+use anime::remote::{Remote, RemoteService};
 use anyhow::{anyhow, Result};
 use diesel::prelude::*;
 use std::borrow::Cow;
@@ -30,14 +31,25 @@ impl SeriesConfig {
         })
     }
 
-    pub fn update(&mut self, params: UpdateParams, db: &Database) -> Result<()> {
-        if let Some(id) = params.id {
-            if let Some(existing) = Self::id_exists(db, id) {
-                return Err(anyhow!("series already exists as {}", existing));
-            }
+    /// Update the `SeriesConfig` fields with the specified `params`.
+    ///
+    /// Returns true if the series ID has changed.
+    pub fn update(&mut self, params: UpdateParams, db: &Database, remote: &Remote) -> Result<bool> {
+        let id_changed = match params.id {
+            Some(id) if id as i32 != self.id => {
+                if remote.is_offline() {
+                    return Err(anyhow!("must be online to set a new series id"));
+                }
 
-            self.id = id;
-        }
+                if let Some(existing) = Self::id_exists(db, id as i32) {
+                    return Err(anyhow!("series already exists as {}", existing));
+                }
+
+                self.id = id as i32;
+                true
+            }
+            Some(_) | None => false,
+        };
 
         if let Some(path) = params.path {
             self.path = path;
@@ -47,7 +59,7 @@ impl SeriesConfig {
             self.episode_parser = parser;
         }
 
-        Ok(())
+        Ok(id_changed)
     }
 
     pub fn save(&self, db: &Database) -> diesel::QueryResult<usize> {

@@ -8,6 +8,7 @@ use super::{Component, Draw};
 use crate::series::config::SeriesConfig;
 use crate::series::info::InfoResult;
 use crate::series::SeriesParams;
+use crate::try_opt_r;
 use crate::tui::{CurrentAction, UIState};
 use add_series::{AddSeriesPanel, AddSeriesResult};
 use anime::local::SortedEpisodes;
@@ -39,9 +40,15 @@ impl MainPanel {
             return Err(anyhow!("must be online to add a series"));
         }
 
-        self.current = Panel::add_series(state);
+        self.current = Panel::add_series(state)?;
         state.current_action = CurrentAction::FocusedOnMainPanel;
 
+        Ok(())
+    }
+
+    pub fn switch_to_update_series(&mut self, state: &mut UIState) -> Result<()> {
+        self.current = Panel::update_series(state)?;
+        state.current_action = CurrentAction::FocusedOnMainPanel;
         Ok(())
     }
 
@@ -130,6 +137,12 @@ impl Component for MainPanel {
                     self.add_partial_series(*partial, state)?;
                     Ok(())
                 }
+                Ok(AddSeriesResult::UpdateSeries(params)) => {
+                    let selected = try_opt_r!(state.series.selected_mut());
+                    selected.update(*params, &state.config, &state.db, &state.remote)?;
+                    self.reset(state);
+                    Ok(())
+                }
                 Err(err) => Err(err),
             },
             Panel::SelectSeries(panel) => match panel.process_key(key, &mut ()) {
@@ -204,8 +217,16 @@ impl Panel {
         Self::Info(InfoPanel::new())
     }
 
-    fn add_series(state: &UIState) -> Self {
-        Self::AddSeries(AddSeriesPanel::init(state).into())
+    fn add_series(state: &UIState) -> Result<Self> {
+        use add_series::Mode;
+        let panel = AddSeriesPanel::init(state, Mode::AddSeries)?;
+        Ok(Self::AddSeries(panel.into()))
+    }
+
+    fn update_series(state: &UIState) -> Result<Self> {
+        use add_series::Mode;
+        let panel = AddSeriesPanel::init(state, Mode::UpdateSeries)?;
+        Ok(Self::AddSeries(panel.into()))
     }
 
     #[inline(always)]

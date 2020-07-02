@@ -4,6 +4,7 @@ use crate::tui::component::Draw;
 use crate::tui::widget_util::{block, style, text};
 use anime::local::detect::CustomPattern;
 use anime::local::EpisodeParser;
+use anime::remote::SeriesID;
 use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -28,6 +29,7 @@ pub struct Input {
     /// Indicates whether the placeholder should be used if present.
     /// Mainly used for toggling.
     pub use_placeholder: bool,
+    pub disabled: bool,
 }
 
 impl Input {
@@ -52,6 +54,7 @@ impl Input {
             draw_mode,
             placeholder,
             use_placeholder,
+            disabled: false,
         }
     }
 
@@ -65,16 +68,39 @@ impl Input {
         Self::new(selected, DrawMode::Label(label))
     }
 
-    #[inline(always)]
-    pub fn with_label_and_hint<S>(selected: bool, label: &'static str, hint: S) -> Self
+    pub fn with_label_and_placeholder<S>(
+        selected: bool,
+        label: &'static str,
+        placeholder: S,
+    ) -> Self
     where
         S: Into<String>,
     {
         let caret = Caret::new();
-        Self::with_caret(selected, DrawMode::Label(label), Some(hint.into()), caret)
+
+        Self::with_caret(
+            selected,
+            DrawMode::Label(label),
+            Some(placeholder.into()),
+            caret,
+        )
+    }
+
+    pub fn with_label_and_text<S>(selected: bool, label: &'static str, text: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        let caret = Caret::new();
+        let mut input = Self::with_caret(selected, DrawMode::Label(label), None, caret);
+        input.caret.push_str(text.as_ref());
+        input
     }
 
     pub fn process_key(&mut self, key: Key) {
+        if self.disabled {
+            return;
+        }
+
         match key {
             Key::Char(ch) => self.caret.push(ch),
             Key::Backspace => self.caret.pop(),
@@ -193,11 +219,15 @@ where
     fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
         self.visible_width = rect.width;
 
-        let block_color = match (self.selected, self.error) {
-            (true, true) => Some(Color::LightRed),
-            (true, false) => Some(Color::Blue),
-            (false, true) => Some(Color::Red),
-            (false, false) => None,
+        let block_color = if self.disabled {
+            Some(Color::DarkGray)
+        } else {
+            match (self.selected, self.error) {
+                (true, true) => Some(Color::LightRed),
+                (true, false) => Some(Color::Blue),
+                (false, true) => Some(Color::Red),
+                (false, false) => None,
+            }
         };
 
         let mut block = block::with_borders(None);
@@ -213,8 +243,15 @@ where
                     .constraints([Constraint::Length(1), Constraint::Length(3)].as_ref())
                     .split(rect);
 
-                let text = [text::bold(*label)];
-                let widget = Paragraph::new(text.iter())
+                let text = if self.disabled {
+                    text::bold_with(*label, |s| s.fg(Color::DarkGray))
+                } else {
+                    text::bold(*label)
+                };
+
+                let text_items = [text];
+
+                let widget = Paragraph::new(text_items.iter())
                     .wrap(false)
                     .alignment(Alignment::Center);
 
@@ -402,17 +439,26 @@ pub struct NameInput(Input);
 impl NameInput {
     const LABEL: &'static str = "Name";
 
-    #[inline(always)]
     pub fn new(selected: bool) -> Self {
         Self(Input::with_label(selected, Self::LABEL))
     }
 
-    #[inline(always)]
     pub fn with_placeholder<S>(selected: bool, name: S) -> Self
     where
         S: Into<String>,
     {
-        Self(Input::with_label_and_hint(selected, Self::LABEL, name))
+        let input = Input::with_label_and_placeholder(selected, Self::LABEL, name);
+        Self(input)
+    }
+
+    pub fn disabled_with_placeholder<S>(name: S) -> Self
+    where
+        S: Into<String>,
+    {
+        let mut input = Input::with_label_and_placeholder(false, Self::LABEL, name);
+        input.disabled = true;
+
+        Self(input)
     }
 }
 
@@ -426,7 +472,7 @@ impl ValidatedInput for NameInput {
     }
 
     fn validate(&mut self) {
-        let empty = self.0.text().is_empty();
+        let empty = !self.0.disabled && self.0.text().is_empty();
         self.0.error = empty;
     }
 
@@ -451,7 +497,7 @@ impl_draw_for_input!(NameInput);
 
 pub struct IDInput {
     input: Input,
-    id: Option<i32>,
+    id: Option<SeriesID>,
 }
 
 impl IDInput {
@@ -461,6 +507,13 @@ impl IDInput {
         Self {
             input: Input::with_label(selected, Self::LABEL),
             id: None,
+        }
+    }
+
+    pub fn with_id(selected: bool, id: SeriesID) -> Self {
+        Self {
+            input: Input::with_label_and_text(selected, Self::LABEL, id.to_string()),
+            id: Some(id),
         }
     }
 }
@@ -484,7 +537,7 @@ impl ValidatedInput for IDInput {
         }
 
         let (result, error) = match text.parse() {
-            Ok(num) if num >= 0 => (Some(num), false),
+            Ok(num) => (Some(num), false),
             _ => (None, true),
         };
 
@@ -502,7 +555,7 @@ impl ValidatedInput for IDInput {
 }
 
 impl ParsedValue for IDInput {
-    type Value = Option<i32>;
+    type Value = Option<SeriesID>;
 
     fn parsed_value(&self) -> &Self::Value {
         &self.id
@@ -536,9 +589,17 @@ impl PathInput {
         let path_display = path.inner().to_string_lossy();
 
         Self {
-            input: Input::with_label_and_hint(selected, Self::LABEL, path_display),
+            input: Input::with_label_and_placeholder(selected, Self::LABEL, path_display),
             base_path: config.series_dir.clone(),
             path: None,
+        }
+    }
+
+    pub fn with_path(selected: bool, config: &Config, path: SeriesPath) -> Self {
+        Self {
+            input: Input::with_label_and_text(selected, Self::LABEL, format!("{}", path.display())),
+            base_path: config.series_dir.clone(),
+            path: Some(path),
         }
     }
 }
@@ -598,6 +659,16 @@ impl ParserInput {
     pub fn new(selected: bool) -> Self {
         Self {
             input: Input::with_label(selected, Self::LABEL),
+            parser: EpisodeParser::default(),
+        }
+    }
+
+    pub fn with_text<S>(selected: bool, pattern: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        Self {
+            input: Input::with_label_and_text(selected, Self::LABEL, pattern),
             parser: EpisodeParser::default(),
         }
     }

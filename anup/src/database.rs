@@ -106,7 +106,7 @@ impl Drop for Database {
 
 #[derive(Clone, Debug, Default, AsExpression, FromSqlRow)]
 #[sql_type = "Text"]
-pub struct PlayerArgs(SmallVec<[String; 3]>);
+pub struct PlayerArgs(SmallVec<[String; 2]>);
 
 impl PlayerArgs {
     #[inline(always)]
@@ -146,20 +146,20 @@ where
     }
 }
 
-impl AsRef<SmallVec<[String; 3]>> for PlayerArgs {
-    fn as_ref(&self) -> &SmallVec<[String; 3]> {
+impl AsRef<SmallVec<[String; 2]>> for PlayerArgs {
+    fn as_ref(&self) -> &SmallVec<[String; 2]> {
         &self.0
     }
 }
 
-impl From<SmallVec<[String; 3]>> for PlayerArgs {
-    fn from(value: SmallVec<[String; 3]>) -> Self {
+impl From<SmallVec<[String; 2]>> for PlayerArgs {
+    fn from(value: SmallVec<[String; 2]>) -> Self {
         Self(value)
     }
 }
 
 impl Deref for PlayerArgs {
-    type Target = SmallVec<[String; 3]>;
+    type Target = SmallVec<[String; 2]>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

@@ -288,6 +288,9 @@ where
                     capture!(self.episode_watcher.begin_watching_episode(&mut self.state))
                 }
                 Key::Char('a') => capture!(self.main_panel.switch_to_add_series(&mut self.state)),
+                Key::Char('e') => {
+                    capture!(self.main_panel.switch_to_update_series(&mut self.state))
+                }
                 Key::Char('u') => self.main_panel.switch_to_user_panel(&mut self.state),
                 Key::Char('s') => capture!(self.main_panel.switch_to_split_series(&mut self.state)),
                 Key::Char(COMMAND_KEY) => {
@@ -330,27 +333,6 @@ where
                 match direction {
                     ProgressDirection::Forwards => series.episode_completed(remote, config, db),
                     ProgressDirection::Backwards => series.episode_regressed(remote, config, db),
-                }
-            }
-            Command::Set(params) => {
-                let status = try_opt_r!(self.state.series.selected_mut());
-
-                match status {
-                    LoadedSeries::Complete(series) => {
-                        series.update(params, config, db, remote)?;
-                        series.save(db)?;
-                        Ok(())
-                    }
-                    LoadedSeries::Partial(data, _) => {
-                        data.update(params, db, remote)?;
-                        data.save(db)?;
-                        Ok(())
-                    }
-                    LoadedSeries::None(cfg, _) => {
-                        cfg.update(params, db)?;
-                        cfg.save(db)?;
-                        Ok(())
-                    }
                 }
             }
             cmd @ Command::SyncFromRemote | cmd @ Command::SyncToRemote => {

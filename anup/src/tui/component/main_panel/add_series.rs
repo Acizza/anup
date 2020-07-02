@@ -2,7 +2,7 @@ use super::PartialSeries;
 use crate::config::Config;
 use crate::file;
 use crate::series::info::{InfoSelector, SeriesInfo};
-use crate::series::{self, SeriesParams, SeriesPath};
+use crate::series::{self, LoadedSeries, SeriesParams, SeriesPath, UpdateParams};
 use crate::tui::component::input::{
     IDInput, Input, NameInput, ParsedValue, ParserInput, PathInput, ValidatedInput,
 };
@@ -11,7 +11,8 @@ use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
 use crate::{try_opt_r, try_opt_ret};
 use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
-use anyhow::Result;
+use anime::remote::SeriesID;
+use anyhow::{Context, Result};
 use std::borrow::Cow;
 use std::mem;
 use std::time::Instant;
@@ -37,7 +38,7 @@ impl PanelInputs {
     /// Creates all panel inputs.
     ///
     /// Returns a new `PanelInputs` and a boolean indicating whether any inputs had their placeholder set.
-    fn init(config: &Config) -> (Self, bool) {
+    fn init_with_placeholders(config: &Config) -> (Self, bool) {
         use anime::local::detect::dir as anime_dir;
 
         let detected_path = file::last_modified_dir(&config.series_dir).ok().flatten();
@@ -64,6 +65,25 @@ impl PanelInputs {
         };
 
         (result, placeholder_set)
+    }
+
+    fn init_with_series(config: &Config, series: &LoadedSeries) -> Self {
+        let id = series
+            .id()
+            .map(|id| IDInput::with_id(false, id as SeriesID))
+            .unwrap_or_else(|| IDInput::new(false));
+
+        let parser_pattern = match series.parser() {
+            EpisodeParser::Default => Cow::Borrowed(""),
+            EpisodeParser::Custom(cus) => cus.inner().into(),
+        };
+
+        Self {
+            name: NameInput::disabled_with_placeholder(series.nickname()),
+            id,
+            path: PathInput::with_path(false, config, series.path().to_owned()),
+            parser: ParserInput::with_text(false, parser_pattern),
+        }
     }
 
     #[inline(always)]
@@ -93,11 +113,23 @@ pub struct AddSeriesPanel {
     error: Option<Cow<'static, str>>,
     last_update: Option<Instant>,
     series_builder: SeriesBuilder,
+    mode: Mode,
 }
 
 impl AddSeriesPanel {
-    pub fn init(state: &UIState) -> Self {
-        let (inputs, placeholder_set) = PanelInputs::init(&state.config);
+    pub fn init(state: &UIState, mode: Mode) -> Result<Self> {
+        let (inputs, placeholder_set) = match mode {
+            Mode::AddSeries => PanelInputs::init_with_placeholders(&state.config),
+            Mode::UpdateSeries => {
+                let selected = state
+                    .series
+                    .selected()
+                    .context("must select a series in order to update it")?;
+
+                let inputs = PanelInputs::init_with_series(&state.config, selected);
+                (inputs, true)
+            }
+        };
 
         let mut result = Self {
             inputs,
@@ -105,6 +137,7 @@ impl AddSeriesPanel {
             error: None,
             last_update: None,
             series_builder: SeriesBuilder::new(),
+            mode,
         };
 
         // If any inputs have a placeholder, we should update our detected series now
@@ -112,7 +145,7 @@ impl AddSeriesPanel {
             result.series_builder.update(&result.inputs, state).ok();
         }
 
-        result
+        Ok(result)
     }
 
     #[inline(always)]
@@ -266,10 +299,7 @@ impl Component for AddSeriesPanel {
                     return Ok(AddSeriesResult::Ok);
                 }
 
-                match self.series_builder.build(&self.inputs, state) {
-                    Ok(partial) => Ok(AddSeriesResult::AddSeries(Box::new(partial))),
-                    Err(err) => Err(err),
-                }
+                self.series_builder.build(&self.inputs, state, self.mode)
             }
             Key::Char('\t') => {
                 self.validate_selected();
@@ -311,7 +341,12 @@ where
             .horizontal_margin(2)
             .split(rect);
 
-        let outline = block::with_borders("Add Series");
+        let title = match self.mode {
+            Mode::AddSeries => "Add Series",
+            Mode::UpdateSeries => "Update Selected Series",
+        };
+
+        let outline = block::with_borders(title);
         frame.render_widget(outline, rect);
 
         self.draw_add_series_panel(split[0], frame);
@@ -323,6 +358,13 @@ pub enum AddSeriesResult {
     Ok,
     Reset,
     AddSeries(Box<PartialSeries>),
+    UpdateSeries(Box<UpdateParams>),
+}
+
+#[derive(Copy, Clone)]
+pub enum Mode {
+    AddSeries,
+    UpdateSeries,
 }
 
 struct SeriesBuilder {
@@ -374,7 +416,12 @@ impl SeriesBuilder {
         }
     }
 
-    fn build(&mut self, inputs: &PanelInputs, state: &UIState) -> Result<PartialSeries> {
+    fn build(
+        &mut self,
+        inputs: &PanelInputs,
+        state: &UIState,
+        mode: Mode,
+    ) -> Result<AddSeriesResult> {
         let built = match self.update(inputs, state) {
             Ok(_) => mem::take(&mut self.params).unwrap(),
             Err(err) => return Err(err),
@@ -384,19 +431,33 @@ impl SeriesBuilder {
         let episodes = built.episodes.take_episodes()?;
         let params = built.params;
 
-        let info = {
-            let id = inputs.id.parsed_value();
-            let sel = id.map_or_else(
-                || InfoSelector::from_path_or_name(&params.path, &params.name),
-                InfoSelector::ID,
-            );
+        match mode {
+            Mode::AddSeries => {
+                let info = {
+                    let id = inputs.id.parsed_value();
+                    let sel = id.map_or_else(
+                        || InfoSelector::from_path_or_name(&params.path, &params.name),
+                        InfoSelector::ID,
+                    );
 
-            SeriesInfo::from_remote(sel, &state.remote)?
-        };
+                    SeriesInfo::from_remote(sel, &state.remote)?
+                };
 
-        let params = SeriesParams::new(params.name, params.path, params.parser);
+                let partial = PartialSeries::new(info, params, episodes);
 
-        Ok(PartialSeries::new(info, params, episodes))
+                Ok(AddSeriesResult::AddSeries(partial.into()))
+            }
+            Mode::UpdateSeries => {
+                let params = UpdateParams {
+                    id: inputs.id.parsed_value().to_owned(),
+                    path: Some(params.path),
+                    parser: Some(params.parser),
+                    episodes: Some(episodes),
+                };
+
+                Ok(AddSeriesResult::UpdateSeries(params.into()))
+            }
+        }
     }
 }
 
@@ -416,14 +477,16 @@ impl ParsedEpisodes {
 
         let result = episodes
             .take_season_episodes_or_present()
-            .map(|eps| {
-                Self::episode_range_str(&eps)
-                    .map(|range| Self::Parsed(eps, range))
-                    .unwrap_or(Self::NoneFound)
-            })
+            .map(Self::from_episodes)
             .unwrap_or(Self::NeedsSplitting);
 
         Ok(result)
+    }
+
+    fn from_episodes(episodes: SortedEpisodes) -> Self {
+        Self::episode_range_str(&episodes)
+            .map(|range| Self::Parsed(episodes, range))
+            .unwrap_or(Self::NoneFound)
     }
 
     fn take_episodes(self) -> Result<SortedEpisodes> {

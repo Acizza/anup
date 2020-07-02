@@ -1,12 +1,10 @@
 use crate::config::Config;
-use crate::series::UpdateParams;
 use crate::tui::component::input::Input;
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, style};
 use crate::tui::UIState;
 use anyhow::{anyhow, Result};
 use smallvec::{smallvec, SmallVec};
-use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::result;
 use termion::event::Key;
@@ -235,24 +233,6 @@ fn split_shell_words<'a>(string: &'a str) -> SmallVec<[&'a str; 3]> {
     slices
 }
 
-fn parse_name_value_pairs<'a, I>(pairs: I) -> HashMap<String, String>
-where
-    I: IntoIterator<Item = &'a &'a str>,
-{
-    let is_quote = |c| c == '\"' || c == '\'';
-
-    pairs
-        .into_iter()
-        .filter_map(|pair| {
-            let idx = pair.find('=')?;
-            let (name, value) = pair.split_at(idx);
-            let value = value[1..].trim_matches(is_quote);
-            Some((name, value))
-        })
-        .map(|(name, value)| (name.into(), value.into()))
-        .collect()
-}
-
 macro_rules! impl_command_matching {
     ($enum_name:ident, $num_cmds:expr, $($field:pat => { name: $name:expr, usage: $usage:expr, min_args: $min_args:expr, fn: $parse_fn:expr, },)+) => {
         impl $enum_name {
@@ -294,17 +274,14 @@ macro_rules! impl_command_matching {
 }
 
 /// A parsed command with its arguments.
-#[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
 pub enum Command {
     /// Remove the selected series from the program.
     Delete,
     /// Specify the video player arguments for the selected season.
-    PlayerArgs(SmallVec<[String; 3]>),
+    PlayerArgs(SmallVec<[String; 2]>),
     /// Increment / decrement the watched episodes of the selected season.
     Progress(ProgressDirection),
-    /// Set the parameters for the selected series.
-    Set(UpdateParams),
     /// Syncronize the selected season to the remote service.
     SyncFromRemote,
     /// Syncronize the selected season from the remote service.
@@ -315,7 +292,7 @@ pub enum Command {
     Status(anime::remote::Status),
 }
 
-impl_command_matching!(Command, 8,
+impl_command_matching!(Command, 7,
     Delete => {
         name: "delete",
         usage: "",
@@ -341,16 +318,6 @@ impl_command_matching!(Command, 8,
         fn: |args: &[&str], _| {
             let dir = ProgressDirection::try_from(args[0])?;
             Ok(Command::Progress(dir))
-        },
-    },
-    Set(_) => {
-        name: "set",
-        usage: "[id=value] [path=\"value\"] [pattern=\"pattern with # marker\"]",
-        min_args: 1,
-        fn: |args: &[&str], config| {
-            let mut pairs = parse_name_value_pairs(args);
-            let params = UpdateParams::from_strings(pairs.remove("id"), pairs.remove("path"), pairs.remove("pattern"), config)?;
-            Ok(Command::Set(params))
         },
     },
     SyncFromRemote => {
@@ -475,7 +442,7 @@ mod tests {
 
         test_command!("delete\n", Command::Delete);
 
-        let expected_args: SmallVec<[_; 3]> = smallvec!["arg1".into(), "arg2".into()];
+        let expected_args: SmallVec<[_; 2]> = smallvec!["arg1".into(), "arg2".into()];
 
         match enter_command("args arg1 arg2\n") {
             Command::PlayerArgs(args) => {

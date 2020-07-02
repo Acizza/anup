@@ -1,7 +1,7 @@
 use super::SeriesPath;
 use crate::database::schema::series_info;
 use crate::database::Database;
-use anime::remote::{Remote, RemoteService, SeriesInfo as RemoteInfo};
+use anime::remote::{Remote, RemoteService, SeriesID, SeriesInfo as RemoteInfo};
 use anyhow::Result;
 use diesel::prelude::*;
 use std::borrow::Cow;
@@ -38,9 +38,9 @@ impl SeriesInfo {
         }
     }
 
-    pub fn from_remote_by_id(id: i32, remote: &Remote) -> Result<Self> {
+    pub fn from_remote_by_id(id: SeriesID, remote: &Remote) -> Result<Self> {
         remote
-            .search_info_by_id(id as u32)
+            .search_info_by_id(id)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -83,7 +83,7 @@ impl From<anime::remote::SeriesInfo> for SeriesInfo {
 #[allow(variant_size_differences)]
 pub enum InfoSelector {
     Name(String),
-    ID(i32),
+    ID(SeriesID),
 }
 
 impl InfoSelector {
