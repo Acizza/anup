@@ -76,14 +76,11 @@ impl SeriesConfig {
         series_configs.load(db.conn())
     }
 
-    pub fn load_by_name<S>(db: &Database, name: S) -> diesel::QueryResult<Self>
-    where
-        S: AsRef<str>,
-    {
+    pub fn load_by_name(db: &Database, name: &str) -> diesel::QueryResult<Self> {
         use crate::database::schema::series_configs::dsl::*;
 
         series_configs
-            .filter(nickname.eq(name.as_ref()))
+            .filter(nickname.eq(name))
             .get_result(db.conn())
     }
 

@@ -24,11 +24,8 @@ pub mod title_and_episode {
     use nom::sequence::{separated_pair, tuple};
     use nom::IResult;
 
-    pub fn parse<S>(input: S) -> Option<ParsedEpisode>
-    where
-        S: AsRef<str>,
-    {
-        let input = input.as_ref().chars().rev().collect::<String>();
+    pub fn parse(input: &str) -> Option<ParsedEpisode> {
+        let input = input.chars().rev().collect::<String>();
 
         let (_, (_, _, (title, episode, category))) =
             tuple((reverse::tags, whitespace, title_and_episode))(&input).ok()?;
@@ -96,11 +93,8 @@ pub mod title_episode_desc {
     use nom::sequence::tuple;
     use nom::IResult;
 
-    pub fn parse<S>(input: S) -> Option<ParsedEpisode>
-    where
-        S: AsRef<str>,
-    {
-        let input = input.as_ref().chars().rev().collect::<String>();
+    pub fn parse(input: &str) -> Option<ParsedEpisode> {
+        let input = input.chars().rev().collect::<String>();
 
         let (_, (_, _, (title, episode))) =
             tuple((reverse::tags, whitespace, title_and_episode))(&input).ok()?;
@@ -133,12 +127,7 @@ pub mod episode_and_title {
     use nom::sequence::{separated_pair, tuple};
     use nom::IResult;
 
-    pub fn parse<S>(input: S) -> Option<ParsedEpisode>
-    where
-        S: AsRef<str>,
-    {
-        let input = input.as_ref();
-
+    pub fn parse(input: &str) -> Option<ParsedEpisode> {
         let (_, (_, _, (episode, title))) =
             tuple((tags, whitespace, episode_and_title))(input).ok()?;
 

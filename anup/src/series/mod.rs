@@ -574,15 +574,11 @@ impl SeriesPath {
         }
     }
 
-    pub fn closest_matching<S>(name: S, config: &Config) -> Result<Self>
-    where
-        S: AsRef<str>,
-    {
+    pub fn closest_matching(name: &str, config: &Config) -> Result<Self> {
         use anime::local::detect::dir;
 
         const MIN_CONFIDENCE: f32 = 0.6;
 
-        let name = name.as_ref();
         let dirs = file::subdirectories(&config.series_dir)?;
 
         dir::closest_match(name, MIN_CONFIDENCE, dirs.into_iter()).map_or_else(

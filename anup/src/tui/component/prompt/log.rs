@@ -65,10 +65,7 @@ impl<'a> Log<'a> {
         self.push(LogItem::context(context))
     }
 
-    pub fn push_info<S>(&mut self, info: S)
-    where
-        S: AsRef<str>,
-    {
+    pub fn push_info(&mut self, info: &str) {
         self.push(LogItem::info(info))
     }
 

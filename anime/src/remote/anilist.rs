@@ -256,12 +256,7 @@ pub enum ScoreFormat {
 }
 
 impl ScoreFormat {
-    fn points_value<S>(self, score: S) -> Option<u8>
-    where
-        S: AsRef<str>,
-    {
-        let score = score.as_ref();
-
+    fn points_value(self, score: &str) -> Option<u8> {
         let raw_score = match self {
             Self::Point100 => score.parse().ok()?,
             Self::Point10Decimal => {
