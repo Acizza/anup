@@ -4,7 +4,7 @@ use crate::file;
 use crate::series::info::{InfoSelector, SeriesInfo};
 use crate::series::{self, LoadedSeries, SeriesParams, SeriesPath, UpdateParams};
 use crate::tui::component::input::{
-    IDInput, Input, NameInput, ParsedValue, ParserInput, PathInput, ValidatedInput,
+    IDInput, Input, InputFlags, NameInput, ParsedValue, ParserInput, PathInput, ValidatedInput,
 };
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, text};
@@ -48,20 +48,20 @@ impl PanelInputs {
 
         let path = detected_path
             .as_ref()
-            .map(|path| PathInput::with_placeholder(false, config, path))
-            .unwrap_or_else(|| PathInput::new(false, config));
+            .map(|path| PathInput::with_placeholder(InputFlags::empty(), config, path))
+            .unwrap_or_else(|| PathInput::new(InputFlags::empty(), config));
 
         let name = detected_path
             .and_then(anime_dir::parse_title)
             .and_then(series::generate_nickname)
-            .map(|nickname| NameInput::with_placeholder(true, nickname))
-            .unwrap_or_else(|| NameInput::new(true));
+            .map(|nickname| NameInput::with_placeholder(InputFlags::SELECTED, nickname))
+            .unwrap_or_else(|| NameInput::new(InputFlags::SELECTED));
 
         let result = Self {
             name,
-            id: IDInput::new(false),
+            id: IDInput::new(InputFlags::empty()),
             path,
-            parser: ParserInput::new(false),
+            parser: ParserInput::new(InputFlags::empty()),
         };
 
         (result, placeholder_set)
@@ -70,8 +70,8 @@ impl PanelInputs {
     fn init_with_series(config: &Config, series: &LoadedSeries) -> Self {
         let id = series
             .id()
-            .map(|id| IDInput::with_id(false, id as SeriesID))
-            .unwrap_or_else(|| IDInput::new(false));
+            .map(|id| IDInput::with_id(InputFlags::empty(), id as SeriesID))
+            .unwrap_or_else(|| IDInput::new(InputFlags::empty()));
 
         let parser_pattern = match series.parser() {
             EpisodeParser::Default => Cow::Borrowed(""),
@@ -79,10 +79,10 @@ impl PanelInputs {
         };
 
         Self {
-            name: NameInput::disabled_with_placeholder(series.nickname()),
+            name: NameInput::with_placeholder(InputFlags::DISABLED, series.nickname()),
             id,
-            path: PathInput::with_path(false, config, series.path().to_owned()),
-            parser: ParserInput::with_text(false, parser_pattern),
+            path: PathInput::with_path(InputFlags::empty(), config, series.path().to_owned()),
+            parser: ParserInput::with_text(InputFlags::empty(), parser_pattern),
         }
     }
 
@@ -304,9 +304,9 @@ impl Component for AddSeriesPanel {
             Key::Char('\t') => {
                 self.validate_selected();
 
-                self.current_input().input_mut().selected = false;
+                self.current_input().input_mut().set_selected(false);
                 self.selected_input = (self.selected_input + 1) % self.inputs.len();
-                self.current_input().input_mut().selected = true;
+                self.current_input().input_mut().set_selected(true);
 
                 Ok(AddSeriesResult::Ok)
             }
@@ -319,7 +319,9 @@ impl Component for AddSeriesPanel {
 
                 // Our path should only use a placeholder if the user hasn't changed the name input
                 // This is to avoid locking the detected series in unless the user changes the path as well.
-                path_input.use_placeholder = name_has_input;
+                path_input
+                    .flags
+                    .set(InputFlags::IGNORE_PLACEHOLDER, !name_has_input);
 
                 self.last_update = Some(Instant::now());
                 Ok(AddSeriesResult::Ok)

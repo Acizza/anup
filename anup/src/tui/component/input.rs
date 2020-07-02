@@ -5,6 +5,7 @@ use crate::tui::widget_util::{block, style, text};
 use anime::local::detect::CustomPattern;
 use anime::local::EpisodeParser;
 use anime::remote::SeriesID;
+use bitflags::bitflags;
 use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -17,19 +18,28 @@ use tui::widgets::{Paragraph, Text};
 use unicode_segmentation::GraphemeCursor;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+bitflags! {
+    pub struct InputFlags: u8 {
+        /// Indicates that the input should is selected and can take input.
+        const SELECTED = 0b0001;
+        /// Indicates that the input has an error.
+        const HAS_ERROR = 0b0010;
+        /// Indicates whether the placeholder should be ignored if it is Some(_).
+        /// This is used to toggle it on and off without having to store the placeholder somewhere else in between.
+        const IGNORE_PLACEHOLDER = 0b0100;
+        /// Indicates that the input is disabled and will not accept input, even if selected.
+        const DISABLED = 0b1000;
+    }
+}
+
 pub struct Input {
     caret: Caret,
     visible_width: u16,
     visible_offset: usize,
-    pub selected: bool,
-    pub error: bool,
+    pub flags: InputFlags,
     pub draw_mode: DrawMode,
     /// A string to display in the input when there is no input.
     pub placeholder: Option<String>,
-    /// Indicates whether the placeholder should be used if present.
-    /// Mainly used for toggling.
-    pub use_placeholder: bool,
-    pub disabled: bool,
 }
 
 impl Input {
@@ -38,38 +48,33 @@ impl Input {
     const BORDER_SIZE: u16 = 2;
 
     fn with_caret(
-        selected: bool,
+        flags: InputFlags,
         draw_mode: DrawMode,
         placeholder: Option<String>,
         caret: Caret,
     ) -> Self {
-        let use_placeholder = placeholder.is_some();
-
         Self {
             caret,
             visible_width: 0,
             visible_offset: 0,
-            selected,
-            error: false,
+            flags,
             draw_mode,
             placeholder,
-            use_placeholder,
-            disabled: false,
         }
     }
 
     #[inline(always)]
-    pub fn new(selected: bool, draw_mode: DrawMode) -> Self {
-        Self::with_caret(selected, draw_mode, None, Caret::new())
+    pub fn new(flags: InputFlags, draw_mode: DrawMode) -> Self {
+        Self::with_caret(flags, draw_mode, None, Caret::new())
     }
 
     #[inline(always)]
-    pub fn with_label(selected: bool, label: &'static str) -> Self {
-        Self::new(selected, DrawMode::Label(label))
+    pub fn with_label(flags: InputFlags, label: &'static str) -> Self {
+        Self::new(flags, DrawMode::Label(label))
     }
 
     pub fn with_label_and_placeholder<S>(
-        selected: bool,
+        flags: InputFlags,
         label: &'static str,
         placeholder: S,
     ) -> Self
@@ -79,25 +84,25 @@ impl Input {
         let caret = Caret::new();
 
         Self::with_caret(
-            selected,
+            flags,
             DrawMode::Label(label),
             Some(placeholder.into()),
             caret,
         )
     }
 
-    pub fn with_label_and_text<S>(selected: bool, label: &'static str, text: S) -> Self
+    pub fn with_label_and_text<S>(flags: InputFlags, label: &'static str, text: S) -> Self
     where
         S: AsRef<str>,
     {
         let caret = Caret::new();
-        let mut input = Self::with_caret(selected, DrawMode::Label(label), None, caret);
+        let mut input = Self::with_caret(flags, DrawMode::Label(label), None, caret);
         input.caret.push_str(text.as_ref());
         input
     }
 
     pub fn process_key(&mut self, key: Key) {
-        if self.disabled {
+        if self.flags.contains(InputFlags::DISABLED) {
             return;
         }
 
@@ -173,7 +178,7 @@ impl Input {
     where
         B: Backend,
     {
-        if !self.selected || !Self::will_cursor_fit(rect) {
+        if !self.is_selected() || !Self::will_cursor_fit(rect) {
             return;
         }
 
@@ -189,7 +194,7 @@ impl Input {
     }
 
     pub fn text(&self) -> &str {
-        if !self.caret.is_empty() || !self.use_placeholder {
+        if !self.caret.is_empty() || self.flags.contains(InputFlags::IGNORE_PLACEHOLDER) {
             return &self.caret.buffer;
         }
 
@@ -208,6 +213,26 @@ impl Input {
     pub fn has_input(&self) -> bool {
         self.caret.is_empty()
     }
+
+    #[inline(always)]
+    pub fn has_error(&self) -> bool {
+        self.flags.contains(InputFlags::HAS_ERROR)
+    }
+
+    #[inline(always)]
+    pub fn set_error(&mut self, error: bool) {
+        self.flags.set(InputFlags::HAS_ERROR, error);
+    }
+
+    #[inline(always)]
+    pub fn is_selected(&self) -> bool {
+        self.flags.contains(InputFlags::SELECTED)
+    }
+
+    #[inline(always)]
+    pub fn set_selected(&mut self, selected: bool) {
+        self.flags.set(InputFlags::SELECTED, selected)
+    }
 }
 
 impl<B> Draw<B> for Input
@@ -219,10 +244,12 @@ where
     fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
         self.visible_width = rect.width;
 
-        let block_color = if self.disabled {
+        let is_disabled = self.flags.contains(InputFlags::DISABLED);
+
+        let block_color = if is_disabled {
             Some(Color::DarkGray)
         } else {
-            match (self.selected, self.error) {
+            match (self.is_selected(), self.has_error()) {
                 (true, true) => Some(Color::LightRed),
                 (true, false) => Some(Color::Blue),
                 (false, true) => Some(Color::Red),
@@ -243,7 +270,7 @@ where
                     .constraints([Constraint::Length(1), Constraint::Length(3)].as_ref())
                     .split(rect);
 
-                let text = if self.disabled {
+                let text = if is_disabled {
                     text::bold_with(*label, |s| s.fg(Color::DarkGray))
                 } else {
                     text::bold(*label)
@@ -264,7 +291,7 @@ where
 
         let mut text: SmallVec<[_; 2]> = smallvec![Text::raw(self.visible())];
 
-        if self.caret.is_empty() && self.use_placeholder {
+        if self.caret.is_empty() && !self.flags.contains(InputFlags::IGNORE_PLACEHOLDER) {
             if let Some(placeholder) = &self.placeholder {
                 let slice = &placeholder[self.caret.pos()..];
                 text.push(text::with_color(slice, Color::DarkGray));
@@ -397,11 +424,15 @@ impl Caret {
 pub trait ValidatedInput {
     fn label(&self) -> &'static str;
 
+    fn input(&self) -> &Input;
     fn input_mut(&mut self) -> &mut Input;
 
     fn validate(&mut self);
 
-    fn has_error(&self) -> bool;
+    fn has_error(&self) -> bool {
+        self.input().has_error()
+    }
+
     fn error_message(&self) -> Cow<'static, str>;
 
     fn error(&self) -> Option<Cow<'static, str>> {
@@ -439,25 +470,15 @@ pub struct NameInput(Input);
 impl NameInput {
     const LABEL: &'static str = "Name";
 
-    pub fn new(selected: bool) -> Self {
-        Self(Input::with_label(selected, Self::LABEL))
+    pub fn new(flags: InputFlags) -> Self {
+        Self(Input::with_label(flags, Self::LABEL))
     }
 
-    pub fn with_placeholder<S>(selected: bool, name: S) -> Self
+    pub fn with_placeholder<S>(flags: InputFlags, name: S) -> Self
     where
         S: Into<String>,
     {
-        let input = Input::with_label_and_placeholder(selected, Self::LABEL, name);
-        Self(input)
-    }
-
-    pub fn disabled_with_placeholder<S>(name: S) -> Self
-    where
-        S: Into<String>,
-    {
-        let mut input = Input::with_label_and_placeholder(false, Self::LABEL, name);
-        input.disabled = true;
-
+        let input = Input::with_label_and_placeholder(flags, Self::LABEL, name);
         Self(input)
     }
 }
@@ -467,17 +488,17 @@ impl ValidatedInput for NameInput {
         Self::LABEL
     }
 
+    fn input(&self) -> &Input {
+        &self.0
+    }
+
     fn input_mut(&mut self) -> &mut Input {
         &mut self.0
     }
 
     fn validate(&mut self) {
-        let empty = !self.0.disabled && self.0.text().is_empty();
-        self.0.error = empty;
-    }
-
-    fn has_error(&self) -> bool {
-        self.0.error
+        let empty = !self.0.flags.contains(InputFlags::DISABLED) && self.0.text().is_empty();
+        self.0.set_error(empty);
     }
 
     fn error_message(&self) -> Cow<'static, str> {
@@ -503,16 +524,16 @@ pub struct IDInput {
 impl IDInput {
     const LABEL: &'static str = "ID";
 
-    pub fn new(selected: bool) -> Self {
+    pub fn new(flags: InputFlags) -> Self {
         Self {
-            input: Input::with_label(selected, Self::LABEL),
+            input: Input::with_label(flags, Self::LABEL),
             id: None,
         }
     }
 
-    pub fn with_id(selected: bool, id: SeriesID) -> Self {
+    pub fn with_id(flags: InputFlags, id: SeriesID) -> Self {
         Self {
-            input: Input::with_label_and_text(selected, Self::LABEL, id.to_string()),
+            input: Input::with_label_and_text(flags, Self::LABEL, id.to_string()),
             id: Some(id),
         }
     }
@@ -521,6 +542,10 @@ impl IDInput {
 impl ValidatedInput for IDInput {
     fn label(&self) -> &'static str {
         Self::LABEL
+    }
+
+    fn input(&self) -> &Input {
+        &self.input
     }
 
     fn input_mut(&mut self) -> &mut Input {
@@ -532,7 +557,7 @@ impl ValidatedInput for IDInput {
 
         if text.is_empty() {
             self.id = None;
-            self.input.error = false;
+            self.input.set_error(false);
             return;
         }
 
@@ -542,11 +567,7 @@ impl ValidatedInput for IDInput {
         };
 
         self.id = result;
-        self.input.error = error;
-    }
-
-    fn has_error(&self) -> bool {
-        self.input.error
+        self.input.set_error(error);
     }
 
     fn error_message(&self) -> Cow<'static, str> {
@@ -573,15 +594,15 @@ pub struct PathInput {
 impl PathInput {
     const LABEL: &'static str = "Path";
 
-    pub fn new(selected: bool, config: &Config) -> Self {
+    pub fn new(flags: InputFlags, config: &Config) -> Self {
         Self {
-            input: Input::with_label(selected, Self::LABEL),
+            input: Input::with_label(flags, Self::LABEL),
             base_path: config.series_dir.clone(),
             path: None,
         }
     }
 
-    pub fn with_placeholder<P>(selected: bool, config: &Config, path: P) -> Self
+    pub fn with_placeholder<P>(flags: InputFlags, config: &Config, path: P) -> Self
     where
         P: Into<PathBuf>,
     {
@@ -589,15 +610,15 @@ impl PathInput {
         let path_display = path.inner().to_string_lossy();
 
         Self {
-            input: Input::with_label_and_placeholder(selected, Self::LABEL, path_display),
+            input: Input::with_label_and_placeholder(flags, Self::LABEL, path_display),
             base_path: config.series_dir.clone(),
             path: None,
         }
     }
 
-    pub fn with_path(selected: bool, config: &Config, path: SeriesPath) -> Self {
+    pub fn with_path(flags: InputFlags, config: &Config, path: SeriesPath) -> Self {
         Self {
-            input: Input::with_label_and_text(selected, Self::LABEL, format!("{}", path.display())),
+            input: Input::with_label_and_text(flags, Self::LABEL, format!("{}", path.display())),
             base_path: config.series_dir.clone(),
             path: Some(path),
         }
@@ -609,6 +630,10 @@ impl ValidatedInput for PathInput {
         Self::LABEL
     }
 
+    fn input(&self) -> &Input {
+        &self.input
+    }
+
     fn input_mut(&mut self) -> &mut Input {
         &mut self.input
     }
@@ -618,7 +643,7 @@ impl ValidatedInput for PathInput {
 
         if text.is_empty() {
             self.path = None;
-            self.input.error = false;
+            self.input.set_error(false);
             return;
         }
 
@@ -626,11 +651,7 @@ impl ValidatedInput for PathInput {
         let exists = path.exists_base(&self.base_path);
 
         self.path = if exists { Some(path) } else { None };
-        self.input.error = !exists;
-    }
-
-    fn has_error(&self) -> bool {
-        self.input.error
+        self.input.set_error(!exists);
     }
 
     fn error_message(&self) -> Cow<'static, str> {
@@ -656,32 +677,36 @@ pub struct ParserInput {
 impl ParserInput {
     const LABEL: &'static str = "Episode Pattern";
 
-    pub fn new(selected: bool) -> Self {
+    pub fn new(flags: InputFlags) -> Self {
         Self {
-            input: Input::with_label(selected, Self::LABEL),
+            input: Input::with_label(flags, Self::LABEL),
             parser: EpisodeParser::default(),
         }
     }
 
-    pub fn with_text<S>(selected: bool, pattern: S) -> Self
+    pub fn with_text<S>(flags: InputFlags, pattern: S) -> Self
     where
         S: AsRef<str>,
     {
         Self {
-            input: Input::with_label_and_text(selected, Self::LABEL, pattern),
+            input: Input::with_label_and_text(flags, Self::LABEL, pattern),
             parser: EpisodeParser::default(),
         }
     }
 
     fn reset(&mut self, with_error: bool) {
         self.parser = EpisodeParser::default();
-        self.input.error = with_error;
+        self.input.set_error(with_error);
     }
 }
 
 impl ValidatedInput for ParserInput {
     fn label(&self) -> &'static str {
         Self::LABEL
+    }
+
+    fn input(&self) -> &Input {
+        &self.input
     }
 
     fn input_mut(&mut self) -> &mut Input {
@@ -704,11 +729,7 @@ impl ValidatedInput for ParserInput {
         }
 
         self.parser = EpisodeParser::Custom(pattern);
-        self.input.error = false;
-    }
-
-    fn has_error(&self) -> bool {
-        self.input.error
+        self.input.set_error(false);
     }
 
     fn error_message(&self) -> Cow<'static, str> {

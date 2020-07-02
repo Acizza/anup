@@ -1,7 +1,7 @@
 use super::{Component, Draw, ShouldReset};
 use crate::file::SerializedFile;
 use crate::try_opt_r;
-use crate::tui::component::input::Input;
+use crate::tui::component::input::{Input, InputFlags};
 use crate::tui::widget_util::{block, style, text, SelectWidgetState, TypedSelectable};
 use crate::tui::UIState;
 use crate::user::{RemoteType, UserInfo};
@@ -32,7 +32,7 @@ impl UserPanel {
         Self {
             user_table_state: SelectWidgetState::new(),
             service_list: TypedSelectable::new(),
-            token_input: Input::with_label(false, "Paste Token"),
+            token_input: Input::with_label(InputFlags::empty(), "Paste Token"),
             current_panel: SelectedPanel::SelectUser,
         }
     }
@@ -154,7 +154,7 @@ impl UserPanel {
             .horizontal_margin(4)
             .split(rect);
 
-        self.token_input.selected = is_panel_selected;
+        self.token_input.set_selected(is_panel_selected);
         self.token_input.draw(&(), vert_split[0], frame);
 
         let services_text = ServiceList::item_data().map(Text::raw);

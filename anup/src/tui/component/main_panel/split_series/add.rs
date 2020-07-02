@@ -2,7 +2,7 @@ use super::SplitPanelResult;
 use crate::series::config::SeriesConfig;
 use crate::series::{self, SeriesParams, SeriesPath};
 use crate::try_opt_ret;
-use crate::tui::component::input::{Input, NameInput, ParsedValue, ValidatedInput};
+use crate::tui::component::input::{Input, InputFlags, NameInput, ParsedValue, ValidatedInput};
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
@@ -24,8 +24,8 @@ pub struct AddPanel {
 impl AddPanel {
     pub fn new(info: RemoteInfo, path: SeriesPath) -> Self {
         let name_input = series::generate_nickname(&info.title.preferred)
-            .map(|nickname| NameInput::with_placeholder(true, nickname))
-            .unwrap_or_else(|| NameInput::new(true));
+            .map(|nickname| NameInput::with_placeholder(InputFlags::SELECTED, nickname))
+            .unwrap_or_else(|| NameInput::new(InputFlags::SELECTED));
 
         Self {
             name_input,
