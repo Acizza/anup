@@ -28,7 +28,7 @@ default-features = false
 features = [ "sqlite" ]
 
 [dependencies.attohttpc]
-version = "~0.14.0"
+version = "0.15"
 default-features = false
 features = [ "json", "tls-rustls" ]
 
