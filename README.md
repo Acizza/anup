@@ -5,8 +5,6 @@
 
 This is a [TUI](https://en.wikipedia.org/wiki/Text-based_user_interface) application to play and manage anime with [AniList](https://anilist.co) for Linux systems.
 
-Only local files are supported.
-
 Current features include:
 * Automatic series detection (including specials, OVA's, and ONA's)
 * Easy playing of unwatched episodes
@@ -16,6 +14,8 @@ Current features include:
 * Built-in series splitter for [merged seasons](#merged-seasons) and integrated specials, OVA's, ONA's, and movies
 * Automatic series status handling (watching, rewatching, completed, etc)
 * Automatic series start / end date handling
+
+Please note that only local files are supported.
 
 # Building
 
@@ -109,27 +109,9 @@ Once the timer disappears, the watched episodes of the series will be increased 
 
 ## Modifying an Existing Series
 
-You can modify a series that has already been added to the program by using the `set` command. Each argument is described in the following sections:
+You can modify a series that has already been added to the program by selecting it and pressing the `e` key. The opened panel is similar to when adding a new series, except existing series information will be prefilled and the name input will be disabled.
 
-### ID
-
-You can modify the series ID by adding `id=<series id>` to the command. To get the series ID, follow the steps shown [here](#id).
-
-### Path
-
-The relative / absolute path to the series can be changed by adding `path="<path>"` to the command.
-
-### Episode Pattern
-
-The episode pattern can be changed by adding `pattern="<custom pattern>"` to the command. More information on the required pattern can be found [here](#episode-pattern).
-
-### Combining Options
-
-You can combine multiple options from the sections above in any order when using the `set` command. For example:
-
-`set id=1 pattern="ep#" path="/media/anime/Cowboy Bebop"`
-
-The above command will set the currently selected series to `Cowboy Bebop`, and look for episodes matching `ep#` at the path `/media/anime/Cowboy Bebop`.
+Explanations for each input can be [found above in the section about adding a series, or by clicking here](#id).
 
 ## Splitting a Series
 
