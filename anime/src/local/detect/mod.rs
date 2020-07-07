@@ -5,7 +5,7 @@ mod common;
 
 use crate::err::{Error, Result};
 use crate::SeriesKind;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::ops::{Deref, DerefMut};
 use std::str;
@@ -239,15 +239,18 @@ impl CustomPattern {
     }
 
     fn sum_char_digits(first: char, value_chars: impl Iterator<Item = char>) -> u32 {
-        let rest = value_chars
-            .take_while(char::is_ascii_digit)
-            .collect::<SmallVec<[_; 3]>>();
+        let mut chars: SmallVec<[_; 3]> = smallvec![first];
 
-        let first = [first];
+        for ch in value_chars {
+            if !ch.is_ascii_digit() {
+                break;
+            }
 
-        first
-            .iter()
-            .chain(rest.iter())
+            chars.push(ch);
+        }
+
+        chars
+            .into_iter()
             .rev()
             .enumerate()
             .map(|(base, ch)| ch.to_digit(10).unwrap_or(0) * 10u32.pow(base as u32))
