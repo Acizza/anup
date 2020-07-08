@@ -20,6 +20,7 @@ use entry::SeriesEntry;
 use info::SeriesInfo;
 use smallvec::SmallVec;
 use std::borrow::Cow;
+use std::cmp::{Ordering, PartialOrd};
 use std::fs;
 use std::io::Write;
 use std::mem;
@@ -419,6 +420,26 @@ impl LoadedSeries {
         }
 
         Ok(())
+    }
+}
+
+impl PartialEq for LoadedSeries {
+    fn eq(&self, other: &Self) -> bool {
+        self.nickname() == other.nickname()
+    }
+}
+
+impl Eq for LoadedSeries {}
+
+impl PartialOrd for LoadedSeries {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for LoadedSeries {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.nickname().cmp(other.nickname())
     }
 }
 

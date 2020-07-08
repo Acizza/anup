@@ -65,11 +65,13 @@ impl UIState {
         let users = Users::load_or_create().context("failed to load / create users")?;
         let db = Database::open().context("failed to open database")?;
 
-        let series = SeriesConfig::load_all(&db)
+        let mut series = SeriesConfig::load_all(&db)
             .context("failed to load series configs")?
             .into_iter()
             .map(|sconfig| Series::load_from_config(sconfig, &config, &db))
             .collect::<Vec<_>>();
+
+        series.sort_unstable();
 
         Ok(Self {
             series: Selection::new(series),
@@ -97,8 +99,7 @@ impl UIState {
         let nickname = series.nickname().to_string();
 
         self.series.push(series);
-        self.series
-            .sort_unstable_by(|x, y| x.nickname().cmp(y.nickname()));
+        self.series.items_mut().sort_unstable();
 
         let selected = self
             .series
@@ -464,11 +465,8 @@ impl<T> Selection<T> {
     }
 
     #[inline(always)]
-    fn sort_unstable_by<F>(&mut self, compare: F)
-    where
-        F: FnMut(&T, &T) -> std::cmp::Ordering,
-    {
-        self.items.sort_unstable_by(compare)
+    fn items_mut(&mut self) -> &mut Vec<T> {
+        &mut self.items
     }
 
     #[inline(always)]
