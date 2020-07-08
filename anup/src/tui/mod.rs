@@ -116,14 +116,17 @@ impl UIState {
         selected.try_load(&self.config, &self.db)
     }
 
-    fn delete_selected_series(&mut self) -> Result<()> {
-        let series = try_opt_r!(self.series.remove_selected());
+    fn delete_selected_series(&mut self) -> Result<LoadedSeries> {
+        let series = match self.series.remove_selected() {
+            Some(series) => series,
+            None => return Err(anyhow!("must select series to delete")),
+        };
 
         // Since we changed our selected series, we need to make sure the new one is initialized
         self.init_selected_series();
 
         series.config().delete(&self.db)?;
-        Ok(())
+        Ok(series)
     }
 }
 
@@ -292,6 +295,9 @@ where
                 Key::Char('e') => {
                     capture!(self.main_panel.switch_to_update_series(&mut self.state))
                 }
+                Key::Char('D') => {
+                    capture!(self.main_panel.switch_to_delete_series(&mut self.state))
+                }
                 Key::Char('u') => self.main_panel.switch_to_user_panel(&mut self.state),
                 Key::Char('s') => capture!(self.main_panel.switch_to_split_series(&mut self.state)),
                 Key::Char(COMMAND_KEY) => {
@@ -318,7 +324,6 @@ where
         let db = &self.state.db;
 
         match command {
-            Command::Delete => self.state.delete_selected_series(),
             Command::PlayerArgs(args) => {
                 let series = try_opt_r!(self.state.series.valid_selection_mut());
 
@@ -382,7 +387,6 @@ pub struct Selection<T> {
 }
 
 impl<T> Selection<T> {
-    #[inline(always)]
     fn new(items: Vec<T>) -> Self {
         Self {
             items,
@@ -395,7 +399,6 @@ impl<T> Selection<T> {
         self.index.get()
     }
 
-    #[inline(always)]
     fn selected(&self) -> Option<&T> {
         if self.items.is_empty() {
             return None;
@@ -404,7 +407,6 @@ impl<T> Selection<T> {
         Some(&self.items[self.index])
     }
 
-    #[inline(always)]
     fn selected_mut(&mut self) -> Option<&mut T> {
         if self.items.is_empty() {
             return None;
@@ -423,7 +425,6 @@ impl<T> Selection<T> {
         self.index.decrement(self.items.len())
     }
 
-    #[inline(always)]
     fn set_selected(&mut self, selected: usize) {
         if selected >= self.items.len() {
             return;

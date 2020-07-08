@@ -276,8 +276,6 @@ macro_rules! impl_command_matching {
 /// A parsed command with its arguments.
 #[cfg_attr(test, derive(Debug))]
 pub enum Command {
-    /// Remove the selected series from the program.
-    Delete,
     /// Specify the video player arguments for the selected season.
     PlayerArgs(SmallVec<[String; 2]>),
     /// Increment / decrement the watched episodes of the selected season.
@@ -292,13 +290,7 @@ pub enum Command {
     Status(anime::remote::Status),
 }
 
-impl_command_matching!(Command, 7,
-    Delete => {
-        name: "delete",
-        usage: "",
-        min_args: 0,
-        fn: |_, _| Ok(Command::Delete),
-    },
+impl_command_matching!(Command, 6,
     PlayerArgs(_) => {
         name: "args",
         usage: "<player args>",
@@ -439,8 +431,6 @@ mod tests {
                 }
             };
         }
-
-        test_command!("delete\n", Command::Delete);
 
         let expected_args: SmallVec<[_; 2]> = smallvec!["arg1".into(), "arg2".into()];
 

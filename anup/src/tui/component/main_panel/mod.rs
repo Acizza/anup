@@ -1,4 +1,5 @@
 mod add_series;
+mod delete_series;
 mod info;
 mod select_series;
 mod split_series;
@@ -14,6 +15,7 @@ use add_series::{AddSeriesPanel, AddSeriesResult};
 use anime::local::SortedEpisodes;
 use anime::remote::RemoteService;
 use anyhow::{anyhow, Result};
+use delete_series::DeleteSeriesPanel;
 use info::InfoPanel;
 use select_series::{SelectSeriesPanel, SelectSeriesResult, SelectState};
 use split_series::{SplitPanelResult, SplitSeriesPanel};
@@ -48,6 +50,12 @@ impl MainPanel {
 
     pub fn switch_to_update_series(&mut self, state: &mut UIState) -> Result<()> {
         self.current = Panel::update_series(state)?;
+        state.current_action = CurrentAction::FocusedOnMainPanel;
+        Ok(())
+    }
+
+    pub fn switch_to_delete_series(&mut self, state: &mut UIState) -> Result<()> {
+        self.current = Panel::delete_series(state)?;
         state.current_action = CurrentAction::FocusedOnMainPanel;
         Ok(())
     }
@@ -119,6 +127,7 @@ impl Component for MainPanel {
             Panel::Info(_) => Ok(()),
             Panel::AddSeries(panel) => capture!(panel),
             Panel::SelectSeries(panel) => capture!(panel),
+            Panel::DeleteSeries(panel) => capture!(panel),
             Panel::User(panel) => capture!(panel),
             Panel::SplitSeries(panel) => capture!(panel),
         }
@@ -163,6 +172,14 @@ impl Component for MainPanel {
                     Ok(())
                 }
             },
+            Panel::DeleteSeries(panel) => match panel.process_key(key, state) {
+                Ok(ShouldReset::Yes) => {
+                    self.reset(state);
+                    Ok(())
+                }
+                Ok(ShouldReset::No) => Ok(()),
+                Err(err) => Err(err),
+            },
             Panel::User(user) => match user.process_key(key, state) {
                 Ok(ShouldReset::Yes) => {
                     self.reset(state);
@@ -197,6 +214,7 @@ where
             Panel::Info(info) => info.draw(state, rect, frame),
             Panel::AddSeries(add) => add.draw(&(), rect, frame),
             Panel::SelectSeries(panel) => panel.draw(&(), rect, frame),
+            Panel::DeleteSeries(panel) => panel.draw(&(), rect, frame),
             Panel::User(user) => user.draw(state, rect, frame),
             Panel::SplitSeries(split) => split.draw(&(), rect, frame),
         }
@@ -207,6 +225,7 @@ enum Panel {
     Info(InfoPanel),
     AddSeries(Box<AddSeriesPanel>),
     SelectSeries(SelectSeriesPanel),
+    DeleteSeries(DeleteSeriesPanel),
     User(UserPanel),
     SplitSeries(SplitSeriesPanel),
 }
@@ -229,12 +248,15 @@ impl Panel {
         Ok(Self::AddSeries(panel.into()))
     }
 
-    #[inline(always)]
+    fn delete_series(state: &UIState) -> Result<Self> {
+        let panel = DeleteSeriesPanel::init(state)?;
+        Ok(Self::DeleteSeries(panel))
+    }
+
     fn select_series(select: SelectState) -> Self {
         Self::SelectSeries(SelectSeriesPanel::new(select))
     }
 
-    #[inline(always)]
     fn user() -> Self {
         Self::User(UserPanel::new())
     }
