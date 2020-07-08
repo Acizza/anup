@@ -237,7 +237,7 @@ impl MergedSeries {
             return;
         }
 
-        let mut episode_offset = 0;
+        let mut episode_offset = info.episodes;
 
         while let Some(sequel) = info.direct_sequel() {
             info = match remote.search_info_by_id(sequel.id) {
@@ -247,13 +247,6 @@ impl MergedSeries {
                     continue;
                 }
             };
-
-            episode_offset += info.episodes;
-
-            // Exit early if we don't have enough episodes locally to have another merged season
-            if episode_offset > last_episode_num {
-                break;
-            }
 
             let resolved = ResolvedSeries::new(
                 info.clone().into_owned(),
@@ -265,8 +258,10 @@ impl MergedSeries {
 
             results.push(Self::resolved(resolved));
 
-            // We don't need to sleep if there isn't another sequel
-            if info.sequels.is_empty() {
+            episode_offset += info.episodes;
+
+            // We can stop if we don't have anymore sequels or if we don't have enough episodes locally to have another merged season
+            if episode_offset > last_episode_num || info.direct_sequel().is_none() {
                 break;
             }
 
