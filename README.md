@@ -227,11 +227,11 @@ A merged season is simply a season of an anime that has its episodes joined toge
 | Name | Arguments | Description |
 | ---- | ----- | ----------- |
 | args | `<player args>` | The arguments to pass to the video player when playing an episode of the selected series |
-| progress | `<f, forward> | b, backwards>` | Manually increment / decrement the watched episodes of the selected series |
+| progress | `<f, forward> \| b, backwards>` | Manually increment / decrement the watched episodes of the selected series |
 | syncfromremote | | Retrieve the list entry of the selected series from AniList |
 | synctoremote | | Update the list entry of the selected series on AniList |
 | rate | `<0-100>` | Rate the selected series
-| status | `<w, watching | c, completed | h, hold | d, drop | p, plan | r, rewatch>` | Set the current watch status for the selected series
+| status | `<w, watching \| c, completed \| h, hold \| d, drop \| p, plan \| r, rewatch>` | Set the current watch status for the selected series
 
 # Automatic Status & Date Management
 
