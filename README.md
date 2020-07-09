@@ -103,15 +103,23 @@ Once at least one series has been added, you can play the next episode of one by
 
 Once you start playing an episode, you should see a timer counting down in the `Info` panel. This represents the time needed until the episode will be considered watched. You can change how much of an episode you need to watch by modifying the `percent_watched_to_progress` field in the `[episode]` section of your config file. This field can be set to `0.0` if you do not wish to use this feature.
 
-If you do not see a timer when you start playing an episode, please make sure that the video player / script used to launch your video player does **not** exit immediately after starting to play something. If this can't be fixed, you can use the `progress f` command to manually increment the watched episode count.
+If you do not see a timer when you start playing an episode and have not touched the `percent_watched_to_progress` field in your config, make sure that the video player / script used to launch your video player does **not** exit immediately after starting to play something. You will need to set `percent_watched_to_progress` to `0.0` if there is no way to bypass that behavior, as episodes will never be counted as watched otherwise.
 
 Once the timer disappears, the watched episodes of the series will be increased and synced to AniList (unless offline) when you exit your video player.
+
+If the program cannot sync the newly watched episode to AniList (either because you're running in offline mode, or the request fails), you should notice a `[*]` symbol next to the series name on the main panel. This indicates that the series has changes locally that are not synced to AniList. The changes will automatically be synced to AniList the next time you run the program in online mode and do something with the series (watch an episode, rate it, etc). You can also use the `synctoremote` command to perform a sync immediately.
 
 ## Modifying an Existing Series
 
 You can modify a series that has already been added to the program by selecting it and pressing the `e` key. The opened panel is similar to when adding a new series, except existing series information will be prefilled and the name input will be disabled.
 
 Explanations for each input can be [found above in the section about adding a series, or by clicking here](#id).
+
+## Deleting a Series
+
+You can remove a series from the program (and optionally delete its files on disk) by selecting the series with the arrow keys and then by pressing `Shift + D`. The opened panel will show you the path the series is located in and display whether or not the episodes will be deleted on disk as well. You can toggle whether or not the episodes will be deleted by pressing the `d` key. By default, the episodes will **not** be deleted.
+
+Once you have verified that everything is correct, you can press `Enter` to remove the series.
 
 ## Splitting a Series
 
@@ -175,6 +183,55 @@ A merged season is simply a season of an anime that has its episodes joined toge
     <td>3</td>
   </tr>
 </table>
+
+# Keybindings
+
+| Key       | Action                                                 |
+| --------- | ------------------------------------------------------ |
+| Q         | Exit the program                                       |
+| Enter     | Play the next unwatched episode of the selected series |
+| A         | Add a new series to the program                        |
+| E         | Edit the selected series                               |
+| Shift + D | Delete the selected series                             |
+| S         | Split the selected series                              |
+| U         | Open the user management panel                         |
+| :         | Enter a command                                        |
+
+## Panels
+
+| Key    | Action                                     |
+| ------ | ------------------------------------------ |
+| Tab    | Cycle the active input / focused sub-panel |
+| Escape | Go back one panel                          |
+
+## Inputs
+
+| Key             | Action                                  |
+| --------------- | --------------------------------------- |
+| Left arrow key  | Move the cursor to the left             |
+| Right arrow key | Move the cursor to the right            |
+| Home            | Move the cursor to the beginning        |
+| End             | Move the cursor to the end              |
+| Backspace       | Delete the character next to the cursor |
+
+## Command Entry
+
+| Key    | Action                   |
+| ------ | ------------------------ |
+| Tab    | Autocomplete the command |
+| Enter  | Run the command          |
+| Escape | Return to the main panel |
+
+# Commands
+
+| Name | Arguments | Description |
+| ---- | ----- | ----------- |
+| args | `<player args>` | The arguments to pass to the video player when playing an episode of the selected series |
+| progress | `<f, forward> | b, backwards>` | Manually increment / decrement the watched episodes of the selected series |
+| syncfromremote | | Retrieve the list entry of the selected series from AniList |
+| synctoremote | | Update the list entry of the selected series on AniList |
+| rate | `<0-100>` | Rate the selected series
+| status | `<w, watching | c, completed | h, hold | d, drop | p, plan | r, rewatch>` | Set the current watch status for the selected series
 
 # Automatic Status & Date Management
 
