@@ -229,11 +229,11 @@ impl MergedSeries {
         config: &Config,
         results: &mut Vec<Self>,
     ) {
-        let last_episode_num = episodes.last_episode_number();
+        let highest_episode = episodes.highest_episode_number();
         let mut info = Cow::Borrowed(base_info);
 
         // Exit early if we don't have enough episodes locally to have any merged seasons
-        if info.episodes > last_episode_num {
+        if info.episodes > highest_episode {
             return;
         }
 
@@ -261,7 +261,7 @@ impl MergedSeries {
             episode_offset += info.episodes;
 
             // We can stop if we don't have anymore sequels or if we don't have enough episodes locally to have another merged season
-            if episode_offset > last_episode_num || info.direct_sequel().is_none() {
+            if episode_offset > highest_episode || info.direct_sequel().is_none() {
                 break;
             }
 

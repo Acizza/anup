@@ -89,8 +89,8 @@ impl SortedEpisodes {
     }
 
     #[inline]
-    pub fn last_episode_number(&self) -> u32 {
-        self.0.iter().map(|ep| ep.number).max().unwrap_or(0)
+    pub fn highest_episode_number(&self) -> u32 {
+        self.0.last().map(|ep| ep.number).unwrap_or(0)
     }
 
     fn sort(&mut self) {
