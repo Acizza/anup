@@ -5,7 +5,7 @@ use crate::tui::{CurrentAction, UIState};
 use crate::util;
 use anime::remote::{ScoreParser, SeriesDate};
 use chrono::Utc;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::fmt;
 use tui::backend::Backend;
@@ -16,23 +16,6 @@ use tui::widgets::{Paragraph, Text};
 
 pub struct InfoPanel;
 
-macro_rules! create_stat_list {
-    ($($header:expr => $value:expr),+) => {
-        [$(
-            create_stat_list!(h $header),
-            create_stat_list!(v $value, $header.len()),
-        )+]
-    };
-
-    (h $header:expr) => {
-        text::bold(concat!($header, "\n"))
-    };
-
-    (v $value:expr, $len:expr) => {
-        text::italic(format!("{:^width$}\n\n", $value, width = $len))
-    };
-}
-
 impl InfoPanel {
     #[inline(always)]
     pub fn new() -> Self {
@@ -42,7 +25,7 @@ impl InfoPanel {
     fn text_display_layout(rect: Rect) -> Vec<Rect> {
         Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(2), Constraint::Percentage(100)].as_ref())
+            .constraints([Constraint::Length(2), Constraint::Percentage(100)])
             .margin(2)
             .split(rect)
     }
@@ -118,6 +101,12 @@ impl InfoPanel {
     where
         B: Backend,
     {
+        macro_rules! panel_items {
+            ($($name:expr => $value:expr,)+) => {
+                [$((concat!($name, "\n"), $value)),+]
+            }
+        }
+
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints(
@@ -137,9 +126,7 @@ impl InfoPanel {
         // Series title
         {
             let text_items = {
-                let mut items = SmallVec::<[_; 2]>::new();
-
-                items.push(text::bold(&info.title_preferred));
+                let mut items: SmallVec<[_; 2]> = smallvec![text::bold(&info.title_preferred)];
 
                 if entry.needs_sync() {
                     items.push(text::italic(" [*]"));
@@ -155,69 +142,74 @@ impl InfoPanel {
         // Items in panel
         let stat_layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(
-                [
-                    Constraint::Percentage(33),
-                    Constraint::Percentage(33),
-                    Constraint::Percentage(33),
-                ]
-                .as_ref(),
-            )
+            .constraints([
+                Constraint::Ratio(1, 3),
+                Constraint::Ratio(1, 3),
+                Constraint::Ratio(1, 3),
+            ])
             .split(layout[1]);
 
-        {
-            let left_items = create_stat_list!(
-                "Watch Time" => {
-                    let watch_time_mins = info.episodes * info.episode_length_mins;
-                    util::hm_from_mins(watch_time_mins as f32)
-                },
-                "Time Left" => {
-                    let eps_left = info.episodes - entry.watched_episodes().min(info.episodes);
-                    let time_left_mins = eps_left * info.episode_length_mins;
+        let stat_vert_pos = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Ratio(1, 3),
+                Constraint::Ratio(1, 3),
+                Constraint::Ratio(1, 3),
+            ]);
 
-                    util::hm_from_mins(time_left_mins as f32)
-                },
-                "Episode Length" => format!("{}M", info.episode_length_mins)
-            );
+        let left_pane_items = panel_items! {
+            "Watch Time" => {
+                let watch_time_mins = info.episodes * info.episode_length_mins;
+                util::hm_from_mins(watch_time_mins as f32).into()
+            },
+            "Time Left" => {
+                let eps_left = info.episodes - entry.watched_episodes().min(info.episodes);
+                let time_left_mins = eps_left * info.episode_length_mins;
 
-            let widget = Paragraph::new(left_items.iter()).alignment(Alignment::Center);
-            frame.render_widget(widget, stat_layout[0]);
-        }
+                util::hm_from_mins(time_left_mins as f32).into()
+            },
+            "Episode Length" => format!("{}M", info.episode_length_mins).into(),
+        };
 
-        {
-            let center_items = create_stat_list!(
-                "Progress" => format!("{}|{}", entry.watched_episodes(), info.episodes),
-                "Score" => match entry.score() {
-                    Some(score) => state.remote.score_to_str(score as u8),
-                    None => "??".into(),
-                },
-                "Status" => entry.status()
-            );
+        let middle_pane_items = panel_items! {
+            "Progress" => format!("{}|{}", entry.watched_episodes(), info.episodes).into(),
+            "Score" => match entry.score() {
+                Some(score) => state.remote.score_to_str(score as u8),
+                None => "??".into(),
+            },
+            "Status" => entry.status().to_string().into(),
+        };
 
-            let widget = Paragraph::new(center_items.iter()).alignment(Alignment::Center);
-            frame.render_widget(widget, stat_layout[1]);
-        }
-
-        {
-            // TODO: allow this to be changed in the config
-            let format_date = |date: SeriesDate| {
-                format!("{:02}/{:02}/{:02}", date.month, date.day, date.year % 100)
+        let right_pane_items = {
+            // TODO: allow the format to be changed in the config
+            let format_date = |date: Option<SeriesDate>| {
+                date.map(|date| {
+                    format!("{:02}/{:02}/{:02}", date.month, date.day, date.year % 100).into()
+                })
+                .unwrap_or_else(|| Cow::Borrowed("??"))
             };
 
-            let right_items = create_stat_list!(
-                "Start Date" => match entry.start_date() {
-                    Some(date) => format_date(date).into(),
-                    None => Cow::Borrowed("??"),
-                },
-                "Finish Date" => match entry.end_date() {
-                    Some(date) => format_date(date).into(),
-                    None => Cow::Borrowed("??"),
-                },
-                "Rewatched" => entry.times_rewatched()
-            );
+            panel_items! {
+                "Start Date" => format_date(entry.start_date()),
+                "Finish Date" => format_date(entry.end_date()),
+                "Rewatched" => entry.times_rewatched().to_string().into(),
+            }
+        };
 
-            let widget = Paragraph::new(right_items.iter()).alignment(Alignment::Center);
-            frame.render_widget(widget, stat_layout[2]);
+        let items: [&[(_, Cow<str>)]; 3] =
+            [&left_pane_items, &middle_pane_items, &right_pane_items];
+
+        for x_pos in 0..3 {
+            let stat_layout = stat_vert_pos.split(stat_layout[x_pos]);
+            let column_items = items[x_pos];
+
+            for y_pos in 0..3 {
+                let (header, value) = &column_items[y_pos];
+                let text = [text::bold(*header), text::italic(value.as_ref())];
+
+                let widget = Paragraph::new(text.iter()).alignment(Alignment::Center);
+                frame.render_widget(widget, stat_layout[y_pos]);
+            }
         }
 
         // Watch time needed indicator at bottom
