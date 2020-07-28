@@ -8,7 +8,7 @@ use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::{List, ListState, Text};
+use tui::widgets::{List, ListItem, ListState};
 
 pub struct SelectSeriesPanel {
     list_state: ListState,
@@ -69,7 +69,8 @@ where
             .state
             .series_list
             .iter()
-            .map(|info| Text::raw(&info.title_preferred));
+            .map(|info| ListItem::new(info.title_preferred.as_ref()))
+            .collect::<Vec<_>>();
 
         let items = List::new(names)
             .block(block::with_borders("Select a series from the list"))

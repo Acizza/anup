@@ -2,6 +2,7 @@ use super::{Component, Draw, ShouldReset};
 use crate::file::SerializedFile;
 use crate::try_opt_r;
 use crate::tui::component::input::{Input, InputFlags};
+use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, style, text, SelectWidgetState, TypedSelectable};
 use crate::tui::UIState;
 use crate::user::{RemoteType, UserInfo};
@@ -16,7 +17,8 @@ use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::{List, ListState, Paragraph, Row, Table, TableState, Text};
+use tui::text::{Span, Text};
+use tui::widgets::{List, ListItem, ListState, Paragraph, Row, Table, TableState};
 
 type ServiceList = TypedSelectable<RemoteType, ListState>;
 
@@ -157,7 +159,11 @@ impl UserPanel {
         self.token_input.set_selected(is_panel_selected);
         self.token_input.draw(&(), vert_split[0], frame);
 
-        let services_text = ServiceList::item_data().map(Text::raw);
+        let services_text = ServiceList::item_data()
+            .map(Cow::into_owned)
+            .map(Span::from)
+            .map(ListItem::new)
+            .collect::<Vec<_>>();
 
         let services_widget = List::new(services_text)
             .block(block::selectable("Service", is_panel_selected))
@@ -170,10 +176,13 @@ impl UserPanel {
             self.service_list.state_mut(),
         );
 
-        let hint_text = [text::hint("Ctrl + O\n-\nOpen auth URL")];
-        let hint_widget = Paragraph::new(hint_text.iter())
-            .alignment(Alignment::Center)
-            .wrap(false);
+        let hint_text = Text::from(vec![
+            text::hint("Ctrl + O").into(),
+            text::hint("-").into(),
+            text::hint("Open auth URL").into(),
+        ]);
+
+        let hint_widget = Paragraph::new(hint_text).alignment(Alignment::Center);
         frame.render_widget(hint_widget, vert_split[4]);
     }
 
@@ -202,23 +211,22 @@ impl UserPanel {
 
         self.draw_users_table(is_panel_selected, state, layout[0], frame);
 
-        let key_hints_text = [
-            text::hint("O - Go offline\n"),
-            text::hint("D - Remove account\n"),
-            text::hint("Enter - Login as selected"),
+        let key_hints_text = vec![
+            text::hint("O - Go offline").into(),
+            text::hint("D - Remove account").into(),
+            text::hint("Enter - Login as selected").into(),
         ];
 
-        let key_hints_widget = Paragraph::new(key_hints_text.iter())
-            .alignment(Alignment::Center)
-            .wrap(false);
+        let key_hints_widget = Paragraph::new(key_hints_text).alignment(Alignment::Center);
         frame.render_widget(key_hints_widget, layout[2]);
 
         if state.remote.is_offline() {
-            let offline_text = [text::with_color("Currently Offline", Color::Yellow)];
+            let offline_text = text::with_color("Currently Offline", Color::Yellow);
 
-            let offline_widget = Paragraph::new(offline_text.iter())
+            let offline_widget = Paragraph::new(offline_text)
                 .alignment(Alignment::Center)
-                .wrap(true);
+                .wrapped();
+
             frame.render_widget(offline_widget, layout[3]);
         }
     }

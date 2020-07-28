@@ -7,6 +7,7 @@ use crate::tui::component::input::{
     IDInput, Input, InputFlags, NameInput, ParsedValue, ParserInput, PathInput, ValidatedInput,
 };
 use crate::tui::component::{Component, Draw};
+use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
 use crate::{try_opt_r, try_opt_ret};
@@ -217,28 +218,26 @@ impl AddSeriesPanel {
         macro_rules! info_label {
             ($label:expr, $value:expr, $rect:expr) => {{
                 let label = concat!($label, "\n");
-                let text = [text::bold(label), $value];
+                let text = vec![text::bold(label).into(), $value.into()];
 
-                let widget = Paragraph::new(text.iter())
-                    .wrap(false)
-                    .alignment(Alignment::Center);
+                let widget = Paragraph::new(text).alignment(Alignment::Center);
                 frame.render_widget(widget, $rect);
             }};
         }
 
         let (header_text, has_error) = match (&self.error, &self.series_builder.params) {
             (Some(err), Some(_)) | (Some(err), None) => {
-                ([text::bold_with(err.as_ref(), |s| s.fg(Color::Red))], true)
+                (text::bold_with(err.as_ref(), |s| s.fg(Color::Red)), true)
             }
-            (None, Some(_)) => ([text::bold("Detected")], false),
+            (None, Some(_)) => (text::bold("Detected"), false),
             (None, None) => (
-                [text::bold_with("Nothing Detected", |s| s.fg(Color::Red))],
+                text::bold_with("Nothing Detected", |s| s.fg(Color::Red)),
                 false,
             ),
         };
 
-        let header = Paragraph::new(header_text.iter())
-            .wrap(true)
+        let header = Paragraph::new(header_text)
+            .wrapped()
             .alignment(Alignment::Center);
         frame.render_widget(header, rect);
 

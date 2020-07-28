@@ -9,7 +9,7 @@ use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::{Paragraph, Text};
+use tui::widgets::Paragraph;
 
 pub struct DeleteSeriesPanel {
     remove_files: RemoveFiles,
@@ -46,14 +46,8 @@ impl DeleteSeriesPanel {
     }
 
     fn draw_series_removal_warning<B: Backend>(&self, rect: Rect, frame: &mut Frame<B>) {
-        let text = [text::bold_with(&self.removal_warning_text, |s| {
-            s.fg(Color::Red)
-        })];
-
-        let widget = Paragraph::new(text.iter())
-            .wrap(false)
-            .alignment(Alignment::Center);
-
+        let text = text::bold_with(&self.removal_warning_text, |s| s.fg(Color::Red));
+        let widget = Paragraph::new(text).alignment(Alignment::Center);
         frame.render_widget(widget, rect);
     }
 
@@ -63,14 +57,12 @@ impl DeleteSeriesPanel {
         status_rect: Rect,
         frame: &mut Frame<B>,
     ) {
-        let path_text = [
-            text::bold("Series Path:\n"),
-            text::italic(&self.series_path_text),
+        let path_text = vec![
+            text::bold("Series Path:\n").into(),
+            text::italic(&self.series_path_text).into(),
         ];
 
-        let path_widget = Paragraph::new(path_text.iter())
-            .wrap(false)
-            .alignment(Alignment::Center);
+        let path_widget = Paragraph::new(path_text).alignment(Alignment::Center);
         frame.render_widget(path_widget, path_rect);
 
         let status = match self.remove_files {
@@ -78,10 +70,8 @@ impl DeleteSeriesPanel {
             RemoveFiles::No => text::bold("will not be deleted."),
         };
 
-        let status_text = [Text::raw("The series path on disk "), status];
-        let status_widget = Paragraph::new(status_text.iter())
-            .alignment(Alignment::Center)
-            .wrap(false);
+        let status_text = vec!["The series path on disk ".into(), status.into()];
+        let status_widget = Paragraph::new(status_text).alignment(Alignment::Center);
         frame.render_widget(status_widget, status_rect);
     }
 
@@ -96,16 +86,12 @@ impl DeleteSeriesPanel {
             .constraints([Constraint::Percentage(50), Constraint::Length(50)])
             .split(spacer_layout[1]);
 
-        let hint_text = [text::hint("D - Toggle path deletion")];
-        let hint_widget = Paragraph::new(hint_text.iter())
-            .wrap(false)
-            .alignment(Alignment::Center);
+        let hint_text = text::hint("D - Toggle path deletion");
+        let hint_widget = Paragraph::new(hint_text).alignment(Alignment::Center);
         frame.render_widget(hint_widget, horiz_layout[0]);
 
-        let hint_text = [text::hint("Enter - Confirm")];
-        let hint_widget = Paragraph::new(hint_text.iter())
-            .wrap(false)
-            .alignment(Alignment::Center);
+        let hint_text = text::hint("Enter - Confirm");
+        let hint_widget = Paragraph::new(hint_text).alignment(Alignment::Center);
         frame.render_widget(hint_widget, horiz_layout[1]);
     }
 }

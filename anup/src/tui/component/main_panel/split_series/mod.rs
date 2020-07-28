@@ -50,10 +50,8 @@ impl SplitSeriesPanel {
             .margin(1)
             .split(rect);
 
-        let text = [text::bold("Loading..")];
-        let widget = Paragraph::new(text.iter())
-            .alignment(Alignment::Center)
-            .wrap(false);
+        let text = text::bold("Loading..");
+        let widget = Paragraph::new(text).alignment(Alignment::Center);
         frame.render_widget(widget, layout[1]);
     }
 }

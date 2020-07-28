@@ -3,12 +3,12 @@ use tui::style::{Color, Modifier, Style};
 
 #[inline(always)]
 pub fn bold() -> Style {
-    Style::default().modifier(Modifier::BOLD)
+    Style::default().add_modifier(Modifier::BOLD)
 }
 
 #[inline(always)]
 pub fn italic() -> Style {
-    Style::default().modifier(Modifier::ITALIC)
+    Style::default().add_modifier(Modifier::ITALIC)
 }
 
 #[inline(always)]

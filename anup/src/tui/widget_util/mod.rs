@@ -2,6 +2,7 @@ pub mod block;
 pub mod color;
 pub mod style;
 pub mod text;
+pub mod widget;
 
 use crate::try_opt_ret;
 use crate::tui::WrappingIndex;

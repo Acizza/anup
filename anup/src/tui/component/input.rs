@@ -6,7 +6,6 @@ use anime::local::detect::CustomPattern;
 use anime::local::EpisodeParser;
 use anime::remote::SeriesID;
 use bitflags::bitflags;
-use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::path::PathBuf;
 use termion::event::Key;
@@ -14,7 +13,8 @@ use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::{Paragraph, Text};
+use tui::text::Text;
+use tui::widgets::Paragraph;
 use unicode_segmentation::GraphemeCursor;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -276,12 +276,7 @@ where
                     text::bold(*label)
                 };
 
-                let text_items = [text];
-
-                let widget = Paragraph::new(text_items.iter())
-                    .wrap(false)
-                    .alignment(Alignment::Center);
-
+                let widget = Paragraph::new(text).alignment(Alignment::Center);
                 frame.render_widget(widget, layout[0]);
 
                 layout[1]
@@ -289,18 +284,17 @@ where
             DrawMode::Blank => rect,
         };
 
-        let mut text: SmallVec<[_; 2]> = smallvec![Text::raw(self.visible())];
-
-        if self.caret.is_empty() && !self.flags.contains(InputFlags::IGNORE_PLACEHOLDER) {
-            if let Some(placeholder) = &self.placeholder {
+        let text: Text = match (self.caret.is_empty(), &self.placeholder) {
+            (true, Some(placeholder)) if !self.flags.contains(InputFlags::IGNORE_PLACEHOLDER) => {
                 let slice = &placeholder[self.caret.pos()..];
-                text.push(text::with_color(slice, Color::DarkGray));
+                text::with_color(slice, Color::DarkGray).into()
             }
-        }
+            _ => self.visible().into(),
+        };
 
-        let widget = Paragraph::new(text.iter()).block(block).wrap(false);
-
+        let widget = Paragraph::new(text).block(block);
         frame.render_widget(widget, input_pos);
+
         self.set_cursor_pos(input_pos, frame);
     }
 }

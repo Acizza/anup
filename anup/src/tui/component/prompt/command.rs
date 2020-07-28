@@ -1,17 +1,19 @@
 use crate::config::Config;
 use crate::tui::component::input::Input;
 use crate::tui::component::{Component, Draw};
+use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, style};
 use crate::tui::UIState;
 use anyhow::{anyhow, Result};
-use smallvec::{smallvec, SmallVec};
+use smallvec::SmallVec;
 use std::convert::TryFrom;
 use std::result;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::Color;
-use tui::widgets::{Paragraph, Text};
+use tui::text::{Span, Spans, Text};
+use tui::widgets::Paragraph;
 use tui::Frame;
 use unicode_width::UnicodeWidthChar;
 
@@ -92,17 +94,17 @@ impl CommandPrompt {
     }
 
     /// The items of the `CommandPrompt` in a form ready for drawing.
-    fn draw_items<'b>(&'b self) -> SmallVec<[Text<'b>; 2]> {
-        let mut text = smallvec![Text::raw(&self.buffer)];
+    fn draw_items(&self) -> Spans {
+        let mut items = vec![self.buffer.as_str().into()];
 
         if let Some(hint_cmd) = &self.hint_cmd {
-            text.push(Text::styled(
+            items.push(Span::styled(
                 hint_cmd.remaining_name_and_usage(),
                 style::fg(Color::DarkGray),
             ));
         }
 
-        text
+        items.into()
     }
 }
 
@@ -122,11 +124,11 @@ where
     type State = ();
 
     fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        let draw_items = self.draw_items();
+        let draw_items = Text::from(self.draw_items());
 
-        let widget = Paragraph::new(draw_items.iter())
+        let widget = Paragraph::new(draw_items)
             .block(block::with_borders("Enter Command"))
-            .wrap(true);
+            .wrapped();
 
         frame.render_widget(widget, rect);
 
@@ -397,6 +399,7 @@ impl TryFrom<&str> for ProgressDirection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use smallvec::smallvec;
 
     #[test]
     fn test_commands() {

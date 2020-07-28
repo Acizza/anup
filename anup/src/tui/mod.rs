@@ -170,7 +170,7 @@ macro_rules! capture_err {
         match $result {
             value @ Ok(_) => value,
             Err(err) => {
-                $self.prompt.log.push_err(&err);
+                $self.prompt.log.push_error(&err);
                 Err(err)
             }
         }
@@ -205,7 +205,7 @@ where
             Ok(Some(remote)) => remote,
             Ok(None) => Remote::offline(),
             Err(err) => {
-                log.push_err(&err);
+                log.push_error(&err);
                 log.push_context(
                     "enter user management with 'u' and add your account again if a new token is needed",
                 );

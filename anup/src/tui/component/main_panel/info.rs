@@ -1,18 +1,19 @@
 use crate::series::{LoadedSeries, Series};
 use crate::tui::component::Draw;
+use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, text};
 use crate::tui::{CurrentAction, UIState};
 use crate::util;
 use anime::remote::{ScoreParser, SeriesDate};
 use chrono::Utc;
-use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::fmt;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::{Paragraph, Text};
+use tui::text::{Span, Spans, Text};
+use tui::widgets::Paragraph;
 
 pub struct InfoPanel;
 
@@ -30,18 +31,17 @@ impl InfoPanel {
             .split(rect)
     }
 
-    fn draw_text_panel<B>(header: &[Text], body: &[Text], rect: Rect, frame: &mut Frame<B>)
+    fn draw_text_panel<'a, B, T>(header: Span, body: T, rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
+        T: Into<Text<'a>>,
     {
         let layout = Self::text_display_layout(rect);
 
-        let header_widget = Paragraph::new(header.iter()).alignment(Alignment::Center);
+        let header_widget = Paragraph::new(header).alignment(Alignment::Center);
         frame.render_widget(header_widget, layout[0]);
 
-        let body_widget = Paragraph::new(body.iter())
-            .alignment(Alignment::Center)
-            .wrap(true);
+        let body_widget = Paragraph::new(body).alignment(Alignment::Center).wrapped();
         frame.render_widget(body_widget, layout[1]);
     }
 
@@ -49,38 +49,39 @@ impl InfoPanel {
     where
         B: Backend,
     {
-        let body = [Text::raw(
-            "Add an account by pressing 'u' to open\
-            \nuser management and then by pressing tab\
-            \nto switch to the add user panel.\
+        let body = vec![
+            "Add an account by pressing 'u' to open".into(),
+            "user management and then by pressing tab".into(),
+            "to switch to the add user panel.".into(),
+            "".into(),
+            "Then open the auth URL in your browser".into(),
+            "by pressing Ctrl + O, and follow its instructions.".into(),
+            "Once you have a token, paste it in with either".into(),
+            "Ctrl + Shift + V or Ctrl + V.".into(),
+            "".into(),
+            "More detailed instructions here:".into(),
+            "https://github.com/Acizza/anup#adding-an-account".into(),
+        ];
 
-            \n\nThen open the auth URL in your browser\
-            \nby pressing Ctrl + O, and follow its instructions.\
-            \n Once you have a token, paste it in with either\
-            \nCtrl + Shift + V or Ctrl + V.\
-
-            \n\nMore detailed instructions here:\
-            \nhttps://github.com/Acizza/anup#adding-an-account",
-        )];
-
-        Self::draw_text_panel(&[text::bold("No Accounts Added")], &body, rect, frame);
+        Self::draw_text_panel(text::bold("No Accounts Added"), body, rect, frame);
     }
 
     fn draw_no_series_found<B>(rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
     {
-        let body = [Text::raw(
-            "Add one by pressing the 'a' key\
+        let body = vec![
+            "Add one by pressing the 'a' key.".into(),
+            "".into(),
+            "The opened panel will require you to specify".into(),
+            "a name for the series you want to add.".into(),
+            "".into(),
+            "For automatic detection, the name should be".into(),
+            "similar to the name of the folder the series".into(),
+            "is in on disk.".into(),
+        ];
 
-            \n\nThe opened panel will require you to specify\
-            \n a name for the series you want to add.\
-            \n\nFor automatic detection, the name should be\
-            \nsimilar to the name of the folder the series\
-            \nis in on disk.",
-        )];
-
-        Self::draw_text_panel(&[text::bold("No Series Found")], &body, rect, frame);
+        Self::draw_text_panel(text::bold("No Series Found"), body, rect, frame);
     }
 
     fn draw_series_error<B, E>(err: E, rect: Rect, frame: &mut Frame<B>)
@@ -88,13 +89,10 @@ impl InfoPanel {
         B: Backend,
         E: fmt::Display,
     {
-        let header = [text::bold_with("Error Loading Series", |s| {
-            s.fg(Color::Red)
-        })];
+        let header = text::bold_with("Error Loading Series", |s| s.fg(Color::Red));
+        let body = text::with_color(err.to_string(), Color::Red);
 
-        let body = [text::with_color(err.to_string(), Color::Red)];
-
-        Self::draw_text_panel(&header, &body, rect, frame);
+        Self::draw_text_panel(header, body, rect, frame);
     }
 
     fn draw_series_info<B>(state: &UIState, series: &Series, rect: Rect, frame: &mut Frame<B>)
@@ -124,20 +122,18 @@ impl InfoPanel {
         let entry = &series.data.entry;
 
         // Series title
-        {
-            let text_items = {
-                let mut items: SmallVec<[_; 2]> = smallvec![text::bold(&info.title_preferred)];
+        let title = {
+            let mut items = vec![text::bold(&info.title_preferred)];
 
-                if entry.needs_sync() {
-                    items.push(text::italic(" [*]"));
-                }
+            if entry.needs_sync() {
+                items.push(text::italic(" [*]"));
+            }
 
-                items
-            };
+            Spans::from(items)
+        };
 
-            let widget = Paragraph::new(text_items.iter()).alignment(Alignment::Center);
-            frame.render_widget(widget, layout[0]);
-        }
+        let title_widget = Paragraph::new(title).alignment(Alignment::Center);
+        frame.render_widget(title_widget, layout[0]);
 
         // Items in panel
         let stat_layout = Layout::default()
@@ -205,9 +201,13 @@ impl InfoPanel {
 
             for y_pos in 0..3 {
                 let (header, value) = &column_items[y_pos];
-                let text = [text::bold(*header), text::italic(value.as_ref())];
 
-                let widget = Paragraph::new(text.iter()).alignment(Alignment::Center);
+                let text = vec![
+                    text::bold(*header).into(),
+                    text::italic(value.as_ref()).into(),
+                ];
+
+                let widget = Paragraph::new(text).alignment(Alignment::Center);
                 frame.render_widget(widget, stat_layout[y_pos]);
             }
         }
@@ -220,14 +220,12 @@ impl InfoPanel {
             if watch_secs > 0 {
                 let remaining_mins = watch_secs as f32 / 60.0;
 
-                let text_str = format!(
+                let text = text::bold(format!(
                     "{} Remaining Until Progression",
                     util::ms_from_mins(remaining_mins)
-                );
+                ));
 
-                let text = [text::bold(text_str)];
-
-                let widget = Paragraph::new(text.iter()).alignment(Alignment::Center);
+                let widget = Paragraph::new(text).alignment(Alignment::Center);
                 frame.render_widget(widget, layout[2]);
             }
         }

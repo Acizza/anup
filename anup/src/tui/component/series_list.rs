@@ -10,7 +10,8 @@ use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::{List, ListState, Text};
+use tui::text::Span;
+use tui::widgets::{List, ListItem, ListState};
 
 pub struct SeriesList {
     list_state: ListState,
@@ -39,7 +40,7 @@ impl SeriesList {
         }
     }
 
-    fn series_text(series: &LoadedSeries) -> Text {
+    fn series_text(series: &LoadedSeries) -> Span {
         match series {
             LoadedSeries::Complete(series) => {
                 let color = match series.data.entry.status() {
@@ -94,7 +95,12 @@ where
             _ => style::italic().fg(Color::DarkGray),
         };
 
-        let series_names = state.series.iter().map(Self::series_text);
+        let series_names = state
+            .series
+            .iter()
+            .map(Self::series_text)
+            .map(ListItem::new)
+            .collect::<Vec<_>>();
 
         let series_list = List::new(series_names)
             .block(block::with_borders("Series"))

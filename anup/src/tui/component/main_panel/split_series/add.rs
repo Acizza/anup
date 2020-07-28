@@ -95,10 +95,8 @@ where
             .vertical_margin(3)
             .split(rect);
 
-        let title_text = [text::bold(&data.info.title.preferred)];
-        let title_widget = Paragraph::new(title_text.iter())
-            .wrap(false)
-            .alignment(Alignment::Center);
+        let title_text = text::bold(&data.info.title.preferred);
+        let title_widget = Paragraph::new(title_text).alignment(Alignment::Center);
         frame.render_widget(title_widget, vert_split[0]);
 
         let name_layout = Layout::default()
@@ -116,10 +114,8 @@ where
         self.name_input.draw(&(), name_layout[1], frame);
 
         if let Some(error) = self.name_input.error() {
-            let error_text = [text::bold_with(error, |s| s.fg(Color::Red))];
-            let error_widget = Paragraph::new(error_text.iter())
-                .alignment(Alignment::Center)
-                .wrap(false);
+            let error_text = text::bold_with(error, |s| s.fg(Color::Red));
+            let error_widget = Paragraph::new(error_text).alignment(Alignment::Center);
             frame.render_widget(error_widget, vert_split[3]);
         }
     }

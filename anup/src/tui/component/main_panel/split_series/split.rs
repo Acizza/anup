@@ -147,10 +147,9 @@ where
 
         macro_rules! hint_text {
             ($($hint:expr => $pos:expr),+) => {$({
-                let text = [text::hint($hint)];
+                let text = text::hint($hint);
 
-                let widget = Paragraph::new(text.iter())
-                    .wrap(false)
+                let widget = Paragraph::new(text)
                     .alignment(Alignment::Center);
 
                 frame.render_widget(widget, hint_layout[$pos]);
