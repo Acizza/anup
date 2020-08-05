@@ -400,19 +400,11 @@ impl<T> Selection<T> {
     }
 
     fn selected(&self) -> Option<&T> {
-        if self.items.is_empty() {
-            return None;
-        }
-
-        Some(&self.items[self.index])
+        self.items.get(self.index.get())
     }
 
     fn selected_mut(&mut self) -> Option<&mut T> {
-        if self.items.is_empty() {
-            return None;
-        }
-
-        Some(&mut self.items[self.index])
+        self.items.get_mut(self.index.get())
     }
 
     #[inline(always)]
@@ -426,6 +418,7 @@ impl<T> Selection<T> {
     }
 
     fn set_selected(&mut self, selected: usize) {
+        #[cold]
         if selected >= self.items.len() {
             return;
         }
@@ -513,7 +506,7 @@ impl WrappingIndex {
     }
 
     #[inline(always)]
-    pub fn get(&self) -> usize {
+    pub fn get(self) -> usize {
         self.0
     }
 
