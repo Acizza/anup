@@ -518,11 +518,7 @@ impl ParsedEpisodes {
         }
 
         if episodes.len() < 2 {
-            if episodes.is_empty() {
-                return None;
-            }
-
-            return Some(episodes[0].number.to_string());
+            return episodes.get(0).map(|ep| ep.number.to_string());
         }
 
         let mut result = String::new();
