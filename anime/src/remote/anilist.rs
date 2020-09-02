@@ -9,7 +9,6 @@ use serde_json::json;
 use std::borrow::Cow;
 use std::convert::TryInto;
 use std::result;
-use std::str;
 use std::time::Duration;
 
 /// The URL to the API endpoint.
@@ -69,7 +68,7 @@ macro_rules! minimize_query {
         let end_pos = LEN - MINIMIZED.iter().rev().position(|&b| b != 0).unwrap_or(0);
 
         unsafe {
-            str::from_utf8_unchecked(&MINIMIZED[..end_pos])
+            std::str::from_utf8_unchecked(&MINIMIZED[..end_pos])
         }
     }};
 }
