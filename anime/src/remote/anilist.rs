@@ -9,6 +9,7 @@ use serde_json::json;
 use std::borrow::Cow;
 use std::convert::TryInto;
 use std::result;
+use std::str;
 use std::time::Duration;
 
 /// The URL to the API endpoint.
@@ -27,6 +28,52 @@ pub fn auth_url(client_id: u32) -> String {
     )
 }
 
+// This macro tests how far you can go with const functions for things like string manipulation.
+// It is a lot more complicated than the original naive implementation, but it saves us from an O(n) operation with allocations
+// that would otherwise be performed for each API query.
+//
+// The solution can be simplified as new Rust versions add more features for const functions.
+macro_rules! minimize_query {
+    ($value:expr) => {{
+        const LEN: usize = $value.len();
+
+        // This function needs to be generated on a per-string basis so our array length can be semi-close to our minimized result.
+        // If we don't do this, LLVM seems to emit assembly that uses way more stack space than necessary on Rust 1.46.0+
+        const fn minimize() -> [u8; LEN] {
+            let bytes = $value.as_bytes();
+            let mut result = [0; LEN];
+            let mut result_index = 0;
+            let mut index = 0;
+
+            while index < bytes.len() {
+                let byte = bytes[index];
+
+                index += 1;
+
+                if byte == b' ' || byte == b'\n' {
+                    continue;
+                }
+
+                result[result_index] = byte;
+                result_index += 1;
+            }
+
+            result
+        }
+
+        // Store the result in a constant to guarantee that it will be ran at compile time
+        const MINIMIZED: [u8; LEN] = minimize();
+
+        // Since minimize() returns an array the size of the original string length, we need to find where the minimized one ends.
+        // For release builds, this should be computed at compile time given that we're working with constants.
+        let end_pos = LEN - MINIMIZED.iter().rev().position(|&b| b != 0).unwrap_or(0);
+
+        unsafe {
+            str::from_utf8_unchecked(&MINIMIZED[..end_pos])
+        }
+    }};
+}
+
 /// Send an API query to AniList, without attemping to parse a response.
 macro_rules! send {
     ($token:expr, $file:expr, {$($vars:tt)*}, $($resp_root:expr)=>*) => {{
@@ -38,7 +85,7 @@ macro_rules! send {
             $($vars)*
         });
 
-        let query = include_str!(concat!("../../graphql/anilist/", $file, ".gql"));
+        let query = minimize_query!(include_str!(concat!("../../graphql/anilist/", $file, ".gql")));
 
         #[allow(unused_mut)]
         match send_gql_request(query, &vars, $token) {
@@ -295,14 +342,12 @@ fn send_gql_request<S>(
     token: Option<&AccessToken>,
 ) -> Result<json::Value>
 where
-    S: Into<String>,
+    S: AsRef<str>,
 {
     const REQ_TIMEOUT_SEC: u64 = 15;
 
-    let query = minimize_query(query);
-
     let body = json!({
-        "query": query,
+        "query": query.as_ref(),
         "variables": vars,
     });
 
@@ -326,17 +371,6 @@ where
     }
 
     Ok(json)
-}
-
-// TODO: convert to const fn when mutable references can be used
-#[inline(always)]
-fn minimize_query<S>(value: S) -> String
-where
-    S: Into<String>,
-{
-    let mut value = value.into();
-    value.retain(|c| c != ' ' && c != '\n');
-    value
 }
 
 #[derive(Debug, Deserialize)]
