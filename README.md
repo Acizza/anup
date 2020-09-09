@@ -17,6 +17,20 @@ Current features include:
 
 Please note that only local files are supported.
 
+# Screenshots
+
+Main panel:
+
+<img src="res/main_panel.png?raw=true" alt="Screenshot showing main panel" width="512"/>
+
+Adding a series:
+
+<img src="res/add_series.png?raw=true" alt="Screenshot showing a series being added" width="512"/>
+
+User management:
+
+<img src="res/user_panel.png?raw=true" alt="Screenshot showing user management panel" width="512"/>
+
 # Building
 
 This project requires the following dependencies:
