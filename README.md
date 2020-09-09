@@ -48,6 +48,8 @@ Once the dependencies are installed, you can build the project simply by running
 
 By default, the program will look for anime in `~/anime/` and play episodes with `mpv`. To change these, run the program once to generate the config file and change the `series_dir` and `player` fields in `~/.config/anup/config.toml`, respectively.
 
+Ideally, you should run the program in an 80x24 terminal, but the program will scale properly for larger sizes. Anything smaller than 80x24 may cause some items to cut off.
+
 ## Adding an Account
 
 Before you can add and play a series, you will need to add an AniList account to the program. To do this, open [this URL](https://anilist.co/api/v2/oauth/authorize?client_id=427&response_type=token) and follow the instructions to obtain an account access token. Once you have a token, you will need to paste it into the program. To do this, first press `u` to open user management, and then `Tab` to switch to the add user panel. Now press either `Ctrl + Shift + V` **or** `Ctrl + V` (depending on your terminal) to paste the token. Once your token has been pasted in, you can press enter to add your account.
