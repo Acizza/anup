@@ -5,7 +5,7 @@ authors = ["Acizza <jgit@tuta.io>"]
 edition = "2018"
 
 [dependencies]
-base64 = "~0.12.0"
+base64 = "0.13"
 enum_dispatch = "~0.3.0"
 nom = "6.0.0-alpha3"
 thiserror = "~1.0.0"
