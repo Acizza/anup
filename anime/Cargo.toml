@@ -6,23 +6,23 @@ edition = "2018"
 
 [dependencies]
 base64 = "0.13"
-enum_dispatch = "~0.3.0"
+enum_dispatch = "0.3"
 nom = "6.0.0-alpha3"
-thiserror = "~1.0.0"
-serde = "~1.0.0"
-serde_derive = "~1.0.0"
-serde_json = "~1.0.0"
-smallvec = "~1.4.0"
-strsim = "~0.10.0"
+thiserror = "1.0"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+smallvec = "1.4"
+strsim = "0.10"
 
 [dependencies.chrono]
-version = "~0.4.0"
+version = "0.4"
 optional = true
 default-features = false
 features = [ "std" ]
 
 [dependencies.diesel]
-version = "~1.4.0"
+version = "1.4"
 optional = true
 default-features = false
 features = [ "sqlite" ]
