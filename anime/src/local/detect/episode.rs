@@ -155,7 +155,8 @@ pub mod episode_and_title {
 }
 
 fn title(input: &str) -> IResult<&str, &str> {
-    use nom::{error::ErrorKind, Err};
+    use nom::error::{Error, ErrorKind, ParseError};
+    use nom::Err;
 
     let title = take_while(|ch| {
         let ch = ch as u8;
@@ -170,7 +171,8 @@ fn title(input: &str) -> IResult<&str, &str> {
         .any(|frag| !frag.chars().any(|ch| ch.is_alphabetic()));
 
     if has_digit_fragment {
-        return Err(Err::Error((slice, ErrorKind::SeparatedList)));
+        let kind = Error::from_error_kind(slice, ErrorKind::SeparatedList);
+        return Err(Err::Error(kind));
     }
 
     recognize(result)(input)
