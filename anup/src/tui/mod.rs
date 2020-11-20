@@ -9,7 +9,7 @@ use crate::series::config::SeriesConfig;
 use crate::series::info::SeriesInfo;
 use crate::series::{LastWatched, LoadedSeries, Series, SeriesData};
 use crate::user::Users;
-use crate::CmdOptions;
+use crate::Args;
 use crate::{try_opt_r, try_opt_ret};
 use anime::local::SortedEpisodes;
 use anime::remote::{Remote, ScoreParser};
@@ -30,7 +30,7 @@ use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::{Constraint, Direction, Layout};
 
-pub fn run(args: &CmdOptions) -> Result<()> {
+pub fn run(args: &Args) -> Result<()> {
     let backend = UIBackend::init().context("failed to init backend")?;
     let mut ui = UIWorld::<TermionBackend>::init(&args, backend).context("failed to load UI")?;
     let events = UIEvents::new(Duration::seconds(1));
@@ -181,7 +181,7 @@ impl<'a, B> UIWorld<'a, B>
 where
     B: Backend,
 {
-    fn init(args: &CmdOptions, backend: UIBackend<B>) -> Result<Self> {
+    fn init(args: &Args, backend: UIBackend<B>) -> Result<Self> {
         let mut prompt = Prompt::new();
         let remote = Self::init_remote(args, &mut prompt.log);
 
@@ -200,7 +200,7 @@ where
         })
     }
 
-    fn init_remote(args: &CmdOptions, log: &mut Log) -> Remote {
+    fn init_remote(args: &Args, log: &mut Log) -> Remote {
         match crate::init_remote(args) {
             Ok(Some(remote)) => remote,
             Ok(None) => Remote::offline(),

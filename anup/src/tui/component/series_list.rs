@@ -2,7 +2,7 @@ use super::{Component, Draw};
 use crate::series::{LastWatched, LoadedSeries};
 use crate::tui::widget_util::{block, style, text};
 use crate::tui::{CurrentAction, UIState};
-use crate::CmdOptions;
+use crate::Args;
 use anime::remote::Status;
 use anyhow::Result;
 use termion::event::Key;
@@ -18,7 +18,7 @@ pub struct SeriesList {
 }
 
 impl SeriesList {
-    pub fn init(args: &CmdOptions, state: &mut UIState, last_watched: &LastWatched) -> Self {
+    pub fn init(args: &Args, state: &mut UIState, last_watched: &LastWatched) -> Self {
         let selected = {
             let desired_series = args.series.as_ref().or_else(|| last_watched.get());
 

@@ -30,60 +30,35 @@ use crate::series::{LastWatched, LoadedSeries, Series};
 use crate::user::Users;
 use anime::remote::Remote;
 use anyhow::{anyhow, Context, Result};
+use argh::FromArgs;
 use chrono::Utc;
 
 const ANILIST_CLIENT_ID: u32 = 427;
 
-pub struct CmdOptions {
-    pub offline: bool,
-    pub single: bool,
-    pub sync: bool,
+#[derive(FromArgs)]
+/// Play, manage, and sync anime from the terminal.
+pub struct Args {
+    /// the nickname of the series to watch
+    #[argh(positional)]
     pub series: Option<String>,
-}
 
-impl CmdOptions {
-    fn from_env() -> Result<Self> {
-        let mut args = pico_args::Arguments::from_env();
+    /// run in offline mode
+    #[argh(switch, short = 'o')]
+    pub offline: bool,
 
-        if args.contains(["-h", "--help"]) {
-            Self::print_help();
-        }
+    /// play a single episode from the last played series
+    #[argh(switch)]
+    pub play_one: bool,
 
-        let result = Self {
-            offline: args.contains(["-o", "--offline"]),
-            single: args.contains("--play-one"),
-            sync: args.contains("--sync"),
-            series: args.free()?.into_iter().next(),
-        };
-
-        Ok(result)
-    }
-
-    fn print_help() {
-        println!(concat!(
-            "Usage: ",
-            env!("CARGO_PKG_NAME"),
-            " [series] [OPTIONS]\n"
-        ));
-
-        println!("Free arguments:");
-        println!("  series - the nickname of the series to watch");
-
-        println!();
-
-        println!("Optional arguments:");
-        println!("  -o, --offline  run the program in offline mode");
-        println!("  --play-one     play a single episode from the last played series");
-        println!("  --sync         syncronize changes made while offline to AniList");
-
-        std::process::exit(0);
-    }
+    /// syncronize changes made while offline
+    #[argh(switch)]
+    pub sync: bool,
 }
 
 fn main() -> Result<()> {
-    let args = CmdOptions::from_env()?;
+    let args: Args = argh::from_env();
 
-    if args.single {
+    if args.play_one {
         play_episode(&args)
     } else if args.sync {
         sync(&args)
@@ -95,7 +70,7 @@ fn main() -> Result<()> {
 /// Initialize a new remote service specified by `args`.
 ///
 /// If there are no users, returns Ok(None).
-fn init_remote(args: &CmdOptions) -> Result<Option<Remote>> {
+fn init_remote(args: &Args) -> Result<Option<Remote>> {
     use anime::remote::anilist::{AniList, Auth};
 
     if args.offline {
@@ -111,7 +86,7 @@ fn init_remote(args: &CmdOptions) -> Result<Option<Remote>> {
     }
 }
 
-fn sync(args: &CmdOptions) -> Result<()> {
+fn sync(args: &Args) -> Result<()> {
     if args.offline {
         return Err(anyhow!("must be online to run this command"));
     }
@@ -143,7 +118,7 @@ fn sync(args: &CmdOptions) -> Result<()> {
     Ok(())
 }
 
-fn play_episode(args: &CmdOptions) -> Result<()> {
+fn play_episode(args: &Args) -> Result<()> {
     use anime::remote::Status;
 
     let config = Config::load_or_create()?;
