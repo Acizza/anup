@@ -34,6 +34,7 @@ impl SeriesConfig {
     /// Update the `SeriesConfig` fields with the specified `params`.
     ///
     /// Returns true if the series ID has changed.
+    #[allow(clippy::cast_possible_wrap)]
     pub fn update(&mut self, params: UpdateParams, db: &Database, remote: &Remote) -> Result<bool> {
         let id_changed = match params.id {
             Some(id) if id as i32 != self.id => {
@@ -63,7 +64,7 @@ impl SeriesConfig {
     }
 
     pub fn save(&self, db: &Database) -> diesel::QueryResult<usize> {
-        use crate::database::schema::series_configs::dsl::*;
+        use crate::database::schema::series_configs::dsl::series_configs;
 
         diesel::replace_into(series_configs)
             .values(self)
@@ -71,13 +72,13 @@ impl SeriesConfig {
     }
 
     pub fn load_all(db: &Database) -> diesel::QueryResult<Vec<Self>> {
-        use crate::database::schema::series_configs::dsl::*;
+        use crate::database::schema::series_configs::dsl::series_configs;
 
         series_configs.load(db.conn())
     }
 
     pub fn load_by_name(db: &Database, name: &str) -> diesel::QueryResult<Self> {
-        use crate::database::schema::series_configs::dsl::*;
+        use crate::database::schema::series_configs::dsl::{nickname, series_configs};
 
         series_configs
             .filter(nickname.eq(name))
@@ -88,13 +89,13 @@ impl SeriesConfig {
     ///
     /// This will also remove the series info and entry, if it exists.
     pub fn delete(&self, db: &Database) -> diesel::QueryResult<usize> {
-        use crate::database::schema::series_configs::dsl::*;
+        use crate::database::schema::series_configs::dsl::{id, series_configs};
 
         diesel::delete(series_configs.filter(id.eq(self.id))).execute(db.conn())
     }
 
     pub fn exists(db: &Database, config_id: i32, params: &SeriesParams) -> Option<String> {
-        use crate::database::schema::series_configs::dsl::*;
+        use crate::database::schema::series_configs::dsl::{id, nickname, series_configs};
 
         series_configs
             .filter(id.eq(config_id).or(nickname.eq(&params.name)))
@@ -104,7 +105,7 @@ impl SeriesConfig {
     }
 
     fn id_exists(db: &Database, config_id: i32) -> Option<String> {
-        use crate::database::schema::series_configs::dsl::*;
+        use crate::database::schema::series_configs::dsl::{id, nickname, series_configs};
 
         series_configs
             .filter(id.eq(config_id))

@@ -23,9 +23,10 @@ pub struct AddPanel {
 
 impl AddPanel {
     pub fn new(info: RemoteInfo, path: SeriesPath) -> Self {
-        let name_input = series::generate_nickname(&info.title.preferred)
-            .map(|nickname| NameInput::with_placeholder(InputFlags::SELECTED, nickname))
-            .unwrap_or_else(|| NameInput::new(InputFlags::SELECTED));
+        let name_input = series::generate_nickname(&info.title.preferred).map_or_else(
+            || NameInput::new(InputFlags::SELECTED),
+            |nickname| NameInput::with_placeholder(InputFlags::SELECTED, nickname),
+        );
 
         Self {
             name_input,
@@ -38,6 +39,7 @@ impl Component for AddPanel {
     type State = UIState;
     type KeyResult = Result<SplitPanelResult>;
 
+    #[allow(clippy::cast_possible_wrap)]
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
         match key {
             Key::Esc => Ok(SplitPanelResult::Reset),

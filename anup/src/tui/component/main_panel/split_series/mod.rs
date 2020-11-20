@@ -202,12 +202,11 @@ impl MergedSeries {
 
             thread::sleep(Duration::from_millis(250));
 
-            let sequel_info = match remote.search_info_by_id(sequel.id) {
-                Ok(info) => info,
-                Err(_) => {
-                    results.push(Self::Failed(sequel.kind));
-                    continue;
-                }
+            let sequel_info = if let Ok(info) = remote.search_info_by_id(sequel.id) {
+                info
+            } else {
+                results.push(Self::Failed(sequel.kind));
+                continue;
             };
 
             let resolved =
@@ -238,12 +237,11 @@ impl MergedSeries {
         let mut episode_offset = info.episodes;
 
         while let Some(sequel) = info.direct_sequel() {
-            info = match remote.search_info_by_id(sequel.id) {
-                Ok(info) => info.into(),
-                Err(_) => {
-                    results.push(Self::Failed(sequel.kind));
-                    continue;
-                }
+            info = if let Ok(info) = remote.search_info_by_id(sequel.id) {
+                info.into()
+            } else {
+                results.push(Self::Failed(sequel.kind));
+                continue;
             };
 
             let resolved = ResolvedSeries::new(
@@ -386,10 +384,10 @@ impl SplitAction {
                 None => continue,
             };
 
-            let extension = PathBuf::from(&episode.filename)
-                .extension()
-                .map(|e| format!(".{}", e.to_string_lossy()).into())
-                .unwrap_or_else(|| Cow::Borrowed(""));
+            let extension = PathBuf::from(&episode.filename).extension().map_or_else(
+                || Cow::Borrowed(""),
+                |e| format!(".{}", e.to_string_lossy()).into(),
+            );
 
             let new_filename = format!(
                 "{} - {:02}{}",

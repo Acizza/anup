@@ -21,7 +21,7 @@ impl Config {
     {
         Self {
             series_dir: series_dir.into(),
-            ..Default::default()
+            ..Self::default()
         }
     }
 }

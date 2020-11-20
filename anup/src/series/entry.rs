@@ -22,13 +22,13 @@ pub struct SeriesEntry {
 
 impl SeriesEntry {
     pub fn load(db: &Database, entry_id: i32) -> diesel::QueryResult<Self> {
-        use crate::database::schema::series_entries::dsl::*;
+        use crate::database::schema::series_entries::dsl::{id, series_entries};
 
         series_entries.filter(id.eq(entry_id)).get_result(db.conn())
     }
 
     pub fn save(&self, db: &Database) -> diesel::QueryResult<usize> {
-        use crate::database::schema::series_entries::dsl::*;
+        use crate::database::schema::series_entries::dsl::series_entries;
 
         diesel::replace_into(series_entries)
             .values(self)
@@ -36,7 +36,7 @@ impl SeriesEntry {
     }
 
     pub fn entries_that_need_sync(db: &Database) -> diesel::QueryResult<Vec<Self>> {
-        use crate::database::schema::series_entries::dsl::*;
+        use crate::database::schema::series_entries::dsl::{needs_sync, series_entries};
 
         series_entries.filter(needs_sync.eq(true)).load(db.conn())
     }
@@ -170,6 +170,7 @@ impl Into<anime::remote::SeriesEntry> for &mut SeriesEntry {
 }
 
 impl From<anime::remote::SeriesEntry> for SeriesEntry {
+    #[allow(clippy::cast_possible_wrap)]
     fn from(entry: anime::remote::SeriesEntry) -> Self {
         Self {
             id: entry.id as i32,

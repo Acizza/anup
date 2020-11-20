@@ -47,16 +47,18 @@ impl PanelInputs {
         // We only set a placeholder if detected_path is some
         let placeholder_set = detected_path.is_some();
 
-        let path = detected_path
-            .as_ref()
-            .map(|path| PathInput::with_placeholder(InputFlags::empty(), config, path))
-            .unwrap_or_else(|| PathInput::new(InputFlags::empty(), config));
+        let path = detected_path.as_ref().map_or_else(
+            || PathInput::new(InputFlags::empty(), config),
+            |path| PathInput::with_placeholder(InputFlags::empty(), config, path),
+        );
 
         let name = detected_path
             .and_then(anime_dir::parse_title)
             .and_then(series::generate_nickname)
-            .map(|nickname| NameInput::with_placeholder(InputFlags::SELECTED, nickname))
-            .unwrap_or_else(|| NameInput::new(InputFlags::SELECTED));
+            .map_or_else(
+                || NameInput::new(InputFlags::SELECTED),
+                |nickname| NameInput::with_placeholder(InputFlags::SELECTED, nickname),
+            );
 
         let result = Self {
             name,
@@ -69,10 +71,10 @@ impl PanelInputs {
     }
 
     fn init_with_series(config: &Config, series: &LoadedSeries) -> Self {
-        let id = series
-            .id()
-            .map(|id| IDInput::with_id(InputFlags::empty(), id as SeriesID))
-            .unwrap_or_else(|| IDInput::new(InputFlags::empty()));
+        let id = series.id().map_or_else(
+            || IDInput::new(InputFlags::empty()),
+            |id| IDInput::with_id(InputFlags::empty(), id as SeriesID),
+        );
 
         let parser_pattern = match series.parser() {
             EpisodeParser::Default => Cow::Borrowed(""),
@@ -85,11 +87,6 @@ impl PanelInputs {
             path: PathInput::with_path(InputFlags::empty(), config, series.path().to_owned()),
             parser: ParserInput::with_text(InputFlags::empty(), parser_pattern),
         }
-    }
-
-    #[inline(always)]
-    const fn len(&self) -> usize {
-        Self::TOTAL
     }
 
     #[inline(always)]
@@ -304,7 +301,7 @@ impl Component for AddSeriesPanel {
                 self.validate_selected();
 
                 self.current_input().input_mut().set_selected(false);
-                self.selected_input = (self.selected_input + 1) % self.inputs.len();
+                self.selected_input = (self.selected_input + 1) % PanelInputs::TOTAL;
                 self.current_input().input_mut().set_selected(true);
 
                 Ok(AddSeriesResult::Ok)
@@ -377,7 +374,7 @@ impl SeriesBuilder {
         Self { params: None }
     }
 
-    fn path<'a>(&self, inputs: &'a PanelInputs, state: &UIState) -> Result<Cow<'a, SeriesPath>> {
+    fn path<'a>(inputs: &'a PanelInputs, state: &UIState) -> Result<Cow<'a, SeriesPath>> {
         match &inputs.path.parsed_value() {
             Some(path) => Ok(path.into()),
             None => SeriesPath::closest_matching(inputs.name.parsed_value(), &state.config)
@@ -396,7 +393,7 @@ impl SeriesBuilder {
     }
 
     fn update_internal(&mut self, inputs: &PanelInputs, state: &UIState) -> Result<()> {
-        let path = self.path(inputs, state)?;
+        let path = Self::path(inputs, state)?;
 
         let parser = inputs.parser.parsed_value();
         let episodes = ParsedEpisodes::parse(&path, &state.config, parser)?;

@@ -18,13 +18,13 @@ pub struct SeriesInfo {
 
 impl SeriesInfo {
     pub fn load(db: &Database, info_id: i32) -> diesel::QueryResult<Self> {
-        use crate::database::schema::series_info::dsl::*;
+        use crate::database::schema::series_info::dsl::{id, series_info};
 
         series_info.filter(id.eq(info_id)).get_result(db.conn())
     }
 
     pub fn save(&self, db: &Database) -> diesel::QueryResult<usize> {
-        use crate::database::schema::series_info::dsl::*;
+        use crate::database::schema::series_info::dsl::series_info;
 
         diesel::replace_into(series_info)
             .values(self)
@@ -69,6 +69,7 @@ impl SeriesInfo {
 }
 
 impl From<anime::remote::SeriesInfo> for SeriesInfo {
+    #[allow(clippy::cast_possible_wrap)]
     fn from(value: anime::remote::SeriesInfo) -> Self {
         Self {
             id: value.id as i32,

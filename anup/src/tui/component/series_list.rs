@@ -44,12 +44,11 @@ impl SeriesList {
         match series {
             LoadedSeries::Complete(series) => {
                 let color = match series.data.entry.status() {
-                    Status::Watching => Color::Blue,
+                    Status::Watching | Status::Rewatching => Color::Blue,
                     Status::Completed => Color::Green,
                     Status::OnHold => Color::Yellow,
                     Status::Dropped => Color::Red,
                     Status::PlanToWatch => Color::Gray,
-                    Status::Rewatching => Color::Blue,
                 };
 
                 text::with_color(series.data.config.nickname.as_str(), color)

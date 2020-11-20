@@ -30,7 +30,7 @@ use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::{Constraint, Direction, Layout};
 
-pub fn run(args: CmdOptions) -> Result<()> {
+pub fn run(args: &CmdOptions) -> Result<()> {
     let backend = UIBackend::init().context("failed to init backend")?;
     let mut ui = UIWorld::<TermionBackend>::init(&args, backend).context("failed to load UI")?;
     let events = UIEvents::new(Duration::seconds(1));
@@ -362,7 +362,7 @@ where
                     None => return Err(anyhow!("invalid score")),
                 };
 
-                series.data.entry.set_score(score.map(|s| s as i16));
+                series.data.entry.set_score(score.map(i16::from));
                 series.data.entry.sync_to_remote(remote)?;
                 series.save(db)?;
 
@@ -418,7 +418,6 @@ impl<T> Selection<T> {
     }
 
     fn set_selected(&mut self, selected: usize) {
-        #[cold]
         if selected >= self.items.len() {
             return;
         }
@@ -433,12 +432,12 @@ impl<T> Selection<T> {
 
     #[inline(always)]
     fn remove_selected(&mut self) -> Option<T> {
-        self.remove_selected_with(|items, index| items.remove(index))
+        self.remove_selected_with(Vec::remove)
     }
 
     #[inline(always)]
     fn swap_remove_selected(&mut self) -> Option<T> {
-        self.remove_selected_with(|items, index| items.swap_remove(index))
+        self.remove_selected_with(Vec::swap_remove)
     }
 
     fn remove_selected_with<F>(&mut self, func: F) -> Option<T>

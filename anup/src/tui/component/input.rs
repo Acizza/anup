@@ -557,7 +557,7 @@ impl ValidatedInput for IDInput {
 
         let (result, error) = match text.parse() {
             Ok(num) => (Some(num), false),
-            _ => (None, true),
+            Err(_) => (None, true),
         };
 
         self.id = result;

@@ -112,7 +112,7 @@ impl SeriesData {
     /// Returns the UTC time threshold for an episode should be counted as watched, assuming that the episode was starting to be watched now.
     pub fn next_watch_progress_time(&self, config: &Config) -> DateTime<Utc> {
         let secs_must_watch =
-            (self.info.episode_length_mins as f32 * config.episode.pcnt_must_watch) * 60.0;
+            (f32::from(self.info.episode_length_mins) * config.episode.pcnt_must_watch) * 60.0;
 
         Utc::now() + Duration::seconds(secs_must_watch as i64)
     }
@@ -184,15 +184,15 @@ impl Series {
         self.data.save(db)
     }
 
-    pub fn load_from_config<'a, C>(sconfig: C, config: &Config, db: &Database) -> LoadedSeries
+    pub fn load_from_config<'a, C>(series_config: C, config: &Config, db: &Database) -> LoadedSeries
     where
         C: Into<Cow<'a, SeriesConfig>>,
     {
-        let sconfig = sconfig.into();
+        let series_config = series_config.into();
 
-        let data = match SeriesData::load_from_config(db, sconfig.clone()) {
+        let data = match SeriesData::load_from_config(db, series_config.clone()) {
             Ok(data) => data,
-            Err(err) => return LoadedSeries::None(sconfig.into_owned(), err.into()),
+            Err(err) => return LoadedSeries::None(series_config.into_owned(), err.into()),
         };
 
         Self::init(data, config)
@@ -521,8 +521,7 @@ impl LastWatched {
         let is_different = self
             .0
             .as_ref()
-            .map(|existing| existing != nickname.as_ref())
-            .unwrap_or(true);
+            .map_or(true, |existing| existing != nickname.as_ref());
 
         if is_different {
             self.0 = Some(nickname.into_owned());

@@ -95,6 +95,7 @@ impl InfoPanel {
         Self::draw_text_panel(header, body, rect, frame);
     }
 
+    #[allow(clippy::too_many_lines)]
     fn draw_series_info<B>(state: &UIState, series: &Series, rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
@@ -156,13 +157,13 @@ impl InfoPanel {
         let left_pane_items = panel_items! {
             "Watch Time" => {
                 let watch_time_mins = info.episodes * info.episode_length_mins;
-                util::hm_from_mins(watch_time_mins as f32).into()
+                util::hm_from_mins(f32::from(watch_time_mins)).into()
             },
             "Time Left" => {
                 let eps_left = info.episodes - entry.watched_episodes().min(info.episodes);
                 let time_left_mins = eps_left * info.episode_length_mins;
 
-                util::hm_from_mins(time_left_mins as f32).into()
+                util::hm_from_mins(f32::from(time_left_mins)).into()
             },
             "Episode Length" => format!("{}M", info.episode_length_mins).into(),
         };
@@ -179,10 +180,12 @@ impl InfoPanel {
         let right_pane_items = {
             // TODO: allow the format to be changed in the config
             let format_date = |date: Option<SeriesDate>| {
-                date.map(|date| {
-                    format!("{:02}/{:02}/{:02}", date.month, date.day, date.year % 100).into()
-                })
-                .unwrap_or_else(|| Cow::Borrowed("??"))
+                date.map_or_else(
+                    || Cow::Borrowed("??"),
+                    |date| {
+                        format!("{:02}/{:02}/{:02}", date.month, date.day, date.year % 100).into()
+                    },
+                )
             };
 
             panel_items! {

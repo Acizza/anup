@@ -84,11 +84,11 @@ fn main() -> Result<()> {
     let args = CmdOptions::from_env()?;
 
     if args.single {
-        play_episode(args)
+        play_episode(&args)
     } else if args.sync {
-        sync(args)
+        sync(&args)
     } else {
-        tui::run(args)
+        tui::run(&args)
     }
 }
 
@@ -111,7 +111,7 @@ fn init_remote(args: &CmdOptions) -> Result<Option<Remote>> {
     }
 }
 
-fn sync(args: CmdOptions) -> Result<()> {
+fn sync(args: &CmdOptions) -> Result<()> {
     if args.offline {
         return Err(anyhow!("must be online to run this command"));
     }
@@ -143,7 +143,7 @@ fn sync(args: CmdOptions) -> Result<()> {
     Ok(())
 }
 
-fn play_episode(args: CmdOptions) -> Result<()> {
+fn play_episode(args: &CmdOptions) -> Result<()> {
     use anime::remote::Status;
 
     let config = Config::load_or_create()?;

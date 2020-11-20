@@ -58,12 +58,11 @@ impl Component for EpisodeWatcher {
                     _ => unreachable!(),
                 };
 
-                let series = match state.series.valid_selection_mut() {
-                    Some(series) => series,
-                    None => {
-                        state.current_action.reset();
-                        return Ok(());
-                    }
+                let series = if let Some(series) = state.series.valid_selection_mut() {
+                    series
+                } else {
+                    state.current_action.reset();
+                    return Ok(());
                 };
 
                 if Utc::now() >= progress_time {
