@@ -1,7 +1,12 @@
-#![deny(trivial_casts)]
-#![deny(trivial_numeric_casts)]
-#![deny(unused_import_braces)]
-#![deny(variant_size_differences)]
+#![warn(clippy::pedantic)]
+#![allow(clippy::clippy::cast_possible_truncation)]
+#![allow(clippy::inline_always)]
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::shadow_unrelated)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::cast_sign_loss)]
+#![allow(clippy::map_err_ignore)]
 
 #[macro_use]
 extern crate diesel;
