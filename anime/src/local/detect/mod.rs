@@ -47,7 +47,7 @@ pub enum EpisodeParser {
 }
 
 impl EpisodeParser {
-    /// Create a new [EpisodeParser::Custom](#variant.Custom) with the specified custom pattern.
+    /// Create a new [`EpisodeParser::Custom`] with the specified custom pattern.
     ///
     /// # Example
     ///
@@ -144,8 +144,7 @@ impl PartialEq for EpisodeParser {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Default, Self::Default) => true,
-            (Self::Default, Self::Custom(_)) => false,
-            (Self::Custom(_), Self::Default) => false,
+            (Self::Default, Self::Custom(_)) | (Self::Custom(_), Self::Default) => false,
             (Self::Custom(pat1), Self::Custom(pat2)) => pat1 == pat2,
         }
     }
@@ -253,7 +252,7 @@ impl CustomPattern {
             .into_iter()
             .rev()
             .enumerate()
-            .map(|(base, ch)| ch.to_digit(10).unwrap_or(0) * 10u32.pow(base as u32))
+            .map(|(base, ch)| ch.to_digit(10).unwrap_or(0) * 10_u32.pow(base as u32))
             .sum::<u32>()
     }
 
@@ -305,12 +304,14 @@ impl CustomPattern {
 
     /// Returns true if the current pattern contains the episode marker character.
     #[inline]
+    #[must_use]
     pub fn has_episode_marker(&self) -> bool {
         self.0.contains(Self::EPISODE_MARKER)
     }
 
     /// Returns a reference to the pattern string.
     #[inline(always)]
+    #[must_use]
     pub fn inner(&self) -> &String {
         &self.0
     }

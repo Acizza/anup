@@ -33,6 +33,7 @@ pub enum Remote {
 
 impl Remote {
     #[inline(always)]
+    #[must_use]
     pub fn offline() -> Self {
         Offline::new().into()
     }
@@ -129,12 +130,14 @@ impl SeriesInfo {
     ///
     /// This can be used to follow sequel trails of seasons.
     #[inline(always)]
+    #[must_use]
     pub fn direct_sequel(&self) -> Option<&Sequel> {
         self.sequel_by_kind(self.kind)
     }
 
     /// Returns the first sequel matching the specified `kind`.
     #[inline]
+    #[must_use]
     pub fn sequel_by_kind(&self, kind: SeriesKind) -> Option<&Sequel> {
         self.sequels.iter().find(|sequel| sequel.kind == kind)
     }
@@ -163,6 +166,7 @@ pub struct Sequel {
 
 impl Sequel {
     #[inline(always)]
+    #[must_use]
     pub fn new(kind: SeriesKind, id: SeriesID) -> Self {
         Self { kind, id }
     }
@@ -199,6 +203,7 @@ pub struct SeriesEntry {
 impl SeriesEntry {
     /// Create a new `SeriesEntry` associated to the anime with the specified `id`.
     #[inline]
+    #[must_use]
     pub fn new(id: u32) -> Self {
         Self {
             id,
@@ -303,6 +308,7 @@ pub struct SeriesDate {
 
 impl SeriesDate {
     #[inline(always)]
+    #[must_use]
     pub fn from_ymd(year: u16, month: u8, day: u8) -> Self {
         Self { year, month, day }
     }
@@ -320,17 +326,17 @@ where
 
         let year = separator
             .next()
-            .ok_or_else(|| "no year found while parsing date")?
+            .ok_or("no year found while parsing date")?
             .parse()?;
 
         let month = separator
             .next()
-            .ok_or_else(|| "no month found while parsing date")?
+            .ok_or("no month found while parsing date")?
             .parse()?;
 
         let day = separator
             .next()
-            .ok_or_else(|| "no day found while parsing date")?
+            .ok_or("no day found while parsing date")?
             .parse()?;
 
         Ok(Self::from_ymd(year, month, day))
@@ -354,9 +360,9 @@ impl From<chrono::NaiveDate> for SeriesDate {
         use chrono::Datelike;
 
         Self {
-            year: (date.year().max(0) as u16).min(u16::MAX),
-            month: date.month().min(u8::MAX as u32) as u8,
-            day: date.day().min(u8::MAX as u32) as u8,
+            year: date.year().max(0).min(i32::from(u16::MAX)) as u16,
+            month: date.month().min(u32::from(u8::MAX)) as u8,
+            day: date.day().min(u32::from(u8::MAX)) as u8,
         }
     }
 }
@@ -365,7 +371,11 @@ impl From<chrono::NaiveDate> for SeriesDate {
 impl Into<chrono::NaiveDate> for SeriesDate {
     fn into(self) -> chrono::NaiveDate {
         use chrono::NaiveDate;
-        NaiveDate::from_ymd(self.year as i32, self.month as u32, self.day as u32)
+        NaiveDate::from_ymd(
+            i32::from(self.year),
+            u32::from(self.month),
+            u32::from(self.day),
+        )
     }
 }
 

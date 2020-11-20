@@ -24,6 +24,7 @@ pub mod title_and_episode {
     use nom::sequence::{separated_pair, tuple};
     use nom::IResult;
 
+    #[must_use]
     pub fn parse(input: &str) -> Option<ParsedEpisode> {
         let input = input.chars().rev().collect::<String>();
 
@@ -93,6 +94,7 @@ pub mod title_episode_desc {
     use nom::sequence::tuple;
     use nom::IResult;
 
+    #[must_use]
     pub fn parse(input: &str) -> Option<ParsedEpisode> {
         let input = input.chars().rev().collect::<String>();
 
@@ -127,6 +129,7 @@ pub mod episode_and_title {
     use nom::sequence::{separated_pair, tuple};
     use nom::IResult;
 
+    #[must_use]
     pub fn parse(input: &str) -> Option<ParsedEpisode> {
         let (_, (_, _, (episode, title))) =
             tuple((tags, whitespace, episode_and_title))(input).ok()?;
@@ -142,7 +145,7 @@ pub mod episode_and_title {
     }
 
     fn episode(input: &str) -> IResult<&str, u32> {
-        let ep = map_res(digit1, |s: &str| s.parse::<u32>());
+        let ep = map_res(digit1, str::parse);
 
         let season_marker = tuple((char('S'), digit1));
         let ep_marker = tuple((opt(season_marker), char('E')));
@@ -168,7 +171,7 @@ fn title(input: &str) -> IResult<&str, &str> {
 
     let has_digit_fragment = fragments
         .into_iter()
-        .any(|frag| !frag.chars().any(|ch| ch.is_alphabetic()));
+        .any(|frag| !frag.chars().any(char::is_alphabetic));
 
     if has_digit_fragment {
         let kind = Error::from_error_kind(slice, ErrorKind::SeparatedList);
@@ -237,7 +240,7 @@ mod reverse {
         // Episode <episode>
         let prefix = {
             let season_marker = map(tuple((one_of("Ee"), digit1, one_of("Ss"))), |_| ());
-            let ep_prefix = map(
+            let episode_prefix = map(
                 tuple((
                     whitespace,
                     // Reverse of "isode"
@@ -248,7 +251,7 @@ mod reverse {
                 |_| (),
             );
             let e_prefix = map(one_of("Ee"), |_| ());
-            alt((season_marker, ep_prefix, e_prefix))
+            alt((season_marker, episode_prefix, e_prefix))
         };
 
         let parsed_episode = tuple((opt(file_version), ep, opt(prefix)));

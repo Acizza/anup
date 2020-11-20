@@ -19,6 +19,7 @@ pub struct Episode {
 
 impl Episode {
     #[inline(always)]
+    #[must_use]
     pub fn new(number: u32, filename: String) -> Self {
         Self { number, filename }
     }
@@ -50,6 +51,7 @@ pub struct SortedEpisodes(Vec<Episode>);
 
 impl SortedEpisodes {
     #[inline(always)]
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -57,6 +59,7 @@ impl SortedEpisodes {
     /// Create a new `SortedEpisodes` struct with the given `episodes`.
     ///
     /// The given `episodes` will be sorted.
+    #[must_use]
     pub fn with_episodes(episodes: Vec<Episode>) -> Self {
         let mut episodes = Self(episodes);
         episodes.sort();
@@ -70,6 +73,7 @@ impl SortedEpisodes {
 
     /// Consumes the struct and returns the contained episodes.
     #[inline(always)]
+    #[must_use]
     pub fn take(self) -> Vec<Episode> {
         self.0
     }
@@ -81,6 +85,7 @@ impl SortedEpisodes {
 
     /// Returns a reference to the episode with the specified `number`.
     #[inline]
+    #[must_use]
     pub fn find(&self, episode_num: u32) -> Option<&Episode> {
         self.0
             .binary_search_by_key(&episode_num, |ep| ep.number)
@@ -89,8 +94,9 @@ impl SortedEpisodes {
     }
 
     #[inline]
+    #[must_use]
     pub fn highest_episode_number(&self) -> u32 {
-        self.0.last().map(|ep| ep.number).unwrap_or(0)
+        self.0.last().map_or(0, |ep| ep.number)
     }
 
     fn sort(&mut self) {
@@ -116,18 +122,21 @@ pub struct CategorizedEpisodes(EpisodeMap);
 impl CategorizedEpisodes {
     /// Create a new `CategorizedEpisodes` struct with the specified `episodes`.
     #[inline(always)]
+    #[must_use]
     pub fn with_sorted(episodes: EpisodeMap) -> Self {
         Self(episodes)
     }
 
     /// Returns true if multiple episode categories are present.
     #[inline(always)]
+    #[must_use]
     pub fn has_multiple_categories(&self) -> bool {
         self.0.len() > 1
     }
 
     /// Consumes the struct and returns episodes if only one episode category is present.
     #[inline]
+    #[must_use]
     pub fn take_only_category(self) -> Option<SortedEpisodes> {
         if self.has_multiple_categories() {
             return None;
@@ -138,6 +147,7 @@ impl CategorizedEpisodes {
 
     /// Consumes the struct and returns seasonal episodes, or, if there's only one episode category, those episodes.
     #[inline]
+    #[must_use]
     pub fn take_season_episodes_or_present(mut self) -> Option<SortedEpisodes> {
         self.0
             .remove(&SeriesKind::Season)
@@ -146,6 +156,7 @@ impl CategorizedEpisodes {
 
     /// Consumes the struct and returns the contained episodes.
     #[inline(always)]
+    #[must_use]
     pub fn take(self) -> EpisodeMap {
         self.0
     }

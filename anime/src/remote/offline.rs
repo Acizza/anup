@@ -14,6 +14,7 @@ use crate::err::{self, Result};
 pub struct Offline;
 
 impl Offline {
+    #[must_use]
     pub fn new() -> Offline {
         Offline {}
     }

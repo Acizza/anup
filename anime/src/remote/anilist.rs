@@ -1,3 +1,5 @@
+#![allow(clippy::doc_markdown)]
+
 use super::{
     AccessToken, RemoteService, ScoreParser, Sequel, SeriesDate, SeriesEntry, SeriesID, SeriesInfo,
     SeriesKind, SeriesTitle, Status,
@@ -20,6 +22,7 @@ pub const API_URL: &str = "https://graphql.anilist.co";
 /// `client_id` is the ID of the application you wish to use the API with.
 /// It can be retrieved from the `Developer` section of your account settings.
 #[inline]
+#[must_use]
 pub fn auth_url(client_id: u32) -> String {
     format!(
         "https://anilist.co/api/v2/oauth/authorize?client_id={}&response_type=token",
@@ -217,7 +220,8 @@ impl ScoreParser for AniList {
             ScoreFormat::Point10Decimal => format!("{:.1}", f32::from(score) / 10.0).into(),
             ScoreFormat::Point5 => {
                 let num_stars = score / 20;
-                "★".repeat(num_stars as usize).into()
+                // Star unicode character
+                "\u{2605}".repeat(num_stars as usize).into()
             }
             ScoreFormat::Point3 => {
                 if score <= 33 {
@@ -242,6 +246,7 @@ pub struct Auth {
 
 impl Auth {
     #[inline(always)]
+    #[must_use]
     pub fn new(user: User, token: AccessToken) -> Self {
         Self { user, token }
     }

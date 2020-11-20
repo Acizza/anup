@@ -42,6 +42,7 @@ pub enum Error {
 }
 
 impl Error {
+    #[must_use]
     pub fn is_http_code(&self, http_code: u16) -> bool {
         use attohttpc::ErrorKind;
 
