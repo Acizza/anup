@@ -6,8 +6,6 @@ use crate::tui::UIState;
 use anime::remote::SeriesInfo as RemoteInfo;
 use anime::SeriesKind;
 use anyhow::Result;
-use smallvec::SmallVec;
-use std::borrow::Cow;
 use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -44,28 +42,27 @@ impl SplitPanel {
             SeriesKind::Music => "Music",
         };
 
-        let row_data: SmallVec<[([Cow<str>; 2], bool); 3]> = self
-            .merged_series
-            .iter()
-            .map(|merged| match merged {
-                MergedSeries::Failed(cat) => ([kind_str(*cat).into(), "Failed..".into()], true),
-                MergedSeries::Resolved(series) => (
-                    [
-                        kind_str(series.info.kind).into(),
-                        series.info.title.preferred.as_str().into(),
-                    ],
-                    false,
-                ),
-            })
-            .collect();
-
         let row_color = color::either(self.has_split_series, Color::Blue, Color::Yellow);
 
-        let rows = row_data.iter().map(|(row, error)| {
-            Row::StyledData(row.iter(), style::fg_either(*error, Color::Red, row_color))
+        let rows = self.merged_series.iter().map(|merged| {
+            let (rows, color) = match merged {
+                MergedSeries::Failed(cat) => (vec![kind_str(*cat).into(), "Failed.."], Color::Red),
+                MergedSeries::Resolved(series) => (
+                    vec![
+                        kind_str(series.info.kind).into(),
+                        series.info.title.preferred.as_str(),
+                    ],
+                    row_color,
+                ),
+            };
+
+            Row::new(rows).style(style::fg(color))
         });
 
-        let table = Table::new(["Type", "Series"].iter(), rows)
+        let header = Row::new(vec!["Type", "Series"]);
+
+        let table = Table::new(rows)
+            .header(header)
             .widths([Constraint::Length(8), Constraint::Percentage(100)].as_ref())
             .highlight_symbol(">")
             .highlight_style(style::list_selector(self.has_split_series))

@@ -9,16 +9,15 @@ use crate::user::{RemoteType, UserInfo};
 use anime::remote::anilist::AniList;
 use anime::remote::{AccessToken, Remote, RemoteService};
 use anyhow::{anyhow, Context, Result};
-use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::process::Command;
 use termion::event::Key;
-use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::text::{Span, Text};
 use tui::widgets::{List, ListItem, ListState, Paragraph, Row, Table, TableState};
+use tui::{backend::Backend, style::Style};
 
 type ServiceList = TypedSelectable<RemoteType, ListState>;
 
@@ -240,33 +239,24 @@ impl UserPanel {
     ) where
         B: Backend,
     {
-        let row_data = state
-            .users
-            .get()
-            .keys()
-            .map(|user| {
-                let is_logged_in = user.is_logged_in(&state.remote);
+        let users = state.users.get().keys().map(|user| {
+            let is_logged_in = user.is_logged_in(&state.remote);
+            let data = [user.username.as_str(), user.service.as_str()];
 
-                let data = [
-                    Cow::Borrowed(user.username.as_str()),
-                    Cow::Borrowed(user.service.as_str()),
-                ];
-
-                (data, is_logged_in)
-            })
-            .collect::<SmallVec<[_; 4]>>();
-
-        let users = row_data.iter().map(|(data, is_logged_in)| {
-            if *is_logged_in {
-                Row::StyledData(data.iter(), style::fg(Color::Blue))
+            let style = if is_logged_in {
+                style::fg(Color::Blue)
             } else {
-                Row::Data(data.iter())
-            }
+                Style::default()
+            };
+
+            Row::new(data.to_vec()).style(style)
         });
 
-        // Note: tables currently have inconsistent spacing between columns: https://github.com/fdehau/tui-rs/issues/299
-        let users_widget = Table::new(["Username", "Service"].iter(), users)
-            .widths([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+        let header = Row::new(vec!["Username", "Service"]);
+
+        let users_widget = Table::new(users)
+            .header(header)
+            .widths([Constraint::Percentage(80), Constraint::Min(5)].as_ref())
             .highlight_symbol(">")
             .highlight_style(style::list_selector(is_selected))
             .column_spacing(4);
