@@ -14,8 +14,7 @@ use crate::{try_opt_r, try_opt_ret};
 use anime::local::SortedEpisodes;
 use anime::remote::{Remote, ScoreParser};
 use anyhow::{anyhow, Context, Result};
-use backend::{TermionBackend, UIBackend, UIEvent, UIEvents};
-use chrono::Duration;
+use backend::{EventKind, Key, UIBackend};
 use component::episode_watcher::{EpisodeWatcher, ProgressTime};
 use component::main_panel::MainPanel;
 use component::prompt::command::Command;
@@ -23,31 +22,30 @@ use component::prompt::log::Log;
 use component::prompt::{Prompt, PromptResult, COMMAND_KEY};
 use component::series_list::SeriesList;
 use component::{Component, Draw};
+use crossterm::{event::KeyCode, terminal};
 use std::mem;
 use std::ops::{Index, IndexMut};
 use std::process;
-use termion::event::Key;
-use tui::backend::Backend;
 use tui::layout::{Constraint, Direction, Layout};
 
-pub fn run(args: &Args) -> Result<()> {
+use self::backend::Events;
+
+pub async fn run(args: &Args) -> Result<()> {
     let backend = UIBackend::init().context("failed to init backend")?;
-    let mut ui = UIWorld::<TermionBackend>::init(&args, backend).context("failed to load UI")?;
-    let events = UIEvents::new(Duration::seconds(1));
+    let mut ui = UI::init(&args, backend).context("failed to init UI")?;
 
     loop {
-        ui.draw().context("UI draw failed")?;
-
-        match events.next().context("failed to receive UI event")? {
-            UIEvent::Input(key) => {
-                if ui.process_key(key) {
-                    ui.exit();
-                    break Ok(());
-                }
+        match ui.next_cycle().await {
+            CycleResult::Ok => (),
+            CycleResult::Exit => break,
+            CycleResult::Error(err) => {
+                ui.exit().ok();
+                return Err(err);
             }
-            UIEvent::Tick => ui.tick(),
         }
     }
+
+    ui.exit()
 }
 
 pub struct UIState {
@@ -156,8 +154,9 @@ impl PartialEq for CurrentAction {
     }
 }
 
-struct UIWorld<'a, B: Backend> {
-    backend: UIBackend<B>,
+struct UI<'a> {
+    events: Events,
+    backend: UIBackend,
     state: UIState,
     prompt: Prompt<'a>,
     series_list: SeriesList,
@@ -177,11 +176,8 @@ macro_rules! capture_err {
     };
 }
 
-impl<'a, B> UIWorld<'a, B>
-where
-    B: Backend,
-{
-    fn init(args: &Args, backend: UIBackend<B>) -> Result<Self> {
+impl<'a> UI<'a> {
+    fn init(args: &Args, backend: UIBackend) -> Result<Self> {
         let mut prompt = Prompt::new();
         let remote = Self::init_remote(args, &mut prompt.log);
 
@@ -191,6 +187,7 @@ where
         let series_list = SeriesList::init(args, &mut state, &last_watched);
 
         Ok(Self {
+            events: Events::new(),
             backend,
             state,
             prompt,
@@ -216,11 +213,25 @@ where
         }
     }
 
-    fn exit(mut self) {
-        self.backend.clear().ok();
+    async fn next_cycle(&mut self) -> CycleResult {
+        if let Err(err) = self.draw() {
+            return CycleResult::Error(err);
+        }
+
+        let event = match self.events.next().await {
+            Ok(Some(event)) => event,
+            Ok(None) => return CycleResult::Ok,
+            Err(backend::ErrorKind::ExitRequest) => return CycleResult::Exit,
+            Err(backend::ErrorKind::Other(err)) => return CycleResult::Error(err),
+        };
+
+        match event {
+            EventKind::Key(key) => self.process_key(key),
+            EventKind::Tick => self.tick(),
+        }
     }
 
-    fn tick(&mut self) {
+    fn tick(&mut self) -> CycleResult {
         macro_rules! capture {
             ($result:expr) => {
                 capture_err!(self, $result)
@@ -234,6 +245,8 @@ where
         }
 
         tick!(prompt, series_list, main_panel, episode_watcher);
+
+        CycleResult::Ok
     }
 
     fn draw(&mut self) -> Result<()> {
@@ -269,12 +282,12 @@ where
     /// Process a key input for all UI components.
     ///
     /// Returns true if the program should exit.
-    fn process_key(&mut self, key: Key) -> bool {
+    fn process_key(&mut self, key: Key) -> CycleResult {
         macro_rules! capture {
             ($result:expr) => {
                 match capture_err!(self, $result) {
                     Ok(value) => value,
-                    Err(_) => return false,
+                    Err(_) => return CycleResult::Ok,
                 }
             };
         }
@@ -286,21 +299,25 @@ where
         }
 
         match &self.state.current_action {
-            CurrentAction::Idle => match key {
-                Key::Char('q') => return true,
-                Key::Char(key) if key == self.state.config.tui.keys.play_next_episode => {
+            CurrentAction::Idle => match *key {
+                KeyCode::Char('q') => return CycleResult::Exit,
+                key if key == self.state.config.tui.keys.play_next_episode => {
                     capture!(self.episode_watcher.begin_watching_episode(&mut self.state))
                 }
-                Key::Char('a') => capture!(self.main_panel.switch_to_add_series(&mut self.state)),
-                Key::Char('e') => {
+                KeyCode::Char('a') => {
+                    capture!(self.main_panel.switch_to_add_series(&mut self.state))
+                }
+                KeyCode::Char('e') => {
                     capture!(self.main_panel.switch_to_update_series(&mut self.state))
                 }
-                Key::Char('D') => {
+                KeyCode::Char('D') => {
                     capture!(self.main_panel.switch_to_delete_series(&mut self.state))
                 }
-                Key::Char('u') => self.main_panel.switch_to_user_panel(&mut self.state),
-                Key::Char('s') => capture!(self.main_panel.switch_to_split_series(&mut self.state)),
-                Key::Char(COMMAND_KEY) => {
+                KeyCode::Char('u') => self.main_panel.switch_to_user_panel(&mut self.state),
+                KeyCode::Char('s') => {
+                    capture!(self.main_panel.switch_to_split_series(&mut self.state))
+                }
+                KeyCode::Char(COMMAND_KEY) => {
                     self.state.current_action = CurrentAction::EnteringCommand
                 }
                 _ => process_key!(series_list),
@@ -315,7 +332,7 @@ where
             }
         }
 
-        false
+        CycleResult::Ok
     }
 
     fn process_command(&mut self, command: Command) -> Result<()> {
@@ -379,6 +396,17 @@ where
             }
         }
     }
+
+    pub fn exit(mut self) -> Result<()> {
+        self.backend.clear().ok();
+        terminal::disable_raw_mode().map_err(Into::into)
+    }
+}
+
+pub enum CycleResult {
+    Ok,
+    Exit,
+    Error(anyhow::Error),
 }
 
 pub struct Selection<T> {

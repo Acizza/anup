@@ -56,7 +56,8 @@ pub struct Args {
     pub sync: bool,
 }
 
-fn main() -> Result<()> {
+#[async_std::main]
+async fn main() -> Result<()> {
     let args: Args = argh::from_env();
 
     if args.play_one {
@@ -64,7 +65,7 @@ fn main() -> Result<()> {
     } else if args.sync {
         sync(&args)
     } else {
-        tui::run(&args)
+        tui::run(&args).await
     }
 }
 

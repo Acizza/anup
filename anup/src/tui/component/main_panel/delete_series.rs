@@ -1,10 +1,13 @@
 use super::ShouldReset;
-use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
+use crate::tui::{
+    backend::Key,
+    component::{Component, Draw},
+};
 use anyhow::{anyhow, Context, Result};
+use crossterm::event::KeyCode;
 use std::fs;
-use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
@@ -101,13 +104,13 @@ impl Component for DeleteSeriesPanel {
     type KeyResult = Result<ShouldReset>;
 
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
-        match key {
-            Key::Esc => Ok(ShouldReset::Yes),
-            Key::Char('d') => {
+        match *key {
+            KeyCode::Esc => Ok(ShouldReset::Yes),
+            KeyCode::Char('d') => {
                 self.remove_files.toggle();
                 Ok(ShouldReset::No)
             }
-            Key::Char('\n') => {
+            KeyCode::Enter => {
                 self.delete_selected_series(state)?;
                 Ok(ShouldReset::Yes)
             }

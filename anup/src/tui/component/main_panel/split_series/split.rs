@@ -1,11 +1,11 @@
 use super::MergedSeries;
-use crate::series::SeriesPath;
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, color, style, text, SelectWidgetState};
 use crate::tui::UIState;
+use crate::{series::SeriesPath, tui::backend::Key};
 use anime::remote::SeriesInfo as RemoteInfo;
 use anyhow::Result;
-use termion::event::Key;
+use crossterm::event::KeyCode;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
@@ -67,9 +67,9 @@ impl Component for SplitPanel {
     type KeyResult = Result<SplitResult>;
 
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
-        match key {
-            Key::Esc => Ok(SplitResult::Reset),
-            Key::Char('s') => {
+        match *key {
+            KeyCode::Esc => Ok(SplitResult::Reset),
+            KeyCode::Char('s') => {
                 MergedSeries::split_all(&self.merged_series, &state.config)?;
 
                 self.has_split_series = true;
@@ -77,7 +77,7 @@ impl Component for SplitPanel {
 
                 Ok(SplitResult::Ok)
             }
-            Key::Char('\n') => {
+            KeyCode::Enter => {
                 if !self.has_split_series {
                     return Ok(SplitResult::Ok);
                 }
@@ -97,7 +97,7 @@ impl Component for SplitPanel {
                     series.out_dir.clone(),
                 ))
             }
-            key => {
+            _ => {
                 if self.has_split_series {
                     self.split_table
                         .update_selected(key, self.merged_series.len());

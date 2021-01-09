@@ -1,5 +1,4 @@
 use super::PartialSeries;
-use crate::config::Config;
 use crate::file;
 use crate::series::info::{InfoSelector, SeriesInfo};
 use crate::series::{self, LoadedSeries, SeriesParams, SeriesPath, UpdateParams};
@@ -10,14 +9,15 @@ use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
+use crate::{config::Config, tui::backend::Key};
 use crate::{try_opt_r, try_opt_ret};
 use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
 use anime::remote::SeriesID;
 use anyhow::{Context, Result};
+use crossterm::event::KeyCode;
 use std::borrow::Cow;
 use std::mem;
 use std::time::Instant;
-use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
@@ -286,9 +286,9 @@ impl Component for AddSeriesPanel {
     }
 
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
-        match key {
-            Key::Esc => Ok(AddSeriesResult::Reset),
-            Key::Char('\n') => {
+        match *key {
+            KeyCode::Esc => Ok(AddSeriesResult::Reset),
+            KeyCode::Enter => {
                 self.validate_selected();
 
                 if self.error.is_some() {
@@ -297,7 +297,7 @@ impl Component for AddSeriesPanel {
 
                 self.series_builder.build(&self.inputs, state, self.mode)
             }
-            Key::Char('\t') => {
+            KeyCode::Tab => {
                 self.validate_selected();
 
                 self.current_input().input_mut().set_selected(false);
@@ -306,7 +306,7 @@ impl Component for AddSeriesPanel {
 
                 Ok(AddSeriesResult::Ok)
             }
-            key => {
+            _ => {
                 self.current_input().input_mut().process_key(key);
                 self.validate_selected();
 

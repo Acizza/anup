@@ -1,15 +1,15 @@
 use super::SplitPanelResult;
-use crate::series::config::SeriesConfig;
 use crate::series::{self, SeriesParams, SeriesPath};
 use crate::try_opt_ret;
 use crate::tui::component::input::{Input, InputFlags, NameInput, ParsedValue, ValidatedInput};
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
+use crate::{series::config::SeriesConfig, tui::backend::Key};
 use anime::local::EpisodeParser;
 use anime::remote::SeriesInfo as RemoteInfo;
 use anyhow::Result;
-use termion::event::Key;
+use crossterm::event::KeyCode;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
@@ -41,9 +41,9 @@ impl Component for AddPanel {
 
     #[allow(clippy::cast_possible_wrap)]
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
-        match key {
-            Key::Esc => Ok(SplitPanelResult::Reset),
-            Key::Char('\n') => {
+        match *key {
+            KeyCode::Esc => Ok(SplitPanelResult::Reset),
+            KeyCode::Enter => {
                 self.name_input.validate();
 
                 if self.name_input.has_error() {
@@ -61,7 +61,7 @@ impl Component for AddPanel {
 
                 Ok(SplitPanelResult::add_series(data.info, sconfig))
             }
-            key => {
+            _ => {
                 self.name_input.input_mut().process_key(key);
                 self.name_input.validate();
                 Ok(SplitPanelResult::Ok)

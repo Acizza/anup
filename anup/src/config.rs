@@ -1,4 +1,5 @@
 use crate::file::{FileFormat, SaveDir, SerializedFile};
+use crossterm::event::KeyCode;
 use serde::de::{self, Deserializer, Visitor};
 use serde::ser::Serializer;
 use serde_derive::{Deserialize, Serialize};
@@ -157,13 +158,13 @@ pub struct TuiConfig {
 
 #[derive(Deserialize, Serialize)]
 pub struct TuiKeys {
-    pub play_next_episode: char,
+    pub play_next_episode: KeyCode,
 }
 
 impl Default for TuiKeys {
     fn default() -> TuiKeys {
         TuiKeys {
-            play_next_episode: '\n',
+            play_next_episode: KeyCode::Enter,
         }
     }
 }

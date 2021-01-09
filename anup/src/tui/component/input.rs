@@ -1,14 +1,14 @@
-use crate::config::Config;
 use crate::series::SeriesPath;
 use crate::tui::component::Draw;
 use crate::tui::widget_util::{block, style, text};
+use crate::{config::Config, tui::backend::Key};
 use anime::local::detect::CustomPattern;
 use anime::local::EpisodeParser;
 use anime::remote::SeriesID;
 use bitflags::bitflags;
+use crossterm::event::KeyCode;
 use std::borrow::Cow;
 use std::path::PathBuf;
-use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
@@ -106,17 +106,17 @@ impl Input {
             return;
         }
 
-        match key {
-            Key::Char(ch) => self.caret.push(ch),
-            Key::Backspace => self.caret.pop(),
-            Key::Left => self.caret.move_left(),
-            Key::Right => match (self.caret.is_empty(), self.placeholder.as_ref()) {
+        match *key {
+            KeyCode::Char(ch) => self.caret.push(ch),
+            KeyCode::Backspace => self.caret.pop(),
+            KeyCode::Left => self.caret.move_left(),
+            KeyCode::Right => match (self.caret.is_empty(), self.placeholder.as_ref()) {
                 // Fill our input with the placeholder if present and we don't currently have user input
                 (true, Some(placeholder)) => self.caret.push_str(&placeholder[self.caret.pos()..]),
                 _ => self.caret.move_right(),
             },
-            Key::Home => self.caret.move_front(),
-            Key::End => self.caret.move_end(),
+            KeyCode::Home => self.caret.move_front(),
+            KeyCode::End => self.caret.move_end(),
             _ => (),
         }
 

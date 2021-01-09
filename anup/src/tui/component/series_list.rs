@@ -1,11 +1,14 @@
 use super::{Component, Draw};
-use crate::series::{LastWatched, LoadedSeries};
 use crate::tui::widget_util::{block, style, text};
 use crate::tui::{CurrentAction, UIState};
 use crate::Args;
+use crate::{
+    series::{LastWatched, LoadedSeries},
+    tui::backend::Key,
+};
 use anime::remote::Status;
 use anyhow::Result;
-use termion::event::Key;
+use crossterm::event::KeyCode;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::Color;
@@ -66,11 +69,11 @@ impl Component for SeriesList {
     type KeyResult = Result<()>;
 
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
-        match key {
-            Key::Up | Key::Down => {
-                match key {
-                    Key::Up => state.series.dec_selected(),
-                    Key::Down => state.series.inc_selected(),
+        match *key {
+            KeyCode::Up | KeyCode::Down => {
+                match *key {
+                    KeyCode::Up => state.series.dec_selected(),
+                    KeyCode::Down => state.series.inc_selected(),
                     _ => unreachable!(),
                 }
 

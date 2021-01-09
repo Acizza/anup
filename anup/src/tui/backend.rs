@@ -1,96 +1,101 @@
 use anyhow::{Context, Result};
-use chrono::Duration;
-use std::io;
-use std::sync::mpsc;
-use std::thread;
-use termion::event::Key;
-use termion::input::TermRead;
-use termion::raw::{IntoRawMode, RawTerminal};
-use tui::backend::{self, Backend};
+use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::terminal;
+use futures::{future::FutureExt, select, StreamExt};
+use futures_timer::Delay;
+use std::time::Duration;
+use std::{io, ops::Deref};
+use tui::backend::CrosstermBackend;
 use tui::terminal::Terminal;
 
-pub struct UIBackend<B>
-where
-    B: Backend,
-{
-    pub terminal: Terminal<B>,
+pub struct UIBackend {
+    pub terminal: Terminal<CrosstermBackend<io::Stdout>>,
 }
 
-impl<B> UIBackend<B>
-where
-    B: Backend,
-{
+impl UIBackend {
+    pub fn init() -> Result<Self> {
+        terminal::enable_raw_mode().context("failed to enable raw mode")?;
+
+        let stdout = io::stdout();
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend).context("terminal creation failed")?;
+
+        terminal.clear().context("failed to clear terminal")?;
+
+        terminal
+            .hide_cursor()
+            .context("failed to hide mouse cursor")?;
+
+        Ok(Self { terminal })
+    }
+
     #[inline(always)]
     pub fn clear(&mut self) -> Result<()> {
         self.terminal.clear().map_err(Into::into)
     }
 }
 
-pub type TermionBackend = backend::TermionBackend<RawTerminal<io::Stdout>>;
-
-impl UIBackend<TermionBackend> {
-    pub fn init() -> Result<Self> {
-        let stdout = io::stdout().into_raw_mode().context("terminal raw mode")?;
-        let backend = TermionBackend::new(stdout);
-        let mut terminal = Terminal::new(backend).context("terminal init")?;
-
-        terminal.clear().context("clearing terminal")?;
-        terminal.hide_cursor().context("hiding cursor")?;
-
-        Ok(Self { terminal })
-    }
-}
-
-pub enum UIEvent {
-    Input(Key),
+#[derive(Debug)]
+pub enum EventKind {
+    Key(Key),
     Tick,
 }
 
-pub struct UIEvents(mpsc::Receiver<UIEvent>);
+pub enum ErrorKind {
+    ExitRequest,
+    Other(anyhow::Error),
+}
 
-impl UIEvents {
-    pub fn new(tick_rate: Duration) -> Self {
-        let (tx, rx) = mpsc::channel();
+type EventError<T> = std::result::Result<T, ErrorKind>;
 
-        Self::spawn_key_handler(tx.clone());
-        Self::spawn_tick_handler(tick_rate, tx);
+pub struct Events {
+    reader: EventStream,
+}
 
-        Self(rx)
+impl Events {
+    const TICK_DURATION_MS: u64 = 1_000;
+
+    pub fn new() -> Self {
+        Self {
+            reader: EventStream::new(),
+        }
     }
 
-    fn spawn_key_handler(tx: mpsc::Sender<UIEvent>) -> thread::JoinHandle<()> {
-        let stdin = io::stdin();
+    #[allow(clippy::mut_mut)]
+    pub async fn next(&mut self) -> EventError<Option<EventKind>> {
+        let mut tick = Delay::new(Duration::from_millis(Self::TICK_DURATION_MS)).fuse();
+        let mut next_event = self.reader.next().fuse();
 
-        thread::spawn(move || {
-            for event in stdin.keys() {
-                if let Ok(key) = event {
-                    if tx.send(UIEvent::Input(key)).is_err() {
-                        break;
-                    }
-                }
+        select! {
+            _ = tick => Ok(Some(EventKind::Tick)),
+            event = next_event => match event {
+                Some(Ok(Event::Key(key))) => Ok(Some(EventKind::Key(Key(key)))),
+                Some(Ok(_)) => Ok(None),
+                Some(Err(err)) => Err(ErrorKind::Other(err.into())),
+                None => Err(ErrorKind::ExitRequest),
             }
-        })
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Key(KeyEvent);
+
+impl Key {
+    #[cfg(test)]
+    pub fn from_code(code: KeyCode) -> Self {
+        Self(KeyEvent::new(code, KeyModifiers::NONE))
     }
 
-    fn spawn_tick_handler(
-        tick_rate: Duration,
-        tx: mpsc::Sender<UIEvent>,
-    ) -> thread::JoinHandle<()> {
-        let tick_rate = tick_rate
-            .to_std()
-            .unwrap_or_else(|_| std::time::Duration::from_secs(1));
-
-        thread::spawn(move || loop {
-            thread::sleep(tick_rate);
-
-            if tx.send(UIEvent::Tick).is_err() {
-                break;
-            }
-        })
+    pub fn ctrl_pressed(&self) -> bool {
+        self.0.modifiers.contains(KeyModifiers::CONTROL)
     }
+}
 
-    #[inline(always)]
-    pub fn next(&self) -> Result<UIEvent> {
-        self.0.recv().map_err(Into::into)
+impl Deref for Key {
+    type Target = KeyCode;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0.code
     }
 }

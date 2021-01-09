@@ -1,17 +1,17 @@
 use super::{Component, Draw, ShouldReset};
-use crate::file::SerializedFile;
 use crate::try_opt_r;
 use crate::tui::component::input::{Input, InputFlags};
 use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, style, text, SelectWidgetState, TypedSelectable};
 use crate::tui::UIState;
 use crate::user::{RemoteType, UserInfo};
+use crate::{file::SerializedFile, tui::backend::Key};
 use anime::remote::anilist::AniList;
 use anime::remote::{AccessToken, Remote, RemoteService};
 use anyhow::{anyhow, Context, Result};
+use crossterm::event::KeyCode;
 use std::borrow::Cow;
 use std::process::Command;
-use termion::event::Key;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
@@ -256,7 +256,7 @@ impl UserPanel {
 
         let users_widget = Table::new(users)
             .header(header)
-            .widths([Constraint::Percentage(80), Constraint::Min(5)].as_ref())
+            .widths([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
             .highlight_symbol(">")
             .highlight_style(style::list_selector(is_selected))
             .column_spacing(4);
@@ -270,48 +270,48 @@ impl Component for UserPanel {
     type KeyResult = Result<ShouldReset>;
 
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
-        match key {
-            Key::Esc => Ok(ShouldReset::Yes),
-            Key::Char('\t') => {
+        match *key {
+            KeyCode::Esc => Ok(ShouldReset::Yes),
+            KeyCode::Tab => {
                 self.current_panel.increment();
                 Ok(ShouldReset::No)
             }
-            key => match self.current_panel {
-                SelectedPanel::SelectUser => match key {
-                    Key::Up | Key::Down => {
+            _ => match self.current_panel {
+                SelectedPanel::SelectUser => match *key {
+                    KeyCode::Up | KeyCode::Down => {
                         self.user_table_state
                             .update_selected(key, state.users.len());
 
                         Ok(ShouldReset::No)
                     }
-                    Key::Char('\n') => {
+                    KeyCode::Enter => {
                         self.login_as_selected_user(state)?;
                         Ok(ShouldReset::Yes)
                     }
-                    Key::Char('d') => {
+                    KeyCode::Char('d') => {
                         self.remove_selected_user(state)?;
                         Ok(ShouldReset::No)
                     }
-                    Key::Char('o') => {
+                    KeyCode::Char('o') => {
                         state.remote = Remote::offline();
                         Ok(ShouldReset::Yes)
                     }
                     _ => Ok(ShouldReset::No),
                 },
-                SelectedPanel::AddUser => match key {
-                    Key::Up | Key::Down => {
+                SelectedPanel::AddUser => match *key {
+                    KeyCode::Up | KeyCode::Down => {
                         self.service_list.update_selected(key);
                         Ok(ShouldReset::No)
                     }
-                    Key::Ctrl('o') => {
+                    KeyCode::Char('o') if key.ctrl_pressed() => {
                         self.open_auth_url()?;
                         Ok(ShouldReset::No)
                     }
-                    Key::Char('\n') => {
+                    KeyCode::Enter => {
                         self.add_user_from_inputs(state)?;
                         Ok(ShouldReset::No)
                     }
-                    key => {
+                    _ => {
                         self.token_input.process_key(key);
                         Ok(ShouldReset::No)
                     }

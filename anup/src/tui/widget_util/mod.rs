@@ -7,11 +7,13 @@ pub mod widget;
 use crate::try_opt_ret;
 use crate::tui::WrappingIndex;
 use crate::user::RemoteType;
+use crossterm::event::KeyCode;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
-use termion::event::Key;
 use tui::widgets::{ListState, TableState};
+
+use super::backend::Key;
 
 /// A widget that can be selected / indexed.
 pub trait SelectableWidget {
@@ -61,13 +63,13 @@ where
 
     /// Scrolls the currently selected entry based off of `key`.
     pub fn update_selected(&mut self, key: Key, max_index: usize) {
-        match key {
-            Key::Up | Key::Down => {
+        match *key {
+            KeyCode::Up | KeyCode::Down => {
                 let mut cur_index = WrappingIndex::new(self.0.selected().unwrap_or(0));
 
-                match key {
-                    Key::Up => cur_index.decrement(max_index),
-                    Key::Down => cur_index.increment(max_index),
+                match *key {
+                    KeyCode::Up => cur_index.decrement(max_index),
+                    KeyCode::Down => cur_index.increment(max_index),
                     _ => unreachable!(),
                 }
 

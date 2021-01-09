@@ -2,11 +2,10 @@ pub mod command;
 pub mod log;
 
 use super::{Component, Draw};
-use crate::tui::{CurrentAction, UIState};
+use crate::tui::{backend::Key, CurrentAction, UIState};
 use anyhow::Result;
 use command::{Command, CommandPrompt, InputResult};
 use log::Log;
-use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::terminal::Frame;

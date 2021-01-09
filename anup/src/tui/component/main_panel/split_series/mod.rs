@@ -1,13 +1,13 @@
 mod add;
 mod split;
 
-use crate::config::Config;
 use crate::series::config::SeriesConfig;
 use crate::series::SeriesData;
 use crate::series::{LoadedSeries, SeriesPath};
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
+use crate::{config::Config, tui::backend::Key};
 use add::AddPanel;
 use anime::local::{CategorizedEpisodes, SortedEpisodes};
 use anime::remote::{Remote, RemoteService, SeriesInfo as RemoteInfo};
@@ -20,7 +20,6 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 use std::{fs, io};
-use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::terminal::Frame;

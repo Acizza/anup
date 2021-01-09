@@ -1,9 +1,9 @@
-use crate::series::info::SeriesInfo;
 use crate::series::SeriesParams;
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, style};
 use crate::tui::Selection;
-use termion::event::Key;
+use crate::{series::info::SeriesInfo, tui::backend::Key};
+use crossterm::event::KeyCode;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::Color;
@@ -35,16 +35,16 @@ impl Component for SelectSeriesPanel {
     type KeyResult = SelectSeriesResult;
 
     fn process_key(&mut self, key: Key, _: &mut Self::State) -> Self::KeyResult {
-        match key {
-            Key::Up => {
+        match *key {
+            KeyCode::Up => {
                 self.state.series_list.dec_selected();
                 SelectSeriesResult::Ok
             }
-            Key::Down => {
+            KeyCode::Down => {
                 self.state.series_list.inc_selected();
                 SelectSeriesResult::Ok
             }
-            Key::Char('\n') => {
+            KeyCode::Enter => {
                 let info = match self.state.series_list.swap_remove_selected() {
                     Some(info) => info,
                     None => return SelectSeriesResult::Reset,
@@ -52,7 +52,7 @@ impl Component for SelectSeriesPanel {
 
                 SelectSeriesResult::AddSeries(info)
             }
-            Key::Esc => SelectSeriesResult::Reset,
+            KeyCode::Esc => SelectSeriesResult::Reset,
             _ => SelectSeriesResult::Ok,
         }
     }

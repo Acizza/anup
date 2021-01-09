@@ -1,11 +1,10 @@
 use super::Component;
-use crate::series::LastWatched;
 use crate::try_opt_r;
 use crate::tui::{CurrentAction, UIState};
+use crate::{series::LastWatched, tui::backend::Key};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use std::mem;
-use termion::event::Key;
 
 pub type ProgressTime = DateTime<Utc>;
 

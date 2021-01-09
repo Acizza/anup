@@ -1,14 +1,14 @@
-use crate::config::Config;
 use crate::tui::component::input::Input;
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, style};
 use crate::tui::UIState;
+use crate::{config::Config, tui::backend::Key};
 use anyhow::{anyhow, Result};
+use crossterm::event::KeyCode;
 use smallvec::SmallVec;
 use std::convert::TryFrom;
 use std::result;
-use termion::event::Key;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::Color;
@@ -34,13 +34,13 @@ impl CommandPrompt {
     }
 
     fn process_key(&mut self, key: Key, config: &Config) -> Result<InputResult> {
-        match key {
-            Key::Char('\n') => {
+        match *key {
+            KeyCode::Enter => {
                 let command = Command::from_str(self.buffer.as_ref(), config)?;
                 self.reset();
                 return Ok(InputResult::Command(command));
             }
-            Key::Char('\t') => {
+            KeyCode::Tab => {
                 if let Some(hint_cmd) = &self.hint_cmd {
                     let remaining_name = hint_cmd.remaining_name();
 
@@ -52,7 +52,7 @@ impl CommandPrompt {
                     self.hint_cmd = None;
                 }
             }
-            Key::Char(ch) => {
+            KeyCode::Char(ch) => {
                 self.buffer.push(ch);
                 self.width += UnicodeWidthChar::width(ch).unwrap_or(0);
 
@@ -65,14 +65,14 @@ impl CommandPrompt {
                     _ => None,
                 };
             }
-            Key::Backspace => {
+            KeyCode::Backspace => {
                 if let Some(popped) = self.buffer.pop() {
                     self.width -= UnicodeWidthChar::width(popped).unwrap_or(0);
                 }
 
                 self.hint_cmd = None;
             }
-            Key::Esc => {
+            KeyCode::Esc => {
                 self.reset();
                 return Ok(InputResult::Done);
             }
@@ -408,8 +408,15 @@ mod tests {
         let mut prompt = CommandPrompt::new();
 
         let mut enter_command = |name: &str| {
-            for ch in name.chars() {
-                match prompt.process_key(Key::Char(ch), &Config::default()) {
+            let keys = name
+                .chars()
+                .map(|c| KeyCode::Char(c))
+                .chain([KeyCode::Enter].iter().cloned());
+
+            for key in keys {
+                let key = Key::from_code(key);
+
+                match prompt.process_key(key, &Config::default()) {
                     Ok(InputResult::Continue) => (),
                     Ok(InputResult::Done) => panic!("expected {} command, got nothing", name),
                     Ok(InputResult::Command(cmd)) => return cmd,
@@ -437,7 +444,7 @@ mod tests {
 
         let expected_args: SmallVec<[_; 2]> = smallvec!["arg1".into(), "arg2".into()];
 
-        match enter_command("args arg1 arg2\n") {
+        match enter_command("args arg1 arg2") {
             Command::PlayerArgs(args) => {
                 if args.len() != expected_args.len() {
                     expected!(
@@ -459,11 +466,11 @@ mod tests {
         }
 
         test_command!(
-            "progress forward\n",
+            "progress forward",
             Command::Progress(ProgressDirection::Forwards)
         );
 
-        test_command!("status watching\n", Command::Status(Status::Watching));
+        test_command!("status watching", Command::Status(Status::Watching));
     }
 
     #[test]
