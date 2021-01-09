@@ -4,7 +4,6 @@ use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, color, style, text, SelectWidgetState};
 use crate::tui::UIState;
 use anime::remote::SeriesInfo as RemoteInfo;
-use anime::SeriesKind;
 use anyhow::Result;
 use termion::event::Key;
 use tui::backend::Backend;
@@ -33,23 +32,14 @@ impl SplitPanel {
     where
         B: Backend,
     {
-        let kind_str = |kind: SeriesKind| match kind {
-            SeriesKind::Season => "Season",
-            SeriesKind::Movie => "Movie",
-            SeriesKind::Special => "Special",
-            SeriesKind::OVA => "OVA",
-            SeriesKind::ONA => "ONA",
-            SeriesKind::Music => "Music",
-        };
-
         let row_color = color::either(self.has_split_series, Color::Blue, Color::Yellow);
 
         let rows = self.merged_series.iter().map(|merged| {
             let (rows, color) = match merged {
-                MergedSeries::Failed(cat) => (vec![kind_str(*cat).into(), "Failed.."], Color::Red),
+                &MergedSeries::Failed(cat) => (vec![cat.into(), "Failed.."], Color::Red),
                 MergedSeries::Resolved(series) => (
                     vec![
-                        kind_str(series.info.kind).into(),
+                        series.info.kind.into(),
                         series.info.title.preferred.as_str(),
                     ],
                     row_color,

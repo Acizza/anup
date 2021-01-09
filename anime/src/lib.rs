@@ -30,6 +30,19 @@ pub enum SeriesKind {
     Music,
 }
 
+impl Into<&'static str> for SeriesKind {
+    fn into(self) -> &'static str {
+        match self {
+            Self::Season => "Season",
+            Self::Movie => "Movie",
+            Self::Special => "Special",
+            Self::OVA => "OVA",
+            Self::ONA => "ONA",
+            Self::Music => "Music",
+        }
+    }
+}
+
 /// Find the best matching item in `items` via `matcher` and return it if the maximum confidence is greater than `min_confidence`.
 ///
 /// `min_confidence` should be a value between 0.0 and 1.0.
