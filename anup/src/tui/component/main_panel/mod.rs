@@ -10,7 +10,7 @@ use crate::series::info::InfoResult;
 use crate::series::SeriesParams;
 use crate::try_opt_r;
 use crate::tui::{CurrentAction, UIState};
-use crate::{series::config::SeriesConfig, tui::backend::Key};
+use crate::{key::Key, series::config::SeriesConfig};
 use add_series::{AddSeriesPanel, AddSeriesResult};
 use anime::local::SortedEpisodes;
 use anime::remote::RemoteService;

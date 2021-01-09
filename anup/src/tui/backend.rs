@@ -1,12 +1,14 @@
 use anyhow::{Context, Result};
-use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{Event, EventStream};
 use crossterm::terminal;
 use futures::{future::FutureExt, select, StreamExt};
 use futures_timer::Delay;
+use std::io;
 use std::time::Duration;
-use std::{io, ops::Deref};
 use tui::backend::CrosstermBackend;
 use tui::terminal::Terminal;
+
+use crate::key::Key;
 
 pub struct UIBackend {
     pub terminal: Terminal<CrosstermBackend<io::Stdout>>,
@@ -69,33 +71,11 @@ impl Events {
         select! {
             _ = tick => Ok(Some(EventKind::Tick)),
             event = next_event => match event {
-                Some(Ok(Event::Key(key))) => Ok(Some(EventKind::Key(Key(key)))),
+                Some(Ok(Event::Key(key))) => Ok(Some(EventKind::Key(Key::new(key)))),
                 Some(Ok(_)) => Ok(None),
                 Some(Err(err)) => Err(ErrorKind::Other(err.into())),
                 None => Err(ErrorKind::ExitRequest),
             }
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Key(KeyEvent);
-
-impl Key {
-    #[cfg(test)]
-    pub fn from_code(code: KeyCode) -> Self {
-        Self(KeyEvent::new(code, KeyModifiers::NONE))
-    }
-
-    pub fn ctrl_pressed(&self) -> bool {
-        self.0.modifiers.contains(KeyModifiers::CONTROL)
-    }
-}
-
-impl Deref for Key {
-    type Target = KeyCode;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0.code
     }
 }

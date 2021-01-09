@@ -5,7 +5,7 @@ use crate::tui::component::input::{Input, InputFlags, NameInput, ParsedValue, Va
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
-use crate::{series::config::SeriesConfig, tui::backend::Key};
+use crate::{key::Key, series::config::SeriesConfig};
 use anime::local::EpisodeParser;
 use anime::remote::SeriesInfo as RemoteInfo;
 use anyhow::Result;

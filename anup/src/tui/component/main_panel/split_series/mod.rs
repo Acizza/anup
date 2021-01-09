@@ -7,7 +7,7 @@ use crate::series::{LoadedSeries, SeriesPath};
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
-use crate::{config::Config, tui::backend::Key};
+use crate::{config::Config, key::Key};
 use add::AddPanel;
 use anime::local::{CategorizedEpisodes, SortedEpisodes};
 use anime::remote::{Remote, RemoteService, SeriesInfo as RemoteInfo};

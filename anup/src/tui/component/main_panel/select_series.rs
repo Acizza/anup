@@ -2,7 +2,7 @@ use crate::series::SeriesParams;
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, style};
 use crate::tui::Selection;
-use crate::{series::info::SeriesInfo, tui::backend::Key};
+use crate::{key::Key, series::info::SeriesInfo};
 use crossterm::event::KeyCode;
 use tui::backend::Backend;
 use tui::layout::Rect;

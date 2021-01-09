@@ -1,8 +1,13 @@
-use crate::file::{FileFormat, SaveDir, SerializedFile};
+use crate::{
+    file::{FileFormat, SaveDir, SerializedFile},
+    key::Key,
+};
 use crossterm::event::KeyCode;
-use serde::de::{self, Deserializer, Visitor};
 use serde::ser::Serializer;
-use serde_derive::{Deserialize, Serialize};
+use serde::{
+    de::{self, Deserializer, Visitor},
+    Deserialize, Serialize,
+};
 use std::ops::Mul;
 use std::path::PathBuf;
 use std::result;
@@ -158,13 +163,13 @@ pub struct TuiConfig {
 
 #[derive(Deserialize, Serialize)]
 pub struct TuiKeys {
-    pub play_next_episode: KeyCode,
+    pub play_next_episode: Key,
 }
 
 impl Default for TuiKeys {
     fn default() -> TuiKeys {
         TuiKeys {
-            play_next_episode: KeyCode::Enter,
+            play_next_episode: Key::from_code(KeyCode::Enter),
         }
     }
 }

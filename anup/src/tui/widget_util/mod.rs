@@ -4,16 +4,14 @@ pub mod style;
 pub mod text;
 pub mod widget;
 
-use crate::try_opt_ret;
 use crate::tui::WrappingIndex;
 use crate::user::RemoteType;
+use crate::{key::Key, try_opt_ret};
 use crossterm::event::KeyCode;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use tui::widgets::{ListState, TableState};
-
-use super::backend::Key;
 
 /// A widget that can be selected / indexed.
 pub trait SelectableWidget {

@@ -2,7 +2,6 @@ mod backend;
 mod component;
 mod widget_util;
 
-use crate::config::Config;
 use crate::database::Database;
 use crate::file::SerializedFile;
 use crate::series::config::SeriesConfig;
@@ -10,11 +9,12 @@ use crate::series::info::SeriesInfo;
 use crate::series::{LastWatched, LoadedSeries, Series, SeriesData};
 use crate::user::Users;
 use crate::Args;
+use crate::{config::Config, key::Key};
 use crate::{try_opt_r, try_opt_ret};
 use anime::local::SortedEpisodes;
 use anime::remote::{Remote, ScoreParser};
 use anyhow::{anyhow, Context, Result};
-use backend::{EventKind, Key, UIBackend};
+use backend::{EventKind, UIBackend};
 use component::episode_watcher::{EpisodeWatcher, ProgressTime};
 use component::main_panel::MainPanel;
 use component::prompt::command::Command;
@@ -301,7 +301,7 @@ impl<'a> UI<'a> {
         match &self.state.current_action {
             CurrentAction::Idle => match *key {
                 KeyCode::Char('q') => return CycleResult::Exit,
-                key if key == self.state.config.tui.keys.play_next_episode => {
+                _ if key == self.state.config.tui.keys.play_next_episode => {
                     capture!(self.episode_watcher.begin_watching_episode(&mut self.state))
                 }
                 KeyCode::Char('a') => {

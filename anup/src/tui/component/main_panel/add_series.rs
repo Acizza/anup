@@ -9,7 +9,7 @@ use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
-use crate::{config::Config, tui::backend::Key};
+use crate::{config::Config, key::Key};
 use crate::{try_opt_r, try_opt_ret};
 use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
 use anime::remote::SeriesID;

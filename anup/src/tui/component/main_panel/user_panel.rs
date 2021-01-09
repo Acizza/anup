@@ -5,7 +5,7 @@ use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, style, text, SelectWidgetState, TypedSelectable};
 use crate::tui::UIState;
 use crate::user::{RemoteType, UserInfo};
-use crate::{file::SerializedFile, tui::backend::Key};
+use crate::{file::SerializedFile, key::Key};
 use anime::remote::anilist::AniList;
 use anime::remote::{AccessToken, Remote, RemoteService};
 use anyhow::{anyhow, Context, Result};

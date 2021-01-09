@@ -1,7 +1,7 @@
 use crate::series::SeriesPath;
 use crate::tui::component::Draw;
 use crate::tui::widget_util::{block, style, text};
-use crate::{config::Config, tui::backend::Key};
+use crate::{config::Config, key::Key};
 use anime::local::detect::CustomPattern;
 use anime::local::EpisodeParser;
 use anime::remote::SeriesID;

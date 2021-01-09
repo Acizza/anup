@@ -3,7 +3,7 @@ use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, style};
 use crate::tui::UIState;
-use crate::{config::Config, tui::backend::Key};
+use crate::{config::Config, key::Key};
 use anyhow::{anyhow, Result};
 use crossterm::event::KeyCode;
 use smallvec::SmallVec;

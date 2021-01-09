@@ -3,8 +3,8 @@ use crate::tui::widget_util::{block, style, text};
 use crate::tui::{CurrentAction, UIState};
 use crate::Args;
 use crate::{
+    key::Key,
     series::{LastWatched, LoadedSeries},
-    tui::backend::Key,
 };
 use anime::remote::Status;
 use anyhow::Result;

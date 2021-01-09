@@ -16,6 +16,7 @@ mod config;
 mod database;
 mod err;
 mod file;
+mod key;
 mod series;
 mod tui;
 mod user;

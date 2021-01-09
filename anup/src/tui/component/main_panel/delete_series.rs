@@ -1,9 +1,9 @@
 use super::ShouldReset;
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
-use crate::tui::{
-    backend::Key,
-    component::{Component, Draw},
+use crate::{
+    key::Key,
+    tui::component::{Component, Draw},
 };
 use anyhow::{anyhow, Context, Result};
 use crossterm::event::KeyCode;

@@ -2,7 +2,7 @@ use super::MergedSeries;
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, color, style, text, SelectWidgetState};
 use crate::tui::UIState;
-use crate::{series::SeriesPath, tui::backend::Key};
+use crate::{key::Key, series::SeriesPath};
 use anime::remote::SeriesInfo as RemoteInfo;
 use anyhow::Result;
 use crossterm::event::KeyCode;

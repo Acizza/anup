@@ -5,7 +5,9 @@ pub mod series_list;
 
 mod input;
 
-use super::{backend::Key, UIState};
+use crate::key::Key;
+
+use super::UIState;
 use anyhow::Result;
 use tui::backend::Backend;
 use tui::layout::Rect;

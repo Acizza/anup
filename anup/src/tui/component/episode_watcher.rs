@@ -1,7 +1,7 @@
 use super::Component;
 use crate::try_opt_r;
 use crate::tui::{CurrentAction, UIState};
-use crate::{series::LastWatched, tui::backend::Key};
+use crate::{key::Key, series::LastWatched};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use std::mem;
