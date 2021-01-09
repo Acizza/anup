@@ -183,7 +183,7 @@ pub enum InputResult {
 /// Split `string` into shell words.
 ///
 /// This implementation only groups (non-nested) quotes into one argument.
-fn split_shell_words<'a>(string: &'a str) -> SmallVec<[&'a str; 3]> {
+fn split_shell_words(string: &str) -> SmallVec<[&str; 3]> {
     if string.is_empty() {
         return SmallVec::new();
     }
