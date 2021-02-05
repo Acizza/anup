@@ -239,17 +239,22 @@ impl Default for Status {
     }
 }
 
+impl Into<&'static str> for Status {
+    fn into(self) -> &'static str {
+        match self {
+            Self::Watching => "Watching",
+            Self::Completed => "Completed",
+            Self::OnHold => "On Hold",
+            Self::Dropped => "Dropped",
+            Self::PlanToWatch => "Plan To Watch",
+            Self::Rewatching => "Rewatching",
+        }
+    }
+}
+
 impl fmt::Display for Status {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let value = match self {
-            Status::Watching => "Watching",
-            Status::Completed => "Completed",
-            Status::OnHold => "On Hold",
-            Status::Dropped => "Dropped",
-            Status::PlanToWatch => "Plan To Watch",
-            Status::Rewatching => "Rewatching",
-        };
-
+        let value: &'static str = (*self).into();
         write!(f, "{}", value)
     }
 }

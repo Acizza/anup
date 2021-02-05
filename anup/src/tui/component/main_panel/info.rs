@@ -6,14 +6,19 @@ use crate::tui::{CurrentAction, UIState};
 use crate::util;
 use anime::remote::{ScoreParser, SeriesDate};
 use chrono::Utc;
+use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::fmt;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::text::{Span, Spans, Text};
+use tui::text::{Span, Text};
 use tui::widgets::Paragraph;
+use tui_utils::{
+    grid_pos,
+    widgets::{text_fragments::Fragment, TextFragments},
+};
 
 pub struct InfoPanel;
 
@@ -100,12 +105,6 @@ impl InfoPanel {
     where
         B: Backend,
     {
-        macro_rules! panel_items {
-            ($($name:expr => $value:expr,)+) => {
-                [$((concat!($name, "\n"), $value)),+]
-            }
-        }
-
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints(
@@ -123,97 +122,82 @@ impl InfoPanel {
         let entry = &series.data.entry;
 
         // Series title
-        let title = {
-            let mut items = vec![text::bold(&info.title_preferred)];
+        {
+            let mut fragments: SmallVec<[Fragment; 2]> =
+                smallvec![Fragment::Span(text::bold(&info.title_preferred), true)];
 
             if entry.needs_sync() {
-                items.push(text::italic(" [*]"));
+                fragments.push(Fragment::Span(text::italic(" [*]"), false));
             }
 
-            Spans::from(items)
-        };
-
-        let title_widget = Paragraph::new(title).alignment(Alignment::Center);
-        frame.render_widget(title_widget, layout[0]);
+            let title_widget = TextFragments::new(&fragments).alignment(Alignment::Center);
+            frame.render_widget(title_widget, layout[0]);
+        }
 
         // Items in panel
-        let stat_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
-            ])
-            .split(layout[1]);
 
-        let stat_vert_pos = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
-                Constraint::Ratio(1, 3),
-            ]);
+        macro_rules! draw_stat {
+            ($x_column:expr, $y_column:expr => $header:expr, $value:expr) => {{
+                let content = layout[1];
 
-        let left_pane_items = panel_items! {
-            "Watch Time" => {
-                let watch_time_mins = info.episodes * info.episode_length_mins;
-                util::hm_from_mins(f32::from(watch_time_mins)).into()
-            },
-            "Time Left" => {
-                let eps_left = info.episodes - entry.watched_episodes().min(info.episodes);
-                let time_left_mins = eps_left * info.episode_length_mins;
+                let pos = grid_pos(
+                    Rect {
+                        x: $x_column,
+                        y: $y_column,
+                        width: content.width / 3,
+                        height: content.height / 3,
+                    },
+                    content,
+                );
 
-                util::hm_from_mins(f32::from(time_left_mins)).into()
-            },
-            "Episode Length" => format!("{}M", info.episode_length_mins).into(),
-        };
+                Self::draw_stat($header, $value, pos, frame);
+            }};
+        }
 
-        let middle_pane_items = panel_items! {
-            "Progress" => format!("{}|{}", entry.watched_episodes(), info.episodes).into(),
-            "Score" => match entry.score() {
+        // Left panel items
+
+        draw_stat!(0, 0 => "Watch Time", {
+            let watch_time_mins = info.episodes * info.episode_length_mins;
+            util::hm_from_mins(f32::from(watch_time_mins))
+        });
+
+        draw_stat!(0, 1 => "Time Left", {
+            let eps_left = info.episodes - entry.watched_episodes().min(info.episodes);
+            let time_left_mins = eps_left * info.episode_length_mins;
+            util::hm_from_mins(f32::from(time_left_mins))
+        });
+
+        draw_stat!(0, 2 => "Episode Length", format!("{}M", info.episode_length_mins));
+
+        // Middle panel items
+
+        draw_stat!(1, 0 => "Progress", format!("{}|{}", entry.watched_episodes(), info.episodes));
+
+        draw_stat!(1, 1 => "Score", {
+            match entry.score() {
                 Some(score) => state.remote.score_to_str(score as u8),
                 None => "??".into(),
-            },
-            "Status" => entry.status().to_string().into(),
+            }
+        });
+
+        draw_stat!(1, 2 => "Status", {
+            let status: &'static str = entry.status().into();
+            status
+        });
+
+        // Right panel items
+
+        // TODO: allow the format to be changed in the config
+        let format_date = |date: Option<SeriesDate>| {
+            date.map_or_else(
+                || Cow::Borrowed("??"),
+                |date| format!("{:02}/{:02}/{:02}", date.month, date.day, date.year % 100).into(),
+            )
         };
 
-        let right_pane_items = {
-            // TODO: allow the format to be changed in the config
-            let format_date = |date: Option<SeriesDate>| {
-                date.map_or_else(
-                    || Cow::Borrowed("??"),
-                    |date| {
-                        format!("{:02}/{:02}/{:02}", date.month, date.day, date.year % 100).into()
-                    },
-                )
-            };
-
-            panel_items! {
-                "Start Date" => format_date(entry.start_date()),
-                "Finish Date" => format_date(entry.end_date()),
-                "Rewatched" => entry.times_rewatched().to_string().into(),
-            }
-        };
-
-        let items: [&[(_, Cow<str>)]; 3] =
-            [&left_pane_items, &middle_pane_items, &right_pane_items];
-
-        for x_pos in 0..3 {
-            let stat_layout = stat_vert_pos.split(stat_layout[x_pos]);
-            let column_items = items[x_pos];
-
-            for y_pos in 0..3 {
-                let (header, value) = &column_items[y_pos];
-
-                let text = vec![
-                    text::bold(*header).into(),
-                    text::italic(value.as_ref()).into(),
-                ];
-
-                let widget = Paragraph::new(text).alignment(Alignment::Center);
-                frame.render_widget(widget, stat_layout[y_pos]);
-            }
-        }
+        draw_stat!(2, 0 => "Start Date", format_date(entry.start_date()));
+        draw_stat!(2, 1 => "Finish Date", format_date(entry.end_date()));
+        draw_stat!(2, 2 => "Rewatched", entry.times_rewatched().to_string());
 
         // Watch time needed indicator at bottom
         if let CurrentAction::WatchingEpisode(progress_time, _) = state.current_action {
@@ -223,15 +207,30 @@ impl InfoPanel {
             if watch_secs > 0 {
                 let remaining_mins = watch_secs as f32 / 60.0;
 
-                let text = text::bold(format!(
-                    "{} Remaining Until Progression",
-                    util::ms_from_mins(remaining_mins)
-                ));
+                let fragments = [
+                    Fragment::Span(text::bold(util::ms_from_mins(remaining_mins)), false),
+                    Fragment::Span(text::bold(" Remaining Until Progression"), false),
+                ];
 
-                let widget = Paragraph::new(text).alignment(Alignment::Center);
+                let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
                 frame.render_widget(widget, layout[2]);
             }
         }
+    }
+
+    fn draw_stat<B, S>(header: &str, value: S, rect: Rect, frame: &mut Frame<B>)
+    where
+        B: Backend,
+        S: AsRef<str>,
+    {
+        let fragments = [
+            Fragment::Span(text::bold(header), false),
+            Fragment::Line,
+            Fragment::Span(text::italic(value.as_ref()), false),
+        ];
+
+        let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
+        frame.render_widget(widget, rect);
     }
 }
 
