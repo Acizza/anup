@@ -4,4 +4,4 @@ rust:
 script:
   - cargo build --verbose --all
   - cargo test --verbose --all
-dist: bionic
+dist: focal
