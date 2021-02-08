@@ -6,7 +6,9 @@ script:
   - cargo test --verbose --all
 deploy:
   provider: releases
-  script: cargo build --release
+  script:
+    - cargo build --release
+    - strip target/release/anup
   api_key:
     secure: "a8QNt1iwHtPtAv7JvcxVZaaGf7tjAd2P1vIWP2aL9VzV1YWKEngOMcIXo4USzGquSU/CZoKcvYAs1NXgmLD3AyGNomTZLqvZD8Lt+HQiSZmHDh6GTw7Us4fsv/mJbBKKaW86CIiLUgXnaVubYw8IzdRuT1AlK1Ga5yvZ4BjvgbZkWBZbbZaOZqPRGO4g52OzRHyYH6C46Zer9o4qfxF63+EISRRMNLfMO28HCIMuNO4Cu7FEjZlRCVDyXMgyAKlIbs/6ZEOGUSBB1dGxK3dsqmrjmjSoq3od38GVXtBbEwH8bHXjDOBWRT8CQ5WNNZoTma5MxZ0G6A6d6N8yN4hFPS5bVds8Vb/3BBwbEVUAL/0H6MGQU5UVYCZHV5iu/tAHPx/4hKlBam4iR2ctYVS5xLRRArfSUr34UCUEMiJxOL5GlHQmnmp1ca+YM+2l12uJCH7LvQG76Ujp57j9kE7vsZGcwsJWXhViSZ5U6NadxYEocpL0W0ox+fDBcbKED0uBfRotHU3Lyk1Ffi4CskyQlqB/+K1sjciz7tb9/TlElbrgl81HwU1oZNg7838jz+/Jx7x9pw4v22WY4D4ltySk3bWN5hqmYlgn4j2ehYP+asf5SntoEp4u1CT7xmWj7KIthtr7TjN1dqFcxA3QHpiVbFmw/JCs+mxWdpDl7DLgPDA="
   file: 'target/release/anup'
