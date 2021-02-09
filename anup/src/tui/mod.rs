@@ -1,5 +1,6 @@
 mod backend;
 mod component;
+mod selection;
 mod widget_util;
 
 use crate::database::Database;
@@ -24,11 +25,10 @@ use component::series_list::SeriesList;
 use component::{Component, Draw};
 use crossterm::{event::KeyCode, terminal};
 use std::mem;
-use std::ops::{Index, IndexMut};
 use std::process;
 use tui::layout::{Constraint, Direction, Layout};
 
-use self::backend::Events;
+use self::{backend::Events, selection::Selection};
 
 pub async fn run(args: &Args) -> Result<()> {
     let backend = UIBackend::init().context("failed to init backend")?;
@@ -407,178 +407,4 @@ pub enum CycleResult {
     Ok,
     Exit,
     Error(anyhow::Error),
-}
-
-pub struct Selection<T> {
-    items: Vec<T>,
-    index: WrappingIndex,
-}
-
-impl<T> Selection<T> {
-    fn new(items: Vec<T>) -> Self {
-        Self {
-            items,
-            index: WrappingIndex::new(0),
-        }
-    }
-
-    #[inline(always)]
-    fn index(&self) -> usize {
-        self.index.get()
-    }
-
-    fn selected(&self) -> Option<&T> {
-        self.items.get(self.index.get())
-    }
-
-    fn selected_mut(&mut self) -> Option<&mut T> {
-        self.items.get_mut(self.index.get())
-    }
-
-    #[inline(always)]
-    fn inc_selected(&mut self) {
-        self.index.increment(self.items.len())
-    }
-
-    #[inline(always)]
-    fn dec_selected(&mut self) {
-        self.index.decrement(self.items.len())
-    }
-
-    fn set_selected(&mut self, selected: usize) {
-        if selected >= self.items.len() {
-            return;
-        }
-
-        *self.index.get_mut() = selected;
-    }
-
-    #[inline(always)]
-    fn push(&mut self, item: T) {
-        self.items.push(item);
-    }
-
-    #[inline(always)]
-    fn remove_selected(&mut self) -> Option<T> {
-        self.remove_selected_with(Vec::remove)
-    }
-
-    #[inline(always)]
-    fn swap_remove_selected(&mut self) -> Option<T> {
-        self.remove_selected_with(Vec::swap_remove)
-    }
-
-    fn remove_selected_with<F>(&mut self, func: F) -> Option<T>
-    where
-        F: Fn(&mut Vec<T>, usize) -> T,
-    {
-        if self.items.is_empty() {
-            return None;
-        }
-
-        let item = func(&mut self.items, self.index.get());
-
-        if self.index == self.items.len() {
-            self.index.decrement(self.items.len());
-        }
-
-        Some(item)
-    }
-
-    #[inline(always)]
-    fn items_mut(&mut self) -> &mut Vec<T> {
-        &mut self.items
-    }
-
-    #[inline(always)]
-    fn iter(&self) -> impl Iterator<Item = &T> {
-        self.items.iter()
-    }
-}
-
-impl Selection<LoadedSeries> {
-    #[inline(always)]
-    fn valid_selection_mut(&mut self) -> Option<&mut Series> {
-        self.selected_mut().and_then(LoadedSeries::complete_mut)
-    }
-}
-
-impl<T> Index<usize> for Selection<T> {
-    type Output = T;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.items[index]
-    }
-}
-
-impl<T> IndexMut<usize> for Selection<T> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.items[index]
-    }
-}
-
-impl<T> From<Vec<T>> for Selection<T> {
-    fn from(value: Vec<T>) -> Self {
-        Self::new(value)
-    }
-}
-
-#[derive(Copy, Clone)]
-pub struct WrappingIndex(usize);
-
-impl WrappingIndex {
-    #[inline(always)]
-    pub fn new(index: usize) -> Self {
-        Self(index)
-    }
-
-    #[inline(always)]
-    pub fn get(self) -> usize {
-        self.0
-    }
-
-    #[inline(always)]
-    pub fn get_mut(&mut self) -> &mut usize {
-        &mut self.0
-    }
-
-    #[inline(always)]
-    fn increment(&mut self, max: usize) {
-        self.0 = if max > 0 { (self.0 + 1) % max } else { max };
-    }
-
-    #[inline(always)]
-    fn decrement(&mut self, max: usize) {
-        self.0 = if self.0 == 0 {
-            max.saturating_sub(1)
-        } else {
-            self.0 - 1
-        }
-    }
-}
-
-impl PartialEq<usize> for WrappingIndex {
-    fn eq(&self, other: &usize) -> bool {
-        self.get() == *other
-    }
-}
-
-impl<T> Index<WrappingIndex> for Vec<T> {
-    type Output = T;
-
-    fn index(&self, index: WrappingIndex) -> &Self::Output {
-        &self[index.get()]
-    }
-}
-
-impl<T> IndexMut<WrappingIndex> for Vec<T> {
-    fn index_mut(&mut self, index: WrappingIndex) -> &mut Self::Output {
-        &mut self[index.get()]
-    }
-}
-
-impl Into<usize> for WrappingIndex {
-    fn into(self) -> usize {
-        self.0
-    }
 }
