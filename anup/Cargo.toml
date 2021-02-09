@@ -17,13 +17,15 @@ futures-timer = "3.0"
 once_cell = "1.4"
 thiserror = "1.0"
 toml = "0.5"
-tui-utils = { git = "https://github.com/Acizza/tui-utils", rev = "0.2.1" }
+tui-utils = { git = "https://github.com/Acizza/tui-utils", rev = "0.3.0" }
 serde = "1.0"
 serde_derive = "1.0"
 smallvec = "1.4"
 strsim = "0.10"
 unicode-segmentation = "1.6"
 unicode-width = "0.1"
+
+time = "0.1"
 
 [dependencies.anime]
 path = "../anime"

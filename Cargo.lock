@@ -41,6 +41,7 @@ dependencies = [
  "smallvec",
  "strsim",
  "thiserror",
+ "time",
  "toml",
  "tui",
  "tui-utils",
@@ -1261,10 +1262,11 @@ dependencies = [
 
 [[package]]
 name = "tui-utils"
-version = "0.2.1"
-source = "git+https://github.com/Acizza/tui-utils?rev=0.2.1#774c3c1b0e6aa13949a00822456fa27ce43eba37"
+version = "0.3.0"
+source = "git+https://github.com/Acizza/tui-utils?rev=0.3.0#d69f4a2375b29935c641eb2c897aedc7524cee6a"
 dependencies = [
  "tui",
+ "unicode-width",
 ]
 
 [[package]]

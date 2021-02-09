@@ -14,11 +14,9 @@ use tui::layout::Rect;
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::text::Span;
-use tui::widgets::{List, ListItem, ListState};
+use tui_utils::widgets::SimpleList;
 
-pub struct SeriesList {
-    list_state: ListState,
-}
+pub struct SeriesList;
 
 impl SeriesList {
     pub fn init(args: &Args, state: &mut UIState, last_watched: &LastWatched) -> Self {
@@ -38,9 +36,7 @@ impl SeriesList {
         state.series.set_selected(selected);
         state.init_selected_series();
 
-        Self {
-            list_state: ListState::default(),
-        }
+        Self {}
     }
 
     fn series_text(series: &LoadedSeries) -> Span {
@@ -97,21 +93,16 @@ where
             _ => style::italic().fg(Color::DarkGray),
         };
 
-        let series_names = state
-            .series
-            .iter()
-            .map(Self::series_text)
-            .map(ListItem::new)
-            .collect::<Vec<_>>();
+        let block = block::with_borders("Series");
+        let list_area = block.inner(rect);
 
-        let series_list = List::new(series_names)
-            .block(block::with_borders("Series"))
-            .style(style::fg(Color::White))
-            .highlight_style(highlight_style)
-            .highlight_symbol(">");
+        let series_names = state.series.iter().map(Self::series_text);
 
-        self.list_state.select(Some(state.series.index()));
+        let list = SimpleList::new(series_names)
+            .select(state.series.index() as u16)
+            .highlight_symbol(Span::styled(">", highlight_style));
 
-        frame.render_stateful_widget(series_list, rect, &mut self.list_state);
+        frame.render_widget(block, rect);
+        frame.render_widget(list, list_area);
     }
 }
