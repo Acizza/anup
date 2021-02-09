@@ -1,6 +1,6 @@
 # anup
 
-[![Build Status](https://travis-ci.org/Acizza/anup.svg?branch=rewrite)](https://travis-ci.org/Acizza/anup)
+![tests](https://github.com/Acizza/anup/workflows/tests/badge.svg)
 [![total lines](https://tokei.rs/b1/github/acizza/anup)](https://github.com/acizza/anup)
 
 This is a [TUI](https://en.wikipedia.org/wiki/Text-based_user_interface) application to play and manage anime with [AniList](https://anilist.co) for Linux systems.
