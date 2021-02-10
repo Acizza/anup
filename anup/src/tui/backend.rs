@@ -5,13 +5,15 @@ use futures::{future::FutureExt, select, StreamExt};
 use futures_timer::Delay;
 use std::io;
 use std::time::Duration;
-use tui::backend::CrosstermBackend;
 use tui::terminal::Terminal;
+use tui::{backend::CrosstermBackend, layout::Rect};
 
 use crate::key::Key;
 
 pub struct UIBackend {
     pub terminal: Terminal<CrosstermBackend<io::Stdout>>,
+    last_width: u16,
+    last_height: u16,
 }
 
 impl UIBackend {
@@ -28,12 +30,35 @@ impl UIBackend {
             .hide_cursor()
             .context("failed to hide mouse cursor")?;
 
-        Ok(Self { terminal })
+        let size = terminal.size().unwrap_or_else(|_| Rect::default());
+        let last_width = size.width;
+        let last_height = size.height;
+
+        Ok(Self {
+            terminal,
+            last_width,
+            last_height,
+        })
     }
 
     #[inline(always)]
     pub fn clear(&mut self) -> Result<()> {
         self.terminal.clear().map_err(Into::into)
+    }
+
+    pub fn size_changed(&self) -> io::Result<bool> {
+        self.terminal
+            .size()
+            .map(|size| size.width != self.last_width || size.height != self.last_height)
+    }
+
+    pub fn update_term_size(&mut self) -> io::Result<()> {
+        let size = self.terminal.size()?;
+
+        self.last_width = size.width;
+        self.last_height = size.height;
+
+        Ok(())
     }
 }
 

@@ -41,7 +41,6 @@ dependencies = [
  "smallvec",
  "strsim",
  "thiserror",
- "time",
  "toml",
  "tui",
  "tui-utils",

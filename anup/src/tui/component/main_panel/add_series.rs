@@ -1,5 +1,4 @@
 use super::PartialSeries;
-use crate::file;
 use crate::series::info::{InfoSelector, SeriesInfo};
 use crate::series::{self, LoadedSeries, SeriesParams, SeriesPath, UpdateParams};
 use crate::tui::component::input::{
@@ -10,6 +9,7 @@ use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
 use crate::{config::Config, key::Key};
+use crate::{file, tui::ReactiveState};
 use crate::{try_opt_r, try_opt_ret};
 use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
 use anime::remote::SeriesID;
@@ -272,7 +272,7 @@ impl Component for AddSeriesPanel {
     type State = UIState;
     type KeyResult = Result<AddSeriesResult>;
 
-    fn tick(&mut self, state: &mut UIState) -> Result<()> {
+    fn tick(&mut self, state: &mut ReactiveState) -> Result<()> {
         let last_update = try_opt_r!(self.last_update);
 
         if last_update.elapsed().as_secs_f32() < SECS_BETWEEN_SERIES_UPDATES {
@@ -281,6 +281,8 @@ impl Component for AddSeriesPanel {
 
         self.series_builder.update(&self.inputs, state).ok();
         self.last_update = None;
+
+        state.mark_dirty();
 
         Ok(())
     }

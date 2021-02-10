@@ -1,13 +1,13 @@
 mod add;
 mod split;
 
-use crate::series::config::SeriesConfig;
 use crate::series::SeriesData;
 use crate::series::{LoadedSeries, SeriesPath};
 use crate::tui::component::{Component, Draw};
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
 use crate::{config::Config, key::Key};
+use crate::{series::config::SeriesConfig, tui::ReactiveState};
 use add::AddPanel;
 use anime::local::{CategorizedEpisodes, SortedEpisodes};
 use anime::remote::{Remote, RemoteService, SeriesInfo as RemoteInfo};
@@ -59,7 +59,7 @@ impl Component for SplitSeriesPanel {
     type State = UIState;
     type KeyResult = Result<SplitPanelResult>;
 
-    fn tick(&mut self, state: &mut UIState) -> Result<()> {
+    fn tick(&mut self, state: &mut ReactiveState) -> Result<()> {
         match &mut self.state {
             PanelState::Loading => {
                 let series = match state.series.selected() {
@@ -77,6 +77,7 @@ impl Component for SplitSeriesPanel {
                     };
 
                 self.state = PanelState::Splitting(SplitPanel::new(merged_series).into());
+                state.mark_dirty();
                 Ok(())
             }
             PanelState::Splitting(split_panel) => split_panel.tick(state),

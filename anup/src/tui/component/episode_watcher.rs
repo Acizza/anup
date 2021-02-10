@@ -1,7 +1,7 @@
 use super::Component;
-use crate::try_opt_r;
 use crate::tui::{CurrentAction, UIState};
 use crate::{key::Key, series::LastWatched};
+use crate::{try_opt_r, tui::ReactiveState};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use std::mem;
@@ -42,14 +42,18 @@ impl Component for EpisodeWatcher {
     type State = UIState;
     type KeyResult = ();
 
-    fn tick(&mut self, state: &mut Self::State) -> Result<()> {
-        match &mut state.current_action {
+    fn tick(&mut self, state: &mut ReactiveState) -> Result<()> {
+        let action = &mut state.get_mut_unchanged().current_action;
+
+        match action {
             CurrentAction::WatchingEpisode(_, child) => {
                 match child.try_wait().context("waiting for episode to finish") {
                     Ok(Some(_)) => (),
                     Ok(None) => return Ok(()),
                     Err(err) => return Err(err),
                 }
+
+                let state = state.get_mut();
 
                 // We should reset the current action immediately so we can't end up in a loop if an error occurs ahead
                 let progress_time = match mem::take(&mut state.current_action) {

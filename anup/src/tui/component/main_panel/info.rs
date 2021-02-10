@@ -1,11 +1,15 @@
-use crate::series::{LoadedSeries, Series};
-use crate::tui::component::Draw;
 use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, text};
+use crate::tui::{component::Draw, ReactiveState};
 use crate::tui::{CurrentAction, UIState};
 use crate::util;
+use crate::{
+    series::{LoadedSeries, Series},
+    tui::component::Component,
+};
 use anime::remote::{ScoreParser, SeriesDate};
-use chrono::Utc;
+use anyhow::Result;
+use chrono::{DateTime, Utc};
 use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::fmt;
@@ -20,12 +24,16 @@ use tui_utils::{
     widgets::{text_fragments::Fragment, TextFragments},
 };
 
-pub struct InfoPanel;
+pub struct InfoPanel {
+    progress_time: Option<ProgressTime>,
+}
 
 impl InfoPanel {
     #[inline(always)]
     pub fn new() -> Self {
-        Self {}
+        Self {
+            progress_time: None,
+        }
     }
 
     fn text_display_layout(rect: Rect) -> Vec<Rect> {
@@ -101,8 +109,13 @@ impl InfoPanel {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn draw_series_info<B>(state: &UIState, series: &Series, rect: Rect, frame: &mut Frame<B>)
-    where
+    fn draw_series_info<B>(
+        &self,
+        state: &UIState,
+        series: &Series,
+        rect: Rect,
+        frame: &mut Frame<B>,
+    ) where
         B: Backend,
     {
         let layout = Layout::default()
@@ -200,16 +213,13 @@ impl InfoPanel {
         draw_stat!(2, 2 => "Rewatched", entry.times_rewatched().to_string());
 
         // Watch time needed indicator at bottom
-        if let CurrentAction::WatchingEpisode(progress_time, _) = state.current_action {
-            let watch_time = progress_time - Utc::now();
-            let watch_secs = watch_time.num_seconds();
-
-            if watch_secs > 0 {
-                let remaining_mins = watch_secs as f32 / 60.0;
+        if let Some(progress) = &self.progress_time {
+            if progress.remaining_secs > 0 {
+                let remaining_mins = (progress.remaining_secs as f32 / 60.0).round() as u32;
 
                 let fragments = [
-                    Fragment::Span(text::bold(util::ms_from_mins(remaining_mins)), false),
-                    Fragment::Span(text::bold(" Remaining Until Progression"), false),
+                    Fragment::Span(text::bold(remaining_mins.to_string()), false),
+                    Fragment::Span(text::bold(" Minutes Until Progression"), false),
                 ];
 
                 let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
@@ -234,6 +244,45 @@ impl InfoPanel {
     }
 }
 
+impl Component for InfoPanel {
+    type State = ();
+    type KeyResult = ();
+
+    fn tick<'a>(&mut self, state: &mut ReactiveState) -> Result<()> {
+        match (&state.current_action, &mut self.progress_time) {
+            (CurrentAction::WatchingEpisode(abs_progress_time, _), progress @ None) => {
+                *progress = Some(ProgressTime::new(*abs_progress_time));
+                state.mark_dirty();
+            }
+            (CurrentAction::WatchingEpisode(_, _), Some(progress)) => {
+                let now = Utc::now();
+
+                if (now - progress.last_update).num_seconds() < 30 {
+                    return Ok(());
+                }
+
+                let diff_secs = (progress.progress_at - now).num_seconds();
+
+                progress.remaining_secs = diff_secs;
+                progress.last_update = now;
+
+                state.mark_dirty();
+            }
+            (_, progress @ Some(_)) => {
+                *progress = None;
+                state.mark_dirty();
+            }
+            _ => (),
+        }
+
+        Ok(())
+    }
+
+    fn process_key(&mut self, _: crate::key::Key, _: &mut Self::State) -> Self::KeyResult {
+        ()
+    }
+}
+
 impl<B> Draw<B> for InfoPanel
 where
     B: Backend,
@@ -250,11 +299,27 @@ where
 
         match state.series.selected() {
             Some(LoadedSeries::Complete(series)) => {
-                Self::draw_series_info(state, series, rect, frame)
+                self.draw_series_info(state, series, rect, frame)
             }
             Some(LoadedSeries::Partial(_, err)) => Self::draw_series_error(err, rect, frame),
             Some(LoadedSeries::None(_, err)) => Self::draw_series_error(err, rect, frame),
             None => Self::draw_no_series_found(rect, frame),
+        }
+    }
+}
+
+struct ProgressTime {
+    last_update: DateTime<Utc>,
+    progress_at: DateTime<Utc>,
+    remaining_secs: i64,
+}
+
+impl ProgressTime {
+    fn new(progress_at: DateTime<Utc>) -> Self {
+        Self {
+            last_update: Utc::now(),
+            progress_at,
+            remaining_secs: (progress_at - Utc::now()).num_seconds(),
         }
     }
 }

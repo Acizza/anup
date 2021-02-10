@@ -6,11 +6,11 @@ mod split_series;
 mod user_panel;
 
 use super::{Component, Draw};
-use crate::series::info::InfoResult;
 use crate::series::SeriesParams;
 use crate::try_opt_r;
 use crate::tui::{CurrentAction, UIState};
 use crate::{key::Key, series::config::SeriesConfig};
+use crate::{series::info::InfoResult, tui::ReactiveState};
 use add_series::{AddSeriesPanel, AddSeriesResult};
 use anime::local::SortedEpisodes;
 use anime::remote::RemoteService;
@@ -109,13 +109,13 @@ impl Component for MainPanel {
     type State = UIState;
     type KeyResult = Result<()>;
 
-    fn tick(&mut self, state: &mut UIState) -> Result<()> {
+    fn tick(&mut self, state: &mut ReactiveState) -> Result<()> {
         macro_rules! capture {
             ($panel:expr) => {
                 match $panel.tick(state) {
                     ok @ Ok(_) => ok,
                     err @ Err(_) => {
-                        self.reset(state);
+                        self.reset(state.get_mut());
                         err
                     }
                 }
@@ -123,7 +123,7 @@ impl Component for MainPanel {
         }
 
         match &mut self.current {
-            Panel::Info(_) => Ok(()),
+            Panel::Info(panel) => capture!(panel),
             Panel::AddSeries(panel) => capture!(panel),
             Panel::SelectSeries(panel) => capture!(panel),
             Panel::DeleteSeries(panel) => capture!(panel),

@@ -24,28 +24,16 @@ use component::prompt::{Prompt, PromptResult, COMMAND_KEY};
 use component::series_list::SeriesList;
 use component::{Component, Draw};
 use crossterm::{event::KeyCode, terminal};
-use std::mem;
 use std::process;
+use std::{mem, ops::Deref};
 use tui::layout::{Constraint, Direction, Layout};
 
 use self::{backend::Events, selection::Selection};
 
 pub async fn run(args: &Args) -> Result<()> {
     let backend = UIBackend::init().context("failed to init backend")?;
-    let mut ui = UI::init(&args, backend).context("failed to init UI")?;
-
-    loop {
-        match ui.next_cycle().await {
-            CycleResult::Ok => (),
-            CycleResult::Exit => break,
-            CycleResult::Error(err) => {
-                ui.exit().ok();
-                return Err(err);
-            }
-        }
-    }
-
-    ui.exit()
+    let ui = UI::init(&args, backend).context("failed to init UI")?;
+    ui.run().await
 }
 
 pub struct UIState {
@@ -157,7 +145,7 @@ impl PartialEq for CurrentAction {
 struct UI<'a> {
     events: Events,
     backend: UIBackend,
-    state: UIState,
+    state: ReactiveState,
     prompt: Prompt<'a>,
     series_list: SeriesList,
     main_panel: MainPanel,
@@ -189,7 +177,7 @@ impl<'a> UI<'a> {
         Ok(Self {
             events: Events::new(),
             backend,
-            state,
+            state: Reactive::new(state),
             prompt,
             series_list,
             main_panel: MainPanel::new(),
@@ -213,10 +201,28 @@ impl<'a> UI<'a> {
         }
     }
 
-    async fn next_cycle(&mut self) -> CycleResult {
+    async fn run(mut self) -> Result<()> {
         if let Err(err) = self.draw() {
-            return CycleResult::Error(err);
+            self.exit().ok();
+            return Err(err);
         }
+
+        loop {
+            match self.next_cycle().await {
+                CycleResult::Ok => (),
+                CycleResult::Exit => break,
+                CycleResult::Error(err) => {
+                    self.exit().ok();
+                    return Err(err);
+                }
+            }
+        }
+
+        self.exit()
+    }
+
+    async fn next_cycle(&mut self) -> CycleResult {
+        self.state.reset_dirty();
 
         let event = match self.events.next().await {
             Ok(Some(event)) => event,
@@ -225,10 +231,28 @@ impl<'a> UI<'a> {
             Err(backend::ErrorKind::Other(err)) => return CycleResult::Error(err),
         };
 
-        match event {
+        let result = match event {
             EventKind::Key(key) => self.process_key(key),
             EventKind::Tick => self.tick(),
+        };
+
+        if self.backend.size_changed().unwrap_or(false) {
+            self.state.mark_dirty();
         }
+
+        if let Err(err) = self.backend.update_term_size() {
+            return CycleResult::Error(err.into());
+        }
+
+        if !self.state.dirty() {
+            return result;
+        }
+
+        if let Err(err) = self.draw() {
+            return CycleResult::Error(err);
+        }
+
+        result
     }
 
     fn tick(&mut self) -> CycleResult {
@@ -292,57 +316,56 @@ impl<'a> UI<'a> {
             };
         }
 
+        let state = self.state.get_mut();
+
         macro_rules! process_key {
             ($component:ident) => {
-                capture!(self.$component.process_key(key, &mut self.state))
+                capture!(self.$component.process_key(key, state))
             };
         }
 
-        match &self.state.current_action {
+        match &state.current_action {
             CurrentAction::Idle => match *key {
                 KeyCode::Char('q') => return CycleResult::Exit,
-                _ if key == self.state.config.tui.keys.play_next_episode => {
-                    capture!(self.episode_watcher.begin_watching_episode(&mut self.state))
+                _ if key == state.config.tui.keys.play_next_episode => {
+                    capture!(self.episode_watcher.begin_watching_episode(state))
                 }
                 KeyCode::Char('a') => {
-                    capture!(self.main_panel.switch_to_add_series(&mut self.state))
+                    capture!(self.main_panel.switch_to_add_series(state))
                 }
                 KeyCode::Char('e') => {
-                    capture!(self.main_panel.switch_to_update_series(&mut self.state))
+                    capture!(self.main_panel.switch_to_update_series(state))
                 }
                 KeyCode::Char('D') => {
-                    capture!(self.main_panel.switch_to_delete_series(&mut self.state))
+                    capture!(self.main_panel.switch_to_delete_series(state))
                 }
-                KeyCode::Char('u') => self.main_panel.switch_to_user_panel(&mut self.state),
+                KeyCode::Char('u') => self.main_panel.switch_to_user_panel(state),
                 KeyCode::Char('s') => {
-                    capture!(self.main_panel.switch_to_split_series(&mut self.state))
+                    capture!(self.main_panel.switch_to_split_series(state))
                 }
-                KeyCode::Char(COMMAND_KEY) => {
-                    self.state.current_action = CurrentAction::EnteringCommand
-                }
+                KeyCode::Char(COMMAND_KEY) => state.current_action = CurrentAction::EnteringCommand,
                 _ => process_key!(series_list),
             },
             CurrentAction::WatchingEpisode(_, _) => (),
             CurrentAction::FocusedOnMainPanel => process_key!(main_panel),
-            CurrentAction::EnteringCommand => {
-                match capture!(self.prompt.process_key(key, &mut self.state)) {
-                    PromptResult::Ok => (),
-                    PromptResult::HasCommand(cmd) => capture!(self.process_command(cmd)),
-                }
-            }
+            CurrentAction::EnteringCommand => match capture!(self.prompt.process_key(key, state)) {
+                PromptResult::Ok => (),
+                PromptResult::HasCommand(cmd) => capture!(self.process_command(cmd)),
+            },
         }
 
         CycleResult::Ok
     }
 
     fn process_command(&mut self, command: Command) -> Result<()> {
-        let remote = &mut self.state.remote;
-        let config = &self.state.config;
-        let db = &self.state.db;
+        let state = self.state.get_mut();
+        let remote = &mut state.remote;
+        let config = &state.config;
+        let db = &state.db;
 
         match command {
             Command::PlayerArgs(args) => {
-                let series = try_opt_r!(self.state.series.valid_selection_mut());
+                let series = try_opt_r!(state.series.valid_selection_mut());
 
                 series.data.config.player_args = args.into();
                 series.save(db)?;
@@ -351,7 +374,7 @@ impl<'a> UI<'a> {
             Command::Progress(direction) => {
                 use component::prompt::command::ProgressDirection;
 
-                let series = try_opt_r!(self.state.series.valid_selection_mut());
+                let series = try_opt_r!(state.series.valid_selection_mut());
 
                 match direction {
                     ProgressDirection::Forwards => series.episode_completed(remote, config, db),
@@ -359,7 +382,7 @@ impl<'a> UI<'a> {
                 }
             }
             cmd @ Command::SyncFromRemote | cmd @ Command::SyncToRemote => {
-                let series = try_opt_r!(self.state.series.valid_selection_mut());
+                let series = try_opt_r!(state.series.valid_selection_mut());
 
                 match cmd {
                     Command::SyncFromRemote => series.data.force_sync_from_remote(remote)?,
@@ -371,7 +394,7 @@ impl<'a> UI<'a> {
                 Ok(())
             }
             Command::Score(raw_score) => {
-                let series = try_opt_r!(self.state.series.valid_selection_mut());
+                let series = try_opt_r!(state.series.valid_selection_mut());
 
                 let score = match remote.parse_score(&raw_score) {
                     Some(score) if score == 0 => None,
@@ -386,7 +409,7 @@ impl<'a> UI<'a> {
                 Ok(())
             }
             Command::Status(status) => {
-                let series = try_opt_r!(self.state.series.valid_selection_mut());
+                let series = try_opt_r!(state.series.valid_selection_mut());
 
                 series.data.entry.set_status(status, config);
                 series.data.entry.sync_to_remote(remote)?;
@@ -408,3 +431,54 @@ pub enum CycleResult {
     Exit,
     Error(anyhow::Error),
 }
+
+pub struct Reactive<T> {
+    state: T,
+    dirty: bool,
+}
+
+impl<T> Reactive<T> {
+    pub fn new(state: T) -> Self {
+        Self { state, dirty: true }
+    }
+
+    #[inline(always)]
+    pub fn dirty(&self) -> bool {
+        self.dirty
+    }
+
+    #[inline(always)]
+    pub fn get(&self) -> &T {
+        &self.state
+    }
+
+    pub fn get_mut(&mut self) -> &mut T {
+        self.mark_dirty();
+        &mut self.state
+    }
+
+    #[inline(always)]
+    pub fn get_mut_unchanged(&mut self) -> &mut T {
+        &mut self.state
+    }
+
+    #[inline(always)]
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
+    #[inline(always)]
+    fn reset_dirty(&mut self) {
+        self.dirty = false;
+    }
+}
+
+impl<T> Deref for Reactive<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.get()
+    }
+}
+
+pub type ReactiveState = Reactive<UIState>;

@@ -7,7 +7,7 @@ mod input;
 
 use crate::key::Key;
 
-use super::UIState;
+use super::ReactiveState;
 use anyhow::Result;
 use tui::backend::Backend;
 use tui::layout::Rect;
@@ -17,7 +17,7 @@ pub trait Component {
     type State;
     type KeyResult;
 
-    fn tick(&mut self, _: &mut UIState) -> Result<()> {
+    fn tick<'a>(&mut self, _: &mut ReactiveState) -> Result<()> {
         Ok(())
     }
 

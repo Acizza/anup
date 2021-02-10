@@ -18,17 +18,6 @@ macro_rules! try_opt_ret {
     };
 }
 
-pub fn ms_from_mins<F>(mins: F) -> String
-where
-    F: Into<f32>,
-{
-    let mins = mins.into();
-    let m = mins.floor() as u8;
-    let s = (mins * 60.0 % 60.0).floor() as u8;
-
-    format!("{:02}:{:02}", m, s)
-}
-
 pub fn hm_from_mins<F>(total_mins: F) -> String
 where
     F: Into<f32>,

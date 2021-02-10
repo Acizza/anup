@@ -25,8 +25,6 @@ strsim = "0.10"
 unicode-segmentation = "1.6"
 unicode-width = "0.1"
 
-time = "0.1"
-
 [dependencies.anime]
 path = "../anime"
 features = [ "diesel-support", "chrono-support" ]
