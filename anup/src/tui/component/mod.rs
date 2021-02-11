@@ -17,7 +17,7 @@ pub trait Component {
     type State;
     type KeyResult;
 
-    fn tick<'a>(&mut self, _: &mut ReactiveState) -> Result<()> {
+    fn tick(&mut self, _: &mut ReactiveState) -> Result<()> {
         Ok(())
     }
 

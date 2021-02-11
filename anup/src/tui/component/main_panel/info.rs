@@ -278,9 +278,7 @@ impl Component for InfoPanel {
         Ok(())
     }
 
-    fn process_key(&mut self, _: crate::key::Key, _: &mut Self::State) -> Self::KeyResult {
-        ()
-    }
+    fn process_key(&mut self, _: crate::key::Key, _: &mut Self::State) -> Self::KeyResult {}
 }
 
 impl<B> Draw<B> for InfoPanel
