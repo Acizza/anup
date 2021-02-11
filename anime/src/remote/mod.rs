@@ -78,7 +78,7 @@ pub trait ScoreParser {
         score
             .parse()
             .ok()
-            .and_then(|score| if score <= 100 { Some(score) } else { None })
+            .and_then(|score| (score <= 100).then(|| score))
     }
 
     /// Map the given `score` to its string equivalent.

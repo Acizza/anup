@@ -430,11 +430,7 @@ pub trait ValidatedInput {
     fn error_message(&self) -> Cow<'static, str>;
 
     fn error(&self) -> Option<Cow<'static, str>> {
-        if self.has_error() {
-            Some(self.error_message())
-        } else {
-            None
-        }
+        self.has_error().then(|| self.error_message())
     }
 }
 
@@ -644,7 +640,7 @@ impl ValidatedInput for PathInput {
         let path = SeriesPath::with_base(&self.base_path, Cow::Owned(PathBuf::from(text)));
         let exists = path.exists_base(&self.base_path);
 
-        self.path = if exists { Some(path) } else { None };
+        self.path = exists.then(|| path);
         self.input.set_error(!exists);
     }
 

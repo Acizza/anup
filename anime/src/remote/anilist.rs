@@ -541,11 +541,7 @@ struct MediaEntry {
 
 impl MediaEntry {
     fn into_series_entry(self, id: u32) -> SeriesEntry {
-        let score = if self.score > 0 {
-            Some(self.score)
-        } else {
-            None
-        };
+        let score = (self.score > 0).then(|| self.score);
 
         SeriesEntry {
             id,
