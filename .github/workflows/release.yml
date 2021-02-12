@@ -15,6 +15,11 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Rust version
+      run: |
+        rustc --version
+        cargo --version
+
       - name: Build release binary
         run: cargo build --release
 
