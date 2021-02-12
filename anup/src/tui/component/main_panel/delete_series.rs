@@ -1,6 +1,6 @@
 use super::ShouldReset;
+use crate::tui::state::UIState;
 use crate::tui::widget_util::{block, text};
-use crate::tui::UIState;
 use crate::{
     key::Key,
     tui::component::{Component, Draw},

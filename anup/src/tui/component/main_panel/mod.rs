@@ -8,7 +8,7 @@ mod user_panel;
 use super::{Component, Draw};
 use crate::series::SeriesParams;
 use crate::try_opt_r;
-use crate::tui::{CurrentAction, UIState};
+use crate::tui::state::{CurrentAction, UIState};
 use crate::{key::Key, series::config::SeriesConfig};
 use crate::{series::info::InfoResult, tui::ReactiveState};
 use add_series::{AddSeriesPanel, AddSeriesResult};

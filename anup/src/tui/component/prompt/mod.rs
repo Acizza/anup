@@ -4,7 +4,7 @@ pub mod log;
 use super::{Component, Draw};
 use crate::{
     key::Key,
-    tui::{CurrentAction, UIState},
+    tui::state::{CurrentAction, UIState},
 };
 use anyhow::Result;
 use command::{Command, CommandPrompt, InputResult};

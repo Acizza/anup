@@ -1,6 +1,6 @@
 use super::{Component, Draw};
+use crate::tui::state::{CurrentAction, UIState};
 use crate::tui::widget_util::{block, style, text};
-use crate::tui::{CurrentAction, UIState};
 use crate::Args;
 use crate::{
     key::Key,

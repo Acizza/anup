@@ -1,5 +1,5 @@
 use super::Component;
-use crate::tui::{CurrentAction, UIState};
+use crate::tui::state::{CurrentAction, UIState};
 use crate::{key::Key, series::LastWatched};
 use crate::{try_opt_r, tui::ReactiveState};
 use anyhow::{Context, Result};
