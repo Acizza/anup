@@ -10,6 +10,10 @@
 
 * The TUI is now rendered semi-reactively instead of once every second. Key presses will still always trigger a rerender, but ticks will only cause a rerender if state changes have occured. This reduces the CPU usage massively while the program is idle or while watching an anime episode.
 
+* The TUI now operates asynchronously. Components now spawn their own async tasks to respond to events or perform ticks. State changes aren't tied to rerendering yet, though, so there is still a delay before changes are displayed.
+
+* The async runtime has been changed from async-std to Tokio.
+
 ## 0.1.1 - February 8th, 2021
 
 ### Internal Changes
