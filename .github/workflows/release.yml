@@ -1,4 +1,4 @@
-name: release
+name: Create Release
 
 on:
   push:
@@ -10,26 +10,32 @@ env:
 
 jobs:
   build:
+    name: Generate Release Artifact
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v2
 
-      - name: Rust version
-        run: |
-          rustc --version
-          cargo --version
+      - name: Install latest stable Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
 
       - name: Build release binary
-        run: cargo build --release
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
 
-      - name: Package release artifact
+      - name: Package artifact
         run: |
           cd target/release
           strip ./anup
           zip anup-linux.zip -xi ./anup
 
-      - name: Create release
+      - name: Create new release
         id: create_release
         uses: actions/create-release@v1
         env:
