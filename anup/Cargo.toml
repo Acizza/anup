@@ -13,12 +13,13 @@ bitflags = "1.2"
 chrono = "0.4"
 dirs-next = "2.0"
 futures = "0.3"
-futures-timer = "3.0"
 once_cell = "1.4"
+parking_lot = "0.11"
 serde = "1.0"
 serde_derive = "1.0"
 smallvec = "1.4"
 strsim = "0.10"
+terminal_size = "0.1"
 thiserror = "1.0"
 toml = "0.5"
 tui-utils = { git = "https://github.com/Acizza/tui-utils", rev = "0.3.0" }
@@ -28,10 +29,6 @@ unicode-width = "0.1"
 [dependencies.anime]
 path = "../anime"
 features = [ "diesel-support", "chrono-support" ]
-
-[dependencies.async-std]
-version = "1.8"
-features = [ "attributes" ]
 
 [dependencies.crossterm]
 version = "0.19"
@@ -45,6 +42,10 @@ features = [ "sqlite" ]
 [dependencies.pico-args]
 version = "0.4"
 default-features = false
+
+[dependencies.tokio]
+version = "1.2"
+features = [ "rt", "signal", "process", "time", "sync", "parking_lot" ]
 
 [dependencies.tui]
 version = "0.14"

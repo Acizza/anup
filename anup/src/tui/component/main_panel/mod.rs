@@ -6,11 +6,11 @@ mod split_series;
 mod user_panel;
 
 use super::{Component, Draw};
-use crate::series::SeriesParams;
+use crate::series::info::InfoResult;
 use crate::try_opt_r;
-use crate::tui::state::{CurrentAction, UIState};
+use crate::tui::state::{InputState, UIState};
 use crate::{key::Key, series::config::SeriesConfig};
-use crate::{series::info::InfoResult, tui::ReactiveState};
+use crate::{series::SeriesParams, tui::state::ThreadedState};
 use add_series::{AddSeriesPanel, AddSeriesResult};
 use anime::local::SortedEpisodes;
 use anime::remote::RemoteService;
@@ -27,13 +27,19 @@ use user_panel::UserPanel;
 
 pub struct MainPanel {
     current: Panel,
+    state: ThreadedState,
 }
 
 impl MainPanel {
-    pub fn new() -> Self {
+    pub fn new(state: ThreadedState) -> Self {
         Self {
-            current: Panel::default(),
+            current: Panel::info(&state),
+            state,
         }
+    }
+
+    fn default_panel(&self) -> Panel {
+        Panel::info(&self.state)
     }
 
     pub fn switch_to_add_series(&mut self, state: &mut UIState) -> Result<()> {
@@ -41,32 +47,32 @@ impl MainPanel {
             return Err(anyhow!("must be online to add a series"));
         }
 
-        self.current = Panel::add_series(state)?;
-        state.current_action = CurrentAction::FocusedOnMainPanel;
+        self.current = Panel::add_series(state, &self.state)?;
+        state.input_state = InputState::FocusedOnMainPanel;
 
         Ok(())
     }
 
     pub fn switch_to_update_series(&mut self, state: &mut UIState) -> Result<()> {
-        self.current = Panel::update_series(state)?;
-        state.current_action = CurrentAction::FocusedOnMainPanel;
+        self.current = Panel::update_series(state, &self.state)?;
+        state.input_state = InputState::FocusedOnMainPanel;
         Ok(())
     }
 
     pub fn switch_to_delete_series(&mut self, state: &mut UIState) -> Result<()> {
         self.current = Panel::delete_series(state)?;
-        state.current_action = CurrentAction::FocusedOnMainPanel;
+        state.input_state = InputState::FocusedOnMainPanel;
         Ok(())
     }
 
     fn switch_to_select_series(&mut self, select: SelectState, state: &mut UIState) {
         self.current = Panel::select_series(select);
-        state.current_action = CurrentAction::FocusedOnMainPanel;
+        state.input_state = InputState::FocusedOnMainPanel;
     }
 
     pub fn switch_to_user_panel(&mut self, state: &mut UIState) {
         self.current = Panel::user();
-        state.current_action = CurrentAction::FocusedOnMainPanel;
+        state.input_state = InputState::FocusedOnMainPanel;
     }
 
     pub fn switch_to_split_series(&mut self, state: &mut UIState) -> Result<()> {
@@ -74,10 +80,10 @@ impl MainPanel {
             return Err(anyhow!("must be online to split a series"));
         }
 
-        let panel = Panel::split_series();
+        let panel = Panel::split_series(&self.state);
 
         self.current = panel;
-        state.current_action = CurrentAction::FocusedOnMainPanel;
+        state.input_state = InputState::FocusedOnMainPanel;
         Ok(())
     }
 
@@ -100,37 +106,14 @@ impl MainPanel {
     }
 
     fn reset(&mut self, state: &mut UIState) {
-        self.current = Panel::default();
-        state.current_action.reset();
+        self.current = self.default_panel();
+        state.input_state.reset();
     }
 }
 
 impl Component for MainPanel {
     type State = UIState;
     type KeyResult = Result<()>;
-
-    fn tick(&mut self, state: &mut ReactiveState) -> Result<()> {
-        macro_rules! capture {
-            ($panel:expr) => {
-                match $panel.tick(state) {
-                    ok @ Ok(_) => ok,
-                    err @ Err(_) => {
-                        self.reset(state.get_mut());
-                        err
-                    }
-                }
-            };
-        }
-
-        match &mut self.current {
-            Panel::Info(panel) => capture!(panel),
-            Panel::AddSeries(panel) => capture!(panel),
-            Panel::SelectSeries(panel) => capture!(panel),
-            Panel::DeleteSeries(panel) => capture!(panel),
-            Panel::User(panel) => capture!(panel),
-            Panel::SplitSeries(panel) => capture!(panel),
-        }
-    }
 
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
         match &mut self.current {
@@ -156,7 +139,9 @@ impl Component for MainPanel {
             Panel::SelectSeries(panel) => match panel.process_key(key, &mut ()) {
                 SelectSeriesResult::Ok => Ok(()),
                 SelectSeriesResult::AddSeries(info) => {
-                    let params = match mem::take(&mut self.current) {
+                    let default_panel = self.default_panel();
+
+                    let params = match mem::replace(&mut self.current, default_panel) {
                         Panel::SelectSeries(panel) => panel.take_params(),
                         _ => unreachable!(),
                     };
@@ -231,19 +216,19 @@ enum Panel {
 
 impl Panel {
     #[inline(always)]
-    fn info() -> Self {
-        Self::Info(InfoPanel::new())
+    fn info(state: &ThreadedState) -> Self {
+        Self::Info(InfoPanel::new(state))
     }
 
-    fn add_series(state: &UIState) -> Result<Self> {
+    fn add_series(state: &UIState, threaded_state: &ThreadedState) -> Result<Self> {
         use add_series::Mode;
-        let panel = AddSeriesPanel::init(state, Mode::AddSeries)?;
+        let panel = AddSeriesPanel::init(state, threaded_state, Mode::AddSeries)?;
         Ok(Self::AddSeries(panel.into()))
     }
 
-    fn update_series(state: &UIState) -> Result<Self> {
+    fn update_series(state: &UIState, threaded_state: &ThreadedState) -> Result<Self> {
         use add_series::Mode;
-        let panel = AddSeriesPanel::init(state, Mode::UpdateSeries)?;
+        let panel = AddSeriesPanel::init(state, threaded_state, Mode::UpdateSeries)?;
         Ok(Self::AddSeries(panel.into()))
     }
 
@@ -260,15 +245,9 @@ impl Panel {
         Self::User(UserPanel::new())
     }
 
-    fn split_series() -> Self {
-        let panel = SplitSeriesPanel::new();
+    fn split_series(state: &ThreadedState) -> Self {
+        let panel = SplitSeriesPanel::new(state);
         Self::SplitSeries(panel)
-    }
-}
-
-impl Default for Panel {
-    fn default() -> Self {
-        Self::info()
     }
 }
 

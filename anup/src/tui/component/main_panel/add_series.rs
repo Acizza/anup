@@ -1,6 +1,4 @@
 use super::PartialSeries;
-use crate::series::info::{InfoSelector, SeriesInfo};
-use crate::series::{self, LoadedSeries, SeriesParams, SeriesPath, UpdateParams};
 use crate::tui::component::input::{
     IDInput, Input, InputFlags, NameInput, ParsedValue, ParserInput, PathInput, ValidatedInput,
 };
@@ -9,22 +7,31 @@ use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
 use crate::{config::Config, key::Key};
-use crate::{file, tui::ReactiveState};
-use crate::{try_opt_r, try_opt_ret};
+use crate::{file, tui::state::ThreadedState};
+use crate::{
+    series::info::{InfoSelector, SeriesInfo},
+    util::ArcMutex,
+};
+use crate::{
+    series::{self, LoadedSeries, SeriesParams, SeriesPath, UpdateParams},
+    util::arc_mutex,
+};
+use crate::{try_opt_ret, util::ScopedTask};
 use anime::local::{CategorizedEpisodes, EpisodeParser, SortedEpisodes};
 use anime::remote::SeriesID;
 use anyhow::{Context, Result};
 use crossterm::event::KeyCode;
-use std::borrow::Cow;
 use std::mem;
 use std::time::Instant;
+use std::{borrow::Cow, sync::Arc, time::Duration};
+use tokio::task;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::widgets::Paragraph;
 
-const SECS_BETWEEN_SERIES_UPDATES: f32 = 0.25;
+const DURATION_BETWEEN_SERIES_UPDATES: Duration = Duration::from_millis(750);
 
 struct PanelInputs {
     name: NameInput,
@@ -105,48 +112,16 @@ impl PanelInputs {
     }
 }
 
-pub struct AddSeriesPanel {
+struct SharedState {
     inputs: PanelInputs,
+    series_builder: SeriesBuilder,
+    last_update: Option<Instant>,
     selected_input: usize,
     error: Option<Cow<'static, str>>,
-    last_update: Option<Instant>,
-    series_builder: SeriesBuilder,
     mode: Mode,
 }
 
-impl AddSeriesPanel {
-    pub fn init(state: &UIState, mode: Mode) -> Result<Self> {
-        let (inputs, placeholder_set) = match mode {
-            Mode::AddSeries => PanelInputs::init_with_placeholders(&state.config),
-            Mode::UpdateSeries => {
-                let selected = state
-                    .series
-                    .selected()
-                    .context("must select a series in order to update it")?;
-
-                let inputs = PanelInputs::init_with_series(&state.config, selected);
-                (inputs, true)
-            }
-        };
-
-        let mut result = Self {
-            inputs,
-            selected_input: 0,
-            error: None,
-            last_update: None,
-            series_builder: SeriesBuilder::new(),
-            mode,
-        };
-
-        // If any inputs have a placeholder, we should update our detected series now
-        if placeholder_set {
-            result.series_builder.update(&result.inputs, state).ok();
-        }
-
-        Ok(result)
-    }
-
-    #[inline(always)]
+impl SharedState {
     fn current_input(&mut self) -> &mut dyn ValidatedInput {
         self.inputs.index_mut(self.selected_input)
     }
@@ -164,7 +139,93 @@ impl AddSeriesPanel {
         self.error = None;
     }
 
-    fn draw_add_series_panel<B>(&mut self, rect: Rect, frame: &mut Frame<B>)
+    fn build_series(&mut self, state: &UIState) -> Result<AddSeriesResult> {
+        self.series_builder.build(&self.inputs, state, self.mode)
+    }
+
+    fn update_series(&mut self, state: &UIState) -> Result<()> {
+        self.series_builder.update(&self.inputs, state)
+    }
+}
+
+pub struct AddSeriesPanel {
+    state: ArcMutex<SharedState>,
+    #[allow(dead_code)]
+    update_monitor_task: ScopedTask<()>,
+}
+
+impl AddSeriesPanel {
+    pub fn init(state: &UIState, threaded_state: &ThreadedState, mode: Mode) -> Result<Self> {
+        let (inputs, placeholder_set) = match mode {
+            Mode::AddSeries => PanelInputs::init_with_placeholders(&state.config),
+            Mode::UpdateSeries => {
+                let selected = state
+                    .series
+                    .selected()
+                    .context("must select a series in order to update it")?;
+
+                let inputs = PanelInputs::init_with_series(&state.config, selected);
+                (inputs, true)
+            }
+        };
+
+        let mut series_builder = SeriesBuilder::new();
+
+        // If any inputs have a placeholder, we should update our detected series now
+        if placeholder_set {
+            series_builder.update(&inputs, state).ok();
+        }
+
+        let state = arc_mutex(SharedState {
+            inputs,
+            series_builder,
+            last_update: None,
+            selected_input: 0,
+            error: None,
+            mode,
+        });
+
+        let update_monitor_task = Self::spawn_update_monitor(&state, threaded_state).into();
+
+        Ok(Self {
+            state,
+            update_monitor_task,
+        })
+    }
+
+    fn spawn_update_monitor(
+        panel_state: &ArcMutex<SharedState>,
+        state: &ThreadedState,
+    ) -> task::JoinHandle<()> {
+        let panel_state = Arc::clone(panel_state);
+        let state = Arc::clone(state);
+
+        task::spawn(async move {
+            loop {
+                tokio::time::sleep(DURATION_BETWEEN_SERIES_UPDATES).await;
+
+                let mut panel_state = panel_state.lock();
+
+                let last_update = match &panel_state.last_update {
+                    Some(last_update) => last_update,
+                    None => continue,
+                };
+
+                if last_update.elapsed() < DURATION_BETWEEN_SERIES_UPDATES {
+                    continue;
+                }
+
+                let mut state = state.lock();
+
+                panel_state.update_series(&state).ok();
+                panel_state.last_update = None;
+
+                state.mark_dirty();
+            }
+        })
+    }
+
+    fn draw_add_series_panel<B>(panel_state: &mut SharedState, rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
     {
@@ -197,7 +258,7 @@ impl AddSeriesPanel {
             .into_iter()
             .chain(horiz_fields_bottom.into_iter());
 
-        for (input, pos) in self.inputs.all_mut().iter_mut().zip(field_positions) {
+        for (input, pos) in panel_state.inputs.all_mut().iter_mut().zip(field_positions) {
             let layout = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(100)].as_ref())
@@ -208,7 +269,7 @@ impl AddSeriesPanel {
         }
     }
 
-    fn draw_detected_panel<B>(&mut self, rect: Rect, frame: &mut Frame<B>)
+    fn draw_detected_panel<B>(panel_state: &SharedState, rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
     {
@@ -222,16 +283,17 @@ impl AddSeriesPanel {
             }};
         }
 
-        let (header_text, has_error) = match (&self.error, &self.series_builder.params) {
-            (Some(err), Some(_)) | (Some(err), None) => {
-                (text::bold_with(err.as_ref(), |s| s.fg(Color::Red)), true)
-            }
-            (None, Some(_)) => (text::bold("Detected"), false),
-            (None, None) => (
-                text::bold_with("Nothing Detected", |s| s.fg(Color::Red)),
-                false,
-            ),
-        };
+        let (header_text, has_error) =
+            match (&panel_state.error, &panel_state.series_builder.params) {
+                (Some(err), Some(_)) | (Some(err), None) => {
+                    (text::bold_with(err.as_ref(), |s| s.fg(Color::Red)), true)
+                }
+                (None, Some(_)) => (text::bold("Detected"), false),
+                (None, None) => (
+                    text::bold_with("Nothing Detected", |s| s.fg(Color::Red)),
+                    false,
+                ),
+            };
 
         let header = Paragraph::new(header_text)
             .wrapped()
@@ -248,7 +310,7 @@ impl AddSeriesPanel {
             return;
         }
 
-        let built = try_opt_ret!(&self.series_builder.params);
+        let built = try_opt_ret!(&panel_state.series_builder.params);
 
         info_label!(
             "Relative Path",
@@ -272,56 +334,49 @@ impl Component for AddSeriesPanel {
     type State = UIState;
     type KeyResult = Result<AddSeriesResult>;
 
-    fn tick(&mut self, state: &mut ReactiveState) -> Result<()> {
-        let last_update = try_opt_r!(self.last_update);
-
-        if last_update.elapsed().as_secs_f32() < SECS_BETWEEN_SERIES_UPDATES {
-            return Ok(());
-        }
-
-        self.series_builder.update(&self.inputs, state).ok();
-        self.last_update = None;
-
-        state.mark_dirty();
-
-        Ok(())
-    }
-
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
         match *key {
             KeyCode::Esc => Ok(AddSeriesResult::Reset),
             KeyCode::Enter => {
-                self.validate_selected();
+                let mut panel_state = self.state.lock();
 
-                if self.error.is_some() {
+                panel_state.validate_selected();
+
+                if panel_state.error.is_some() {
                     return Ok(AddSeriesResult::Ok);
                 }
 
-                self.series_builder.build(&self.inputs, state, self.mode)
+                panel_state.build_series(state)
             }
             KeyCode::Tab => {
-                self.validate_selected();
+                let mut panel_state = self.state.lock();
 
-                self.current_input().input_mut().set_selected(false);
-                self.selected_input = (self.selected_input + 1) % PanelInputs::TOTAL;
-                self.current_input().input_mut().set_selected(true);
+                panel_state.validate_selected();
+
+                panel_state.current_input().input_mut().set_selected(false);
+                panel_state.selected_input = (panel_state.selected_input + 1) % PanelInputs::TOTAL;
+                panel_state.current_input().input_mut().set_selected(true);
 
                 Ok(AddSeriesResult::Ok)
             }
             _ => {
-                self.current_input().input_mut().process_key(key);
-                self.validate_selected();
+                let mut panel_state = self.state.lock();
 
-                let path_input = self.inputs.path.input_mut();
-                let name_has_input = self.inputs.name.input_mut().has_input();
+                panel_state.current_input().input_mut().process_key(key);
+                panel_state.validate_selected();
+
+                let name_has_input = panel_state.inputs.name.input_mut().has_input();
+                let path_input = &mut panel_state.inputs.path;
 
                 // Our path should only use a placeholder if the user hasn't changed the name input
                 // This is to avoid locking the detected series in unless the user changes the path as well.
                 path_input
+                    .input_mut()
                     .flags
                     .set(InputFlags::IGNORE_PLACEHOLDER, !name_has_input);
 
-                self.last_update = Some(Instant::now());
+                panel_state.last_update = Some(Instant::now());
+
                 Ok(AddSeriesResult::Ok)
             }
         }
@@ -341,7 +396,9 @@ where
             .horizontal_margin(2)
             .split(rect);
 
-        let title = match self.mode {
+        let mut panel_state = self.state.lock();
+
+        let title = match panel_state.mode {
             Mode::AddSeries => "Add Series",
             Mode::UpdateSeries => "Update Selected Series",
         };
@@ -349,8 +406,8 @@ where
         let outline = block::with_borders(title);
         frame.render_widget(outline, rect);
 
-        self.draw_add_series_panel(split[0], frame);
-        self.draw_detected_panel(split[1], frame);
+        Self::draw_add_series_panel(&mut panel_state, split[0], frame);
+        Self::draw_detected_panel(&panel_state, split[1], frame);
     }
 }
 

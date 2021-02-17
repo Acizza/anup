@@ -19,15 +19,15 @@ use diesel::sql_types::Text;
 use entry::SeriesEntry;
 use info::SeriesInfo;
 use smallvec::SmallVec;
-use std::borrow::Cow;
 use std::cmp::{Ordering, PartialOrd};
 use std::fs;
 use std::io::Write;
 use std::mem;
 use std::path::{self, Path, PathBuf};
-use std::process::{Child, Command, Stdio};
 use std::result;
+use std::{borrow::Cow, process::Stdio};
 use thiserror::Error;
+use tokio::process::{Child, Command};
 
 #[derive(Debug, Error)]
 pub enum EpisodeScanError {

@@ -1,14 +1,14 @@
+use crate::key::Key;
 use anyhow::{Context, Result};
 use crossterm::event::{Event, EventStream};
 use crossterm::terminal;
 use futures::{future::FutureExt, select, StreamExt};
-use futures_timer::Delay;
 use std::io;
 use std::time::Duration;
+use terminal_size::{terminal_size, Height, Width};
+use tokio::time;
 use tui::terminal::Terminal;
 use tui::{backend::CrosstermBackend, layout::Rect};
-
-use crate::key::Key;
 
 pub struct UIBackend {
     pub terminal: Terminal<CrosstermBackend<io::Stdout>>,
@@ -46,19 +46,19 @@ impl UIBackend {
         self.terminal.clear().map_err(Into::into)
     }
 
-    pub fn size_changed(&self) -> io::Result<bool> {
-        self.terminal
-            .size()
-            .map(|size| size.width != self.last_width || size.height != self.last_height)
-    }
+    pub fn update_term_size(&mut self) -> io::Result<bool> {
+        // The terminal_size crate is much faster than the current backend (crossterm) for retrieving the terminal size
+        let (width, height) = match terminal_size() {
+            Some((Width(w), Height(h))) => (w, h),
+            None => return Ok(false),
+        };
 
-    pub fn update_term_size(&mut self) -> io::Result<()> {
-        let size = self.terminal.size()?;
+        let changed = width != self.last_width || height != self.last_height;
 
-        self.last_width = size.width;
-        self.last_height = size.height;
+        self.last_width = width;
+        self.last_height = height;
 
-        Ok(())
+        Ok(changed)
     }
 }
 
@@ -80,7 +80,7 @@ pub struct Events {
 }
 
 impl Events {
-    const TICK_DURATION_MS: u64 = 1_000;
+    const TICK_DURATION_MS: u64 = 2_000;
 
     pub fn new() -> Self {
         Self {
@@ -90,7 +90,9 @@ impl Events {
 
     #[allow(clippy::mut_mut)]
     pub async fn next(&mut self) -> EventError<Option<EventKind>> {
-        let mut tick = Delay::new(Duration::from_millis(Self::TICK_DURATION_MS)).fuse();
+        let tick = time::sleep(Duration::from_millis(Self::TICK_DURATION_MS)).fuse();
+        tokio::pin!(tick);
+
         let mut next_event = self.reader.next().fuse();
 
         select! {

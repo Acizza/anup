@@ -57,12 +57,21 @@ pub struct Args {
     pub sync: bool,
 }
 
-#[async_std::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .enable_time()
+        .build()
+        .context("failed to build async runtime")?;
+
+    rt.block_on(async { run().await })
+}
+
+async fn run() -> Result<()> {
     let args: Args = argh::from_env();
 
     if args.play_one {
-        play_episode(&args)
+        play_episode(&args).await
     } else if args.sync {
         sync(&args)
     } else {
@@ -121,7 +130,7 @@ fn sync(args: &Args) -> Result<()> {
     Ok(())
 }
 
-fn play_episode(args: &Args) -> Result<()> {
+async fn play_episode(args: &Args) -> Result<()> {
     use anime::remote::Status;
 
     let config = Config::load_or_create()?;
@@ -164,6 +173,7 @@ fn play_episode(args: &Args) -> Result<()> {
     series
         .play_episode(next_episode_num as u32, &config)?
         .wait()
+        .await
         .context("waiting for episode to finish failed")?;
 
     if Utc::now() >= progress_time {

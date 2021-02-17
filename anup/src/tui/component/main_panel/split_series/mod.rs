@@ -1,39 +1,93 @@
 mod add;
 mod split;
 
-use crate::series::SeriesData;
-use crate::series::{LoadedSeries, SeriesPath};
-use crate::tui::component::{Component, Draw};
-use crate::tui::widget_util::{block, text};
+use crate::series::config::SeriesConfig;
 use crate::tui::UIState;
 use crate::{config::Config, key::Key};
-use crate::{series::config::SeriesConfig, tui::ReactiveState};
+use crate::{series::SeriesData, util::ScopedTask};
+use crate::{
+    series::{LoadedSeries, SeriesPath},
+    tui::state::ThreadedState,
+};
+use crate::{
+    tui::component::{Component, Draw},
+    util::ArcMutex,
+};
+use crate::{
+    tui::widget_util::{block, text},
+    util::arc_mutex,
+};
 use add::AddPanel;
 use anime::local::{CategorizedEpisodes, SortedEpisodes};
 use anime::remote::{Remote, RemoteService, SeriesInfo as RemoteInfo};
 use anime::SeriesKind;
 use anyhow::{anyhow, Context, Result};
 use split::{SplitPanel, SplitResult};
-use std::borrow::Cow;
 use std::mem;
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
+use std::{borrow::Cow, sync::Arc};
 use std::{fs, io};
+use tokio::task;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::terminal::Frame;
 use tui::widgets::Paragraph;
 
 pub struct SplitSeriesPanel {
-    state: PanelState,
+    state: ArcMutex<PanelState>,
+    #[allow(dead_code)]
+    split_task: ScopedTask<()>,
 }
 
 impl SplitSeriesPanel {
-    pub fn new() -> Self {
+    pub fn new(state: &ThreadedState) -> Self {
+        let panel_state = arc_mutex(PanelState::Loading);
+        let split_task = Self::spawn_split_series_task(&panel_state, state).into();
+
         Self {
-            state: PanelState::Loading,
+            state: panel_state,
+            split_task,
         }
+    }
+
+    fn spawn_split_series_task(
+        panel_state: &ArcMutex<PanelState>,
+        state: &ThreadedState,
+    ) -> task::JoinHandle<()> {
+        let panel_state = Arc::clone(panel_state);
+        let state = Arc::clone(state);
+
+        task::spawn(async move {
+            let mut state = state.lock();
+
+            let series = match state.series.selected() {
+                Some(LoadedSeries::Complete(series)) => &series.data,
+                Some(LoadedSeries::Partial(data, _)) => data,
+                Some(LoadedSeries::None(_, _)) | None => {
+                    state
+                        .get_mut()
+                        .log
+                        .push_error_msg("cannot split a series with errors");
+
+                    return;
+                }
+            };
+
+            let merged_series = match MergedSeries::resolve(series, &state.remote, &state.config) {
+                Ok(merged) => merged,
+                Err(err) => {
+                    state.get_mut().log.push_error(&err);
+                    return;
+                }
+            };
+
+            let mut panel_state = panel_state.lock();
+
+            *panel_state = PanelState::Splitting(SplitPanel::new(merged_series).into());
+            state.mark_dirty();
+        })
     }
 
     fn draw_loading_panel<B>(rect: Rect, frame: &mut Frame<B>)
@@ -59,34 +113,10 @@ impl Component for SplitSeriesPanel {
     type State = UIState;
     type KeyResult = Result<SplitPanelResult>;
 
-    fn tick(&mut self, state: &mut ReactiveState) -> Result<()> {
-        match &mut self.state {
-            PanelState::Loading => {
-                let series = match state.series.selected() {
-                    Some(LoadedSeries::Complete(series)) => &series.data,
-                    Some(LoadedSeries::Partial(data, _)) => data,
-                    Some(LoadedSeries::None(_, _)) | None => {
-                        return Err(anyhow!("cannot split a series with errors"))
-                    }
-                };
-
-                let merged_series =
-                    match MergedSeries::resolve(series, &state.remote, &state.config) {
-                        Ok(merged) => merged,
-                        Err(err) => return Err(err),
-                    };
-
-                self.state = PanelState::Splitting(SplitPanel::new(merged_series).into());
-                state.mark_dirty();
-                Ok(())
-            }
-            PanelState::Splitting(split_panel) => split_panel.tick(state),
-            PanelState::AddingSeries(add_panel, _) => add_panel.tick(state),
-        }
-    }
-
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
-        match &mut self.state {
+        let mut panel_state = self.state.lock();
+
+        match &mut *panel_state {
             PanelState::Loading => Ok(SplitPanelResult::Ok),
             PanelState::Splitting(split_panel) => match split_panel.process_key(key, state) {
                 Ok(SplitResult::Ok) => Ok(SplitPanelResult::Ok),
@@ -95,7 +125,7 @@ impl Component for SplitSeriesPanel {
                     let add_panel = AddPanel::new(info, path);
                     let split_panel = mem::take(split_panel);
 
-                    self.state = PanelState::AddingSeries(add_panel.into(), split_panel);
+                    *panel_state = PanelState::AddingSeries(add_panel.into(), split_panel);
 
                     Ok(SplitPanelResult::Ok)
                 }
@@ -106,7 +136,7 @@ impl Component for SplitSeriesPanel {
                     Ok(result @ SplitPanelResult::Reset)
                     | Ok(result @ SplitPanelResult::AddSeries(_, _)) => {
                         let split_panel = mem::take(split_panel);
-                        self.state = PanelState::Splitting(split_panel);
+                        *panel_state = PanelState::Splitting(split_panel);
 
                         match result {
                             SplitPanelResult::Reset => Ok(SplitPanelResult::Ok),
@@ -127,7 +157,9 @@ where
     type State = ();
 
     fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        match &mut self.state {
+        let mut state = self.state.lock();
+
+        match &mut *state {
             PanelState::Loading => Self::draw_loading_panel(rect, frame),
             PanelState::Splitting(split_panel) => split_panel.draw(&(), rect, frame),
             PanelState::AddingSeries(add_panel, _) => add_panel.draw(&(), rect, frame),

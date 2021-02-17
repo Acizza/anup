@@ -1,5 +1,5 @@
 use super::{Component, Draw};
-use crate::tui::state::{CurrentAction, UIState};
+use crate::tui::state::{InputState, UIState};
 use crate::tui::widget_util::{block, style, text};
 use crate::Args;
 use crate::{
@@ -88,8 +88,8 @@ where
     type State = UIState;
 
     fn draw(&mut self, state: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        let highlight_style = match &state.current_action {
-            CurrentAction::Idle => style::italic().fg(Color::Green),
+        let highlight_style = match state.input_state {
+            InputState::Idle => style::italic().fg(Color::Green),
             _ => style::italic().fg(Color::DarkGray),
         };
 

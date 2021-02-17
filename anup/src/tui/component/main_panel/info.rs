@@ -1,18 +1,22 @@
-use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, text};
-use crate::tui::{component::Draw, ReactiveState};
-use crate::tui::{CurrentAction, UIState};
+use crate::tui::{component::Draw, state::ProgressTime};
+use crate::tui::{state::StateEvent, UIState};
+use crate::tui::{state::ThreadedState, widget_util::widget::WrapHelper};
 use crate::util;
 use crate::{
     series::{LoadedSeries, Series},
     tui::component::Component,
 };
 use anime::remote::{ScoreParser, SeriesDate};
-use anyhow::Result;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use smallvec::{smallvec, SmallVec};
-use std::borrow::Cow;
-use std::fmt;
+use std::{
+    borrow::Cow,
+    sync::{atomic::Ordering, Arc},
+    time::Duration,
+};
+use std::{fmt, sync::atomic::AtomicU32};
+use tokio::{task, time};
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
@@ -23,17 +27,102 @@ use tui_utils::{
     grid_pos,
     widgets::{text_fragments::Fragment, TextFragments},
 };
+use util::ScopedTask;
 
 pub struct InfoPanel {
-    progress_time: Option<ProgressTime>,
+    progress_remaining_secs: Arc<AtomicU32>,
+    #[allow(dead_code)]
+    event_monitor_task: ScopedTask<()>,
 }
 
 impl InfoPanel {
-    #[inline(always)]
-    pub fn new() -> Self {
+    pub fn new(state: &ThreadedState) -> Self {
+        let progress_remaining_secs = Arc::new(AtomicU32::default());
+        let event_monitor_task =
+            Self::spawn_episode_event_monitor(state, Arc::clone(&progress_remaining_secs)).into();
+
         Self {
-            progress_time: None,
+            progress_remaining_secs,
+            event_monitor_task,
         }
+    }
+
+    fn spawn_episode_event_monitor(
+        state: &ThreadedState,
+        progress_remaining_secs: Arc<AtomicU32>,
+    ) -> task::JoinHandle<()> {
+        let state = Arc::clone(state);
+
+        task::spawn(async move {
+            let mut events = {
+                let state = state.lock();
+                state.events.subscribe()
+            };
+
+            #[allow(unused_variables)]
+            let mut progress_task: Option<ScopedTask<_>> = None;
+
+            while let Ok(event) = events.recv().await {
+                #[allow(unused_assignments)]
+                match event {
+                    StateEvent::StartedEpisode(progress_time) => {
+                        let state = Arc::clone(&state);
+                        let remaining_secs = Arc::clone(&progress_remaining_secs);
+
+                        let task =
+                            Self::spawn_progress_monitor_task(state, remaining_secs, progress_time)
+                                .into();
+
+                        progress_task = Some(task);
+                    }
+                    StateEvent::FinishedEpisode => {
+                        progress_remaining_secs.store(0, Ordering::SeqCst);
+                        progress_task = None;
+
+                        let mut state = state.lock();
+                        state.mark_dirty();
+                    }
+                }
+            }
+        })
+    }
+
+    fn spawn_progress_monitor_task(
+        state: ThreadedState,
+        remaining_secs: Arc<AtomicU32>,
+        progress_time: ProgressTime,
+    ) -> task::JoinHandle<()> {
+        task::spawn(async move {
+            let mut first_iter = true;
+
+            loop {
+                let cur_progress = remaining_secs.load(Ordering::SeqCst);
+
+                if cur_progress == 0 && !first_iter {
+                    remaining_secs.store(0, Ordering::SeqCst);
+                    state.lock().mark_dirty();
+                    break;
+                }
+
+                let diff = progress_time - Utc::now();
+                let secs = diff.num_seconds();
+
+                if secs <= 0 {
+                    remaining_secs.store(0, Ordering::SeqCst);
+                    state.lock().mark_dirty();
+                    break;
+                }
+
+                remaining_secs.store(secs as u32, Ordering::SeqCst);
+                first_iter = false;
+
+                {
+                    state.lock().mark_dirty();
+                }
+
+                time::sleep(Duration::from_secs(60)).await;
+            }
+        })
     }
 
     fn text_display_layout(rect: Rect) -> Vec<Rect> {
@@ -212,19 +301,19 @@ impl InfoPanel {
         draw_stat!(2, 1 => "Finish Date", format_date(entry.end_date()));
         draw_stat!(2, 2 => "Rewatched", entry.times_rewatched().to_string());
 
+        let progress_remaining_secs = self.progress_remaining_secs.load(Ordering::SeqCst);
+
         // Watch time needed indicator at bottom
-        if let Some(progress) = &self.progress_time {
-            if progress.remaining_secs > 0 {
-                let remaining_mins = (progress.remaining_secs as f32 / 60.0).round() as u32;
+        if progress_remaining_secs > 0 {
+            let mins = (progress_remaining_secs as f32 / 60.0).round() as u32;
 
-                let fragments = [
-                    Fragment::Span(text::bold(remaining_mins.to_string()), false),
-                    Fragment::Span(text::bold(" Minutes Until Progression"), false),
-                ];
+            let fragments = [
+                Fragment::Span(text::bold(mins.to_string()), false),
+                Fragment::Span(text::bold(" Minutes Until Progression"), false),
+            ];
 
-                let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
-                frame.render_widget(widget, layout[2]);
-            }
+            let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
+            frame.render_widget(widget, layout[2]);
         }
     }
 
@@ -247,36 +336,6 @@ impl InfoPanel {
 impl Component for InfoPanel {
     type State = ();
     type KeyResult = ();
-
-    fn tick<'a>(&mut self, state: &mut ReactiveState) -> Result<()> {
-        match (&state.current_action, &mut self.progress_time) {
-            (CurrentAction::WatchingEpisode(abs_progress_time, _), progress @ None) => {
-                *progress = Some(ProgressTime::new(*abs_progress_time));
-                state.mark_dirty();
-            }
-            (CurrentAction::WatchingEpisode(_, _), Some(progress)) => {
-                let now = Utc::now();
-
-                if (now - progress.last_update).num_seconds() < 30 {
-                    return Ok(());
-                }
-
-                let diff_secs = (progress.progress_at - now).num_seconds();
-
-                progress.remaining_secs = diff_secs;
-                progress.last_update = now;
-
-                state.mark_dirty();
-            }
-            (_, progress @ Some(_)) => {
-                *progress = None;
-                state.mark_dirty();
-            }
-            _ => (),
-        }
-
-        Ok(())
-    }
 
     fn process_key(&mut self, _: crate::key::Key, _: &mut Self::State) -> Self::KeyResult {}
 }
@@ -302,22 +361,6 @@ where
             Some(LoadedSeries::Partial(_, err)) => Self::draw_series_error(err, rect, frame),
             Some(LoadedSeries::None(_, err)) => Self::draw_series_error(err, rect, frame),
             None => Self::draw_no_series_found(rect, frame),
-        }
-    }
-}
-
-struct ProgressTime {
-    last_update: DateTime<Utc>,
-    progress_at: DateTime<Utc>,
-    remaining_secs: i64,
-}
-
-impl ProgressTime {
-    fn new(progress_at: DateTime<Utc>) -> Self {
-        Self {
-            last_update: Utc::now(),
-            progress_at,
-            remaining_secs: (progress_at - Utc::now()).num_seconds(),
         }
     }
 }
