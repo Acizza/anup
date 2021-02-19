@@ -16,9 +16,9 @@ use crate::{key::Key, util::arc_mutex};
 use anime::remote::{Remote, ScoreParser};
 use anyhow::{anyhow, Context, Result};
 use backend::{EventKind, UIBackend};
-use component::prompt::command::Command;
 use component::prompt::command::InputResult;
 use component::prompt::COMMAND_KEY;
+use component::prompt::{command::Command, log::LogKind};
 use component::series_list::SeriesList;
 use component::{main_panel::MainPanel, prompt::command::CommandPrompt};
 use component::{Component, Draw};
@@ -60,11 +60,8 @@ impl UI {
         if let Some(err) = remote_error {
             let log = &mut state.log;
             log.push_error(&err);
-            log.push_context(
-                    "enter user management with 'u' and add your account again if a new token is needed",
-                );
-
-            log.push_info("continuing in offline mode");
+            log.push(LogKind::Context, "enter user management with 'u' and add your account again if a new token is needed");
+            log.push(LogKind::Info, "continuing in offline mode");
         }
 
         let threaded_state = arc_mutex(Reactive::new(state));

@@ -48,7 +48,7 @@ impl UIState {
             last_watched,
             input_state: InputState::default(),
             events: events_tx,
-            log: Log::new(),
+            log: Log::new(15),
             config,
             users,
             remote,

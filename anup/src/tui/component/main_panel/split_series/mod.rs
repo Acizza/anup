@@ -1,9 +1,9 @@
 mod add;
 mod split;
 
-use crate::series::config::SeriesConfig;
 use crate::tui::UIState;
 use crate::{config::Config, key::Key};
+use crate::{series::config::SeriesConfig, tui::component::prompt::log::LogKind};
 use crate::{series::SeriesData, util::ScopedTask};
 use crate::{
     series::{LoadedSeries, SeriesPath},
@@ -69,7 +69,7 @@ impl SplitSeriesPanel {
                     state
                         .get_mut()
                         .log
-                        .push_error_msg("cannot split a series with errors");
+                        .push(LogKind::Error, "cannot split a series with errors");
 
                     return;
                 }

@@ -1,95 +1,101 @@
-use crate::tui::component::Draw;
-use crate::tui::widget_util::widget::WrapHelper;
-use crate::tui::widget_util::{block, text};
+use std::collections::VecDeque;
+
+use crate::tui::widget_util::block;
+use crate::tui::{component::Draw, widget_util::style};
 use anyhow::Error;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::Color;
-use tui::text::{Span, Spans};
-use tui::widgets::Paragraph;
+use tui::text::Span;
 use tui::Frame;
+use tui_utils::{widgets::Fragment, wrap};
+
+#[derive(Copy, Clone)]
+pub enum LogKind {
+    Info,
+    Error,
+    Context,
+}
+
+impl<'a> Into<Span<'a>> for LogKind {
+    fn into(self) -> Span<'a> {
+        match self {
+            Self::Info => Span::styled("info: ", style::fg(Color::Green)),
+            Self::Error => Span::styled("error: ", style::fg(Color::Red)),
+            Self::Context => Span::styled("^ ", style::fg(Color::Yellow)),
+        }
+    }
+}
+
+pub struct LogEntry<'a> {
+    kind: LogKind,
+    message: Span<'a>,
+}
+
+impl<'a> LogEntry<'a> {
+    fn new<S>(kind: LogKind, message: S) -> Self
+    where
+        S: Into<Span<'a>>,
+    {
+        Self {
+            kind,
+            message: message.into(),
+        }
+    }
+
+    fn as_fragments(&self) -> [Fragment<'a>; 2] {
+        [
+            Fragment::Span(self.kind.into(), false),
+            Fragment::Span(self.message.clone(), true),
+        ]
+    }
+}
+
+impl<'a> Into<[Fragment<'a>; 2]> for &'a LogEntry<'a> {
+    fn into(self) -> [Fragment<'a>; 2] {
+        self.as_fragments()
+    }
+}
 
 /// A scrolling status log.
 pub struct Log<'a> {
-    items: Vec<Spans<'a>>,
-    max_items: u16,
+    items: VecDeque<LogEntry<'a>>,
+    max_items: u8,
+    title: String,
 }
 
 impl<'a> Log<'a> {
-    pub fn new() -> Self {
+    pub fn new(max_items: u8) -> Self {
+        let title = format!(
+            "Error Log [press '{}' for command entry]",
+            super::COMMAND_KEY
+        );
+
         Self {
-            items: Vec::new(),
-            max_items: 1,
+            items: VecDeque::with_capacity(max_items as usize),
+            max_items,
+            title,
         }
     }
 
-    /// Trims the `Log` so all items fit within `size`.
-    ///
-    /// Assumes there is both a top and bottom border if `with_border` is true.
-    pub fn adjust_to_size(&mut self, size: Rect, with_border: bool) {
-        self.max_items = if with_border {
-            // One border edge is 1 character tall
-            size.height.saturating_sub(2)
-        } else {
-            size.height
-        };
-
-        // TODO: optimize
-        while self.items.len() > self.max_items as usize {
-            self.pop_front();
-        }
-    }
-
-    fn push<S, D>(&mut self, header: S, desc: D)
+    pub fn push<S>(&mut self, kind: LogKind, msg: S)
     where
         S: Into<Span<'a>>,
-        D: Into<String>,
     {
-        let mut desc = desc.into();
-        desc.push('\n');
+        while self.items.len() >= self.max_items as usize {
+            self.items.pop_front();
+        }
 
-        let items = vec![header.into(), desc.into()];
-        let spans = Spans::from(items);
-
-        self.items.push(spans);
+        let entry = LogEntry::new(kind, msg);
+        self.items.push_back(entry);
     }
 
     pub fn push_error(&mut self, err: &Error) {
-        self.push_error_msg(format!("{}", err));
+        self.push(LogKind::Error, format!("{}", err));
 
         for cause in err.chain().skip(1) {
-            self.push_context(format!("{}", cause));
+            self.push(LogKind::Context, format!("{}", cause));
         }
-    }
-
-    pub fn push_error_msg<S>(&mut self, desc: S)
-    where
-        S: Into<String>,
-    {
-        self.push(text::with_color("error: ", Color::Red), desc)
-    }
-
-    pub fn push_context<S>(&mut self, context: S)
-    where
-        S: Into<String>,
-    {
-        self.push(text::with_color("^ ", Color::Yellow), context)
-    }
-
-    pub fn push_info<S>(&mut self, info: S)
-    where
-        S: Into<String>,
-    {
-        self.push(text::with_color("info: ", Color::Green), info)
-    }
-
-    /// Removes the first `LogItem` from the `StatusLog` if it exists.
-    pub fn pop_front(&mut self) {
-        if self.items.is_empty() {
-            return;
-        }
-
-        self.items.remove(0);
     }
 }
 
@@ -100,18 +106,18 @@ where
     type State = ();
 
     fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        self.adjust_to_size(rect, true);
+        let block = block::with_borders(self.title.as_str());
+        let block_area = block.inner(rect);
 
-        // TODO: use concat! macro if/when it can accept constants, or when a similiar crate doesn't require nightly
-        let title = format!(
-            "Error Log [press '{}' for command entry]",
-            super::COMMAND_KEY
-        );
+        frame.render_widget(block, rect);
 
-        let draw_item = Paragraph::new(self.items.clone())
-            .block(block::with_borders(title.as_ref()))
-            .wrapped();
+        let items = self.items.iter().map(|item| {
+            // TODO: avoid clone of fragments by using std::array::IntoIter in Rust 1.51.0
+            wrap::by_letters(item.as_fragments().iter().cloned(), block_area.width)
+        });
 
-        frame.render_widget(draw_item, rect);
+        let log = tui_utils::widgets::Log::new(items);
+
+        frame.render_widget(log, block_area);
     }
 }

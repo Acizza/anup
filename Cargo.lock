@@ -992,10 +992,12 @@ dependencies = [
 
 [[package]]
 name = "tui-utils"
-version = "0.3.0"
-source = "git+https://github.com/Acizza/tui-utils?rev=0.3.0#d69f4a2375b29935c641eb2c897aedc7524cee6a"
+version = "0.4.0"
+source = "git+https://github.com/Acizza/tui-utils?rev=0.4.0#2b00f279279301c598f241dadd122499704c750d"
 dependencies = [
+ "smallvec",
  "tui",
+ "unicode-segmentation",
  "unicode-width",
 ]
 

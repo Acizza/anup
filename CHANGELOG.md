@@ -14,6 +14,8 @@
 
 * The async runtime has been changed from async-std to Tokio.
 
+* The error / status log is now rendered by widgets provided by the [tui_utils](https://github.com/Acizza/tui-utils) library. This provides a small performance improvement.
+
 ## 0.1.1 - February 8th, 2021
 
 ### Internal Changes

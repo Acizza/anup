@@ -22,7 +22,7 @@ strsim = "0.10"
 terminal_size = "0.1"
 thiserror = "1.0"
 toml = "0.5"
-tui-utils = { git = "https://github.com/Acizza/tui-utils", rev = "0.3.0" }
+tui-utils = { git = "https://github.com/Acizza/tui-utils", rev = "0.4.0" }
 unicode-segmentation = "1.6"
 unicode-width = "0.1"
 

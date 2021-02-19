@@ -25,7 +25,7 @@ use tui::text::{Span, Text};
 use tui::widgets::Paragraph;
 use tui_utils::{
     grid_pos,
-    widgets::{text_fragments::Fragment, TextFragments},
+    widgets::{Fragment, TextFragments},
 };
 use util::ScopedTask;
 
