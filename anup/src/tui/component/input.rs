@@ -181,7 +181,7 @@ impl Input {
     pub fn calculate_cursor_pos(column: u16, rect: Rect) -> (u16, u16) {
         let width = rect.width;
 
-        let (len, line_num) = if width > 0 {
+        let (len, line_num) = if column >= rect.width {
             let line_num = column / width;
             let max_line = rect.height.saturating_sub(1);
 
