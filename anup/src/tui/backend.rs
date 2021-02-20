@@ -1,12 +1,7 @@
-use crate::key::Key;
 use anyhow::{Context, Result};
-use crossterm::event::{Event, EventStream};
 use crossterm::terminal;
-use futures::{future::FutureExt, select, StreamExt};
 use std::io;
-use std::time::Duration;
 use terminal_size::{terminal_size, Height, Width};
-use tokio::time;
 use tui::terminal::Terminal;
 use tui::{backend::CrosstermBackend, layout::Rect};
 
@@ -59,50 +54,5 @@ impl UIBackend {
         self.last_height = height;
 
         Ok(changed)
-    }
-}
-
-#[derive(Debug)]
-pub enum EventKind {
-    Key(Key),
-    Tick,
-}
-
-pub enum ErrorKind {
-    ExitRequest,
-    Other(anyhow::Error),
-}
-
-type EventError<T> = std::result::Result<T, ErrorKind>;
-
-pub struct Events {
-    reader: EventStream,
-}
-
-impl Events {
-    const TICK_DURATION_MS: u64 = 2_000;
-
-    pub fn new() -> Self {
-        Self {
-            reader: EventStream::new(),
-        }
-    }
-
-    #[allow(clippy::mut_mut)]
-    pub async fn next(&mut self) -> EventError<Option<EventKind>> {
-        let tick = time::sleep(Duration::from_millis(Self::TICK_DURATION_MS)).fuse();
-        tokio::pin!(tick);
-
-        let mut next_event = self.reader.next().fuse();
-
-        select! {
-            _ = tick => Ok(Some(EventKind::Tick)),
-            event = next_event => match event {
-                Some(Ok(Event::Key(key))) => Ok(Some(EventKind::Key(Key::new(key)))),
-                Some(Ok(_)) => Ok(None),
-                Some(Err(err)) => Err(ErrorKind::Other(err.into())),
-                None => Err(ErrorKind::ExitRequest),
-            }
-        }
     }
 }

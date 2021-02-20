@@ -1,5 +1,4 @@
 use super::{component::prompt::log::Log, selection::Selection};
-use crate::file::SerializedFile;
 use crate::series::config::SeriesConfig;
 use crate::series::info::SeriesInfo;
 use crate::series::{LoadedSeries, Series, SeriesData};
@@ -7,12 +6,19 @@ use crate::try_opt_ret;
 use crate::user::Users;
 use crate::{config::Config, util::ArcMutex};
 use crate::{database::Database, series::LastWatched};
+use crate::{file::SerializedFile, key::Key};
 use anime::local::SortedEpisodes;
 use anime::remote::Remote;
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
+use crossterm::event::{Event, EventStream};
+use futures::{select, FutureExt, StreamExt};
 use std::{mem, ops::Deref, sync::Arc};
-use tokio::{process::Child, sync::broadcast, task};
+use tokio::{
+    process::Child,
+    sync::{broadcast, Notify},
+    task,
+};
 
 pub struct UIState {
     pub series: Selection<LoadedSeries>,
@@ -237,17 +243,12 @@ pub enum StateEvent {
 
 pub struct Reactive<T> {
     state: T,
-    dirty: bool,
+    pub dirty: Arc<Notify>,
 }
 
 impl<T> Reactive<T> {
-    pub fn new(state: T) -> Self {
-        Self { state, dirty: true }
-    }
-
-    #[inline(always)]
-    pub fn dirty(&self) -> bool {
-        self.dirty
+    pub const fn new(state: T, dirty: Arc<Notify>) -> Self {
+        Self { state, dirty }
     }
 
     #[inline(always)]
@@ -262,12 +263,7 @@ impl<T> Reactive<T> {
 
     #[inline(always)]
     pub fn mark_dirty(&mut self) {
-        self.dirty = true;
-    }
-
-    #[inline(always)]
-    pub fn reset_dirty(&mut self) {
-        self.dirty = false;
+        self.dirty.notify_waiters()
     }
 }
 
@@ -276,5 +272,48 @@ impl<T> Deref for Reactive<T> {
 
     fn deref(&self) -> &Self::Target {
         self.get()
+    }
+}
+
+#[derive(Debug)]
+pub enum UIEvent {
+    Key(Key),
+    StateChange,
+}
+
+pub enum UIErrorKind {
+    ExitRequest,
+    Other(anyhow::Error),
+}
+
+pub type UIEventError<T> = std::result::Result<T, UIErrorKind>;
+
+pub struct UIEvents {
+    reader: EventStream,
+}
+
+impl UIEvents {
+    pub fn new() -> Self {
+        Self {
+            reader: EventStream::new(),
+        }
+    }
+
+    #[allow(clippy::mut_mut)]
+    pub async fn next(&mut self, state_change: &Notify) -> UIEventError<Option<UIEvent>> {
+        let state_change = state_change.notified().fuse();
+        tokio::pin!(state_change);
+
+        let mut next_event = self.reader.next().fuse();
+
+        select! {
+            _ = state_change => Ok(Some(UIEvent::StateChange)),
+            event = next_event => match event {
+                Some(Ok(Event::Key(key))) => Ok(Some(UIEvent::Key(Key::new(key)))),
+                Some(Ok(_)) => Ok(None),
+                Some(Err(err)) => Err(UIErrorKind::Other(err.into())),
+                None => Err(UIErrorKind::ExitRequest),
+            }
+        }
     }
 }

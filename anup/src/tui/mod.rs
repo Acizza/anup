@@ -5,9 +5,8 @@ mod state;
 mod widget_util;
 
 use self::{
-    backend::Events,
     selection::Selection,
-    state::{InputState, Reactive, ReactiveState, UIState},
+    state::{InputState, Reactive, ReactiveState, UIEvents, UIState},
 };
 use crate::series::LastWatched;
 use crate::try_opt_r;
@@ -15,7 +14,7 @@ use crate::Args;
 use crate::{key::Key, util::arc_mutex};
 use anime::remote::{Remote, ScoreParser};
 use anyhow::{anyhow, Context, Result};
-use backend::{EventKind, UIBackend};
+use backend::UIBackend;
 use component::prompt::command::InputResult;
 use component::prompt::COMMAND_KEY;
 use component::prompt::{command::Command, log::LogKind};
@@ -23,8 +22,9 @@ use component::series_list::SeriesList;
 use component::{main_panel::MainPanel, prompt::command::CommandPrompt};
 use component::{Component, Draw};
 use crossterm::{event::KeyCode, terminal};
-use state::ThreadedState;
+use state::{ThreadedState, UIErrorKind, UIEvent};
 use std::sync::Arc;
+use tokio::sync::Notify;
 use tui::layout::{Constraint, Direction, Layout};
 
 pub async fn run(args: &Args) -> Result<()> {
@@ -41,9 +41,10 @@ pub async fn run(args: &Args) -> Result<()> {
 }
 
 struct UI {
-    events: Events,
+    events: UIEvents,
     backend: UIBackend,
     state: ThreadedState,
+    dirty_state_notify: Arc<Notify>,
     panels: Panels,
 }
 
@@ -64,16 +65,18 @@ impl UI {
             log.push(LogKind::Info, "continuing in offline mode");
         }
 
-        let threaded_state = arc_mutex(Reactive::new(state));
+        let dirty_state_notify = Arc::new(Notify::const_new());
+        let threaded_state = arc_mutex(Reactive::new(state, Arc::clone(&dirty_state_notify)));
 
         let panels = Panels::init(args, &threaded_state)
             .await
             .context("panel init")?;
 
         Ok(Self {
-            events: Events::new(),
+            events: UIEvents::new(),
             backend,
             state: threaded_state,
+            dirty_state_notify,
             panels,
         })
     }
@@ -97,18 +100,18 @@ impl UI {
     }
 
     async fn next_cycle(&mut self) -> CycleResult {
-        let event = match self.events.next().await {
+        let event = match self.events.next(&self.dirty_state_notify).await {
             Ok(Some(event)) => event,
             Ok(None) => return CycleResult::Ok,
-            Err(backend::ErrorKind::ExitRequest) => return CycleResult::Exit,
-            Err(backend::ErrorKind::Other(err)) => return CycleResult::Error(err),
+            Err(UIErrorKind::ExitRequest) => return CycleResult::Exit,
+            Err(UIErrorKind::Other(err)) => return CycleResult::Error(err),
         };
 
         let mut state = self.state.lock();
 
         let result = match event {
-            EventKind::Key(key) => self.panels.process_key(key, &mut state).await,
-            EventKind::Tick => CycleResult::Ok,
+            UIEvent::Key(key) => self.panels.process_key(key, &mut state).await,
+            UIEvent::StateChange => CycleResult::Ok,
         };
 
         match self.backend.update_term_size() {
@@ -117,15 +120,10 @@ impl UI {
             Err(err) => return CycleResult::Error(err.into()),
         }
 
-        if !state.dirty() {
-            return result;
-        }
-
         if let Err(err) = self.panels.draw(state.get_mut(), &mut self.backend) {
             return CycleResult::Error(err);
         }
 
-        state.reset_dirty();
         result
     }
 
