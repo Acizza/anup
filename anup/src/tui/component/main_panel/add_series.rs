@@ -2,7 +2,7 @@ use super::PartialSeries;
 use crate::tui::component::input::{
     IDInput, Input, InputFlags, NameInput, ParsedValue, ParserInput, PathInput, ValidatedInput,
 };
-use crate::tui::component::{Component, Draw};
+use crate::tui::component::Component;
 use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
@@ -265,7 +265,7 @@ impl AddSeriesPanel {
                 .horizontal_margin(3)
                 .split(pos);
 
-            input.input_mut().draw(&(), layout[0], frame);
+            input.input_mut().draw(layout[0], frame);
         }
     }
 
@@ -328,6 +328,27 @@ impl AddSeriesPanel {
 
         info_label!("Found Episodes", episodes_text, fields[1]);
     }
+
+    pub fn draw<B: Backend>(&mut self, rect: Rect, frame: &mut Frame<B>) {
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(7), Constraint::Length(6)].as_ref())
+            .horizontal_margin(2)
+            .split(rect);
+
+        let mut panel_state = self.state.lock();
+
+        let title = match panel_state.mode {
+            Mode::AddSeries => "Add Series",
+            Mode::UpdateSeries => "Update Selected Series",
+        };
+
+        let outline = block::with_borders(title);
+        frame.render_widget(outline, rect);
+
+        Self::draw_add_series_panel(&mut panel_state, split[0], frame);
+        Self::draw_detected_panel(&panel_state, split[1], frame);
+    }
 }
 
 impl Component for AddSeriesPanel {
@@ -380,34 +401,6 @@ impl Component for AddSeriesPanel {
                 Ok(AddSeriesResult::Ok)
             }
         }
-    }
-}
-
-impl<B> Draw<B> for AddSeriesPanel
-where
-    B: Backend,
-{
-    type State = ();
-
-    fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        let split = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(7), Constraint::Length(6)].as_ref())
-            .horizontal_margin(2)
-            .split(rect);
-
-        let mut panel_state = self.state.lock();
-
-        let title = match panel_state.mode {
-            Mode::AddSeries => "Add Series",
-            Mode::UpdateSeries => "Update Selected Series",
-        };
-
-        let outline = block::with_borders(title);
-        frame.render_widget(outline, rect);
-
-        Self::draw_add_series_panel(&mut panel_state, split[0], frame);
-        Self::draw_detected_panel(&panel_state, split[1], frame);
     }
 }
 

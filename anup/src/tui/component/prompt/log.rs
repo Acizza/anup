@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::tui::widget_util::block;
-use crate::tui::{component::Draw, widget_util::style};
+use crate::tui::widget_util::style;
 use anyhow::Error;
 use tui::backend::Backend;
 use tui::layout::Rect;
@@ -97,15 +97,8 @@ impl<'a> Log<'a> {
             self.push(LogKind::Context, format!("{}", cause));
         }
     }
-}
 
-impl<'a, B> Draw<B> for Log<'a>
-where
-    B: Backend,
-{
-    type State = ();
-
-    fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
+    pub fn draw<B: Backend>(&self, rect: Rect, frame: &mut Frame<B>) {
         let block = block::with_borders(self.title.as_str());
         let block_area = block.inner(rect);
 

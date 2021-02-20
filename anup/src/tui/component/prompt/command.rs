@@ -1,5 +1,5 @@
 use crate::tui::component::input::Input;
-use crate::tui::component::{Component, Draw};
+use crate::tui::component::Component;
 use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, style};
 use crate::tui::UIState;
@@ -82,6 +82,23 @@ impl CommandPrompt {
         Ok(InputResult::Continue)
     }
 
+    pub fn draw<B: Backend>(&self, rect: Rect, frame: &mut Frame<B>) {
+        let block = block::with_borders("Enter Command");
+        let block_area = block.inner(rect);
+
+        frame.render_widget(block, rect);
+
+        let draw_items = Text::from(self.draw_items());
+        let widget = Paragraph::new(draw_items).wrapped();
+
+        frame.render_widget(widget, block_area);
+
+        if Input::will_cursor_fit(rect) {
+            let (x, y) = Input::calculate_cursor_pos(self.width() as u16, block_area);
+            frame.set_cursor(x, y);
+        }
+    }
+
     pub fn reset(&mut self) {
         self.buffer.clear();
         self.hint_cmd = None;
@@ -114,28 +131,6 @@ impl Component for CommandPrompt {
 
     fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
         self.process_key(key, &state.config)
-    }
-}
-
-impl<B> Draw<B> for CommandPrompt
-where
-    B: Backend,
-{
-    type State = ();
-
-    fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        let draw_items = Text::from(self.draw_items());
-
-        let widget = Paragraph::new(draw_items)
-            .block(block::with_borders("Enter Command"))
-            .wrapped();
-
-        frame.render_widget(widget, rect);
-
-        if Input::will_cursor_fit(rect) {
-            let (x, y) = Input::calculate_cursor_pos(self.width() as u16, rect);
-            frame.set_cursor(x, y);
-        }
     }
 }
 

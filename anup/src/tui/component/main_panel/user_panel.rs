@@ -1,4 +1,4 @@
-use super::{Component, Draw, ShouldReset};
+use super::{Component, ShouldReset};
 use crate::try_opt_r;
 use crate::tui::component::input::{Input, InputFlags};
 use crate::tui::widget_util::widget::WrapHelper;
@@ -33,7 +33,7 @@ impl UserPanel {
         Self {
             user_table_state: SelectWidgetState::new(),
             service_list: TypedSelectable::new(),
-            token_input: Input::with_label(InputFlags::empty(), "Paste Token"),
+            token_input: Input::new(InputFlags::empty(), "Paste Token"),
             current_panel: SelectedPanel::SelectUser,
         }
     }
@@ -156,7 +156,7 @@ impl UserPanel {
             .split(rect);
 
         self.token_input.set_selected(is_panel_selected);
-        self.token_input.draw(&(), vert_split[0], frame);
+        self.token_input.draw(vert_split[0], frame);
 
         let services_text = ServiceList::item_data()
             .map(Cow::into_owned)
@@ -263,6 +263,16 @@ impl UserPanel {
 
         frame.render_stateful_widget(users_widget, rect, &mut self.user_table_state);
     }
+
+    pub fn draw<B: Backend>(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>) {
+        let horiz_split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)].as_ref())
+            .split(rect);
+
+        self.draw_user_selection_panel(state, horiz_split[0], frame);
+        self.draw_add_user_panel(horiz_split[1], frame);
+    }
 }
 
 impl Component for UserPanel {
@@ -318,23 +328,6 @@ impl Component for UserPanel {
                 },
             },
         }
-    }
-}
-
-impl<B> Draw<B> for UserPanel
-where
-    B: Backend,
-{
-    type State = UIState;
-
-    fn draw(&mut self, state: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        let horiz_split = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)].as_ref())
-            .split(rect);
-
-        self.draw_user_selection_panel(state, horiz_split[0], frame);
-        self.draw_add_user_panel(horiz_split[1], frame);
     }
 }
 

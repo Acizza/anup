@@ -512,6 +512,11 @@ impl LastWatched {
         self.0.as_ref()
     }
 
+    #[inline(always)]
+    pub fn take(self) -> Option<String> {
+        self.0
+    }
+
     pub fn set<'a, S>(&mut self, nickname: S) -> bool
     where
         S: Into<Cow<'a, str>>,

@@ -1,10 +1,7 @@
 use super::ShouldReset;
 use crate::tui::state::UIState;
 use crate::tui::widget_util::{block, text};
-use crate::{
-    key::Key,
-    tui::component::{Component, Draw},
-};
+use crate::{key::Key, tui::component::Component};
 use anyhow::{anyhow, Context, Result};
 use crossterm::event::KeyCode;
 use std::fs;
@@ -97,6 +94,27 @@ impl DeleteSeriesPanel {
         let hint_widget = Paragraph::new(hint_text).alignment(Alignment::Center);
         frame.render_widget(hint_widget, horiz_layout[1]);
     }
+
+    pub fn draw<B: Backend>(&mut self, rect: Rect, frame: &mut Frame<B>) {
+        let outline = block::with_borders("Delete Series");
+        frame.render_widget(outline, rect);
+
+        let vert_fields = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Ratio(1, 4),
+                Constraint::Ratio(1, 4),
+                Constraint::Ratio(1, 4),
+                Constraint::Ratio(1, 4),
+            ])
+            .horizontal_margin(2)
+            .vertical_margin(2)
+            .split(rect);
+
+        self.draw_series_removal_warning(vert_fields[0], frame);
+        self.draw_remove_files_warning(vert_fields[1], vert_fields[2], frame);
+        Self::draw_hints(vert_fields[3], frame);
+    }
 }
 
 impl Component for DeleteSeriesPanel {
@@ -116,34 +134,6 @@ impl Component for DeleteSeriesPanel {
             }
             _ => Ok(ShouldReset::No),
         }
-    }
-}
-
-impl<B> Draw<B> for DeleteSeriesPanel
-where
-    B: Backend,
-{
-    type State = ();
-
-    fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        let outline = block::with_borders("Delete Series");
-        frame.render_widget(outline, rect);
-
-        let vert_fields = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Ratio(1, 4),
-                Constraint::Ratio(1, 4),
-                Constraint::Ratio(1, 4),
-                Constraint::Ratio(1, 4),
-            ])
-            .horizontal_margin(2)
-            .vertical_margin(2)
-            .split(rect);
-
-        self.draw_series_removal_warning(vert_fields[0], frame);
-        self.draw_remove_files_warning(vert_fields[1], vert_fields[2], frame);
-        Self::draw_hints(vert_fields[3], frame);
     }
 }
 

@@ -1,13 +1,7 @@
-use super::{Component, Draw};
 use crate::tui::state::{InputState, UIState};
 use crate::tui::widget_util::{block, style, text};
-use crate::Args;
-use crate::{
-    key::Key,
-    series::{LastWatched, LoadedSeries},
-};
+use crate::{key::Key, series::LoadedSeries};
 use anime::remote::Status;
-use anyhow::Result;
 use crossterm::event::KeyCode;
 use tui::backend::Backend;
 use tui::layout::Rect;
@@ -19,26 +13,6 @@ use tui_utils::widgets::SimpleList;
 pub struct SeriesList;
 
 impl SeriesList {
-    pub fn init(args: &Args, state: &mut UIState, last_watched: &LastWatched) -> Self {
-        let selected = {
-            let desired_series = args.series.as_ref().or_else(|| last_watched.get());
-
-            match desired_series {
-                Some(desired) => state
-                    .series
-                    .iter()
-                    .position(|series| series.nickname() == desired)
-                    .unwrap_or(0),
-                None => 0,
-            }
-        };
-
-        state.series.set_selected(selected);
-        state.init_selected_series();
-
-        Self {}
-    }
-
     fn series_text(series: &LoadedSeries) -> Span {
         match series {
             LoadedSeries::Complete(series) => {
@@ -58,36 +32,22 @@ impl SeriesList {
             LoadedSeries::None(cfg, _) => text::with_color(cfg.nickname.as_str(), Color::LightRed),
         }
     }
-}
 
-impl Component for SeriesList {
-    type State = UIState;
-    type KeyResult = Result<()>;
-
-    fn process_key(&mut self, key: Key, state: &mut Self::State) -> Self::KeyResult {
-        match *key {
-            KeyCode::Up | KeyCode::Down => {
-                match *key {
-                    KeyCode::Up => state.series.dec_selected(),
-                    KeyCode::Down => state.series.inc_selected(),
-                    _ => unreachable!(),
-                }
-
-                state.init_selected_series();
-                Ok(())
-            }
-            _ => Ok(()),
+    pub fn process_key(key: Key, state: &mut UIState) {
+        if !matches!(*key, KeyCode::Up | KeyCode::Down) {
+            return;
         }
+
+        match *key {
+            KeyCode::Up => state.series.dec_selected(),
+            KeyCode::Down => state.series.inc_selected(),
+            _ => (),
+        }
+
+        state.init_selected_series();
     }
-}
 
-impl<B> Draw<B> for SeriesList
-where
-    B: Backend,
-{
-    type State = UIState;
-
-    fn draw(&mut self, state: &Self::State, rect: Rect, frame: &mut Frame<B>) {
+    pub fn draw<B: Backend>(state: &UIState, rect: Rect, frame: &mut Frame<B>) {
         let highlight_style = match state.input_state {
             InputState::Idle => style::italic().fg(Color::Green),
             _ => style::italic().fg(Color::DarkGray),

@@ -1,5 +1,5 @@
 use super::MergedSeries;
-use crate::tui::component::{Component, Draw};
+use crate::tui::component::Component;
 use crate::tui::widget_util::{block, color, style, text, SelectWidgetState};
 use crate::tui::UIState;
 use crate::{key::Key, series::SeriesPath};
@@ -60,6 +60,37 @@ impl SplitPanel {
 
         frame.render_stateful_widget(table, rect, &mut self.split_table);
     }
+
+    pub fn draw<B: Backend>(&mut self, rect: Rect, frame: &mut Frame<B>) {
+        let outline = block::with_borders(None);
+        frame.render_widget(outline, rect);
+
+        let vert_split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(4), Constraint::Length(2)].as_ref())
+            .horizontal_margin(1)
+            .split(rect);
+
+        self.draw_merged_series_table(vert_split[0], frame);
+
+        let hint_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+            .split(vert_split[1]);
+
+        macro_rules! hint_text {
+            ($($hint:expr => $pos:expr),+) => {$({
+                let text = text::hint($hint);
+
+                let widget = Paragraph::new(text)
+                    .alignment(Alignment::Center);
+
+                frame.render_widget(widget, hint_layout[$pos]);
+            })+};
+        }
+
+        hint_text!("S - Split All" => 0, "Enter - Add Series" => 1);
+    }
 }
 
 impl Component for SplitPanel {
@@ -106,44 +137,6 @@ impl Component for SplitPanel {
                 Ok(SplitResult::Ok)
             }
         }
-    }
-}
-
-impl<B> Draw<B> for SplitPanel
-where
-    B: Backend,
-{
-    type State = ();
-
-    fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        let outline = block::with_borders(None);
-        frame.render_widget(outline, rect);
-
-        let vert_split = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(4), Constraint::Length(2)].as_ref())
-            .horizontal_margin(1)
-            .split(rect);
-
-        self.draw_merged_series_table(vert_split[0], frame);
-
-        let hint_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-            .split(vert_split[1]);
-
-        macro_rules! hint_text {
-            ($($hint:expr => $pos:expr),+) => {$({
-                let text = text::hint($hint);
-
-                let widget = Paragraph::new(text)
-                    .alignment(Alignment::Center);
-
-                frame.render_widget(widget, hint_layout[$pos]);
-            })+};
-        }
-
-        hint_text!("S - Split All" => 0, "Enter - Add Series" => 1);
     }
 }
 

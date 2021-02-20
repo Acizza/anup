@@ -1,5 +1,4 @@
 use crate::series::SeriesPath;
-use crate::tui::component::Draw;
 use crate::tui::widget_util::{block, style, text};
 use crate::{config::Config, key::Key};
 use anime::local::detect::CustomPattern;
@@ -34,10 +33,8 @@ bitflags! {
 
 pub struct Input {
     caret: Caret,
-    visible_width: u16,
-    visible_offset: usize,
     pub flags: InputFlags,
-    pub draw_mode: DrawMode,
+    pub label: &'static str,
     /// A string to display in the input when there is no input.
     pub placeholder: Option<String>,
 }
@@ -45,58 +42,39 @@ pub struct Input {
 impl Input {
     pub const DRAW_WITH_LABEL_CONSTRAINT: Constraint = Constraint::Length(4);
 
-    const BORDER_SIZE: u16 = 2;
-
     fn with_caret(
         flags: InputFlags,
-        draw_mode: DrawMode,
+        label: &'static str,
         placeholder: Option<String>,
         caret: Caret,
     ) -> Self {
         Self {
             caret,
-            visible_width: 0,
-            visible_offset: 0,
             flags,
-            draw_mode,
+            label,
             placeholder,
         }
     }
 
     #[inline(always)]
-    pub fn new(flags: InputFlags, draw_mode: DrawMode) -> Self {
-        Self::with_caret(flags, draw_mode, None, Caret::new())
+    pub fn new(flags: InputFlags, label: &'static str) -> Self {
+        Self::with_caret(flags, label, None, Caret::new())
     }
 
-    #[inline(always)]
-    pub fn with_label(flags: InputFlags, label: &'static str) -> Self {
-        Self::new(flags, DrawMode::Label(label))
-    }
-
-    pub fn with_label_and_placeholder<S>(
-        flags: InputFlags,
-        label: &'static str,
-        placeholder: S,
-    ) -> Self
+    pub fn with_placeholder<S>(flags: InputFlags, label: &'static str, placeholder: S) -> Self
     where
         S: Into<String>,
     {
         let caret = Caret::new();
-
-        Self::with_caret(
-            flags,
-            DrawMode::Label(label),
-            Some(placeholder.into()),
-            caret,
-        )
+        Self::with_caret(flags, label, Some(placeholder.into()), caret)
     }
 
-    pub fn with_label_and_text<S>(flags: InputFlags, label: &'static str, text: S) -> Self
+    pub fn with_text<S>(flags: InputFlags, label: &'static str, text: S) -> Self
     where
         S: AsRef<str>,
     {
         let caret = Caret::new();
-        let mut input = Self::with_caret(flags, DrawMode::Label(label), None, caret);
+        let mut input = Self::with_caret(flags, label, None, caret);
         input.caret.push_str(text.as_ref());
         input
     }
@@ -119,59 +97,113 @@ impl Input {
             KeyCode::End => self.caret.move_end(),
             _ => (),
         }
-
-        self.update_visible_slice();
     }
 
-    fn update_visible_slice(&mut self) {
-        let max_width = self.visible_width - Self::BORDER_SIZE - 1;
+    pub fn draw<B: Backend>(&self, rect: Rect, frame: &mut Frame<B>) {
+        let is_disabled = self.flags.contains(InputFlags::DISABLED);
 
-        if self.caret.display_offset < max_width as usize {
-            self.visible_offset = 0;
-            return;
+        let block_color = if is_disabled {
+            Some(Color::DarkGray)
+        } else {
+            match (self.is_selected(), self.has_error()) {
+                (true, true) => Some(Color::LightRed),
+                (true, false) => Some(Color::Blue),
+                (false, true) => Some(Color::Red),
+                (false, false) => None,
+            }
+        };
+
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Length(3)].as_ref())
+            .split(rect);
+
+        let label_widget = {
+            let text = if is_disabled {
+                text::bold_with(self.label, |s| s.fg(Color::DarkGray))
+            } else {
+                text::bold(self.label)
+            };
+
+            Paragraph::new(text).alignment(Alignment::Center)
+        };
+
+        frame.render_widget(label_widget, layout[0]);
+
+        let mut block = block::with_borders(None);
+
+        if let Some(color) = block_color {
+            block = block.border_style(style::fg(color));
         }
 
-        let desired_offset = self.caret.display_offset - max_width as usize;
+        let content_area = block.inner(layout[1]);
+
+        frame.render_widget(block, layout[1]);
+
+        let text: Text = match (self.caret.is_empty(), &self.placeholder) {
+            (true, Some(placeholder)) if !self.flags.contains(InputFlags::IGNORE_PLACEHOLDER) => {
+                let slice = &placeholder[self.caret.pos()..];
+                text::with_color(slice, Color::DarkGray).into()
+            }
+            _ => {
+                let visible_offset = self.get_visible_offset(content_area.width);
+                self.caret.buffer[visible_offset..].into()
+            }
+        };
+
+        let widget = Paragraph::new(text);
+        frame.render_widget(widget, content_area);
+
+        self.set_cursor_pos(content_area, frame);
+    }
+
+    fn get_visible_offset(&self, width: u16) -> usize {
+        let max_width = width.saturating_sub(1);
+
+        if (self.caret.display_offset as u16) < max_width {
+            return 0;
+        }
+
+        let desired_offset = (self.caret.display_offset as u16) - max_width;
         let mut cursor = GraphemeCursor::new(0, self.caret.buffer.len(), true);
 
         // TODO: this can probably be optimized
         for _ in 0..desired_offset {
             match cursor.next_boundary(&self.caret.buffer, 0) {
                 Ok(Some(_)) => (),
-                Ok(None) => break,
-                Err(_) => return,
+                Ok(None) | Err(_) => break,
             }
         }
 
-        self.visible_offset = cursor.cur_cursor();
+        cursor.cur_cursor()
     }
 
     pub fn calculate_cursor_pos(column: u16, rect: Rect) -> (u16, u16) {
-        let rect_width = rect.width.saturating_sub(Self::BORDER_SIZE);
+        let width = rect.width;
 
-        let (len, line_num) = if rect_width > 0 {
-            let line_num = column / rect_width;
-            let max_line = rect.height - Self::BORDER_SIZE - 1;
+        let (len, line_num) = if width > 0 {
+            let line_num = column / width;
+            let max_line = rect.height.saturating_sub(1);
 
             // We want to cap the position of the cursor to the last character of the last line
             if line_num > max_line {
-                (rect_width - 1, max_line)
+                (width - 1, max_line)
             } else {
-                (column % rect_width, line_num)
+                (column % width, line_num)
             }
         } else {
             (column, 0)
         };
 
-        let x = 1 + rect.left() + len;
-        let y = 1 + rect.top() + line_num;
+        let x = rect.left() + len;
+        let y = rect.top() + line_num;
 
         (x, y)
     }
 
     #[inline(always)]
     pub fn will_cursor_fit(rect: Rect) -> bool {
-        rect.height > Self::BORDER_SIZE && rect.width > Self::BORDER_SIZE
+        rect.height > 0 && rect.width > 1
     }
 
     fn set_cursor_pos<B>(&self, rect: Rect, frame: &mut Frame<B>)
@@ -190,7 +222,6 @@ impl Input {
 
     pub fn clear(&mut self) {
         self.caret.clear();
-        self.visible_offset = 0;
     }
 
     pub fn text(&self) -> &str {
@@ -202,11 +233,6 @@ impl Input {
             Some(placeholder) => placeholder,
             None => &self.caret.buffer,
         }
-    }
-
-    #[inline(always)]
-    pub fn visible(&self) -> &str {
-        &self.caret.buffer[self.visible_offset..]
     }
 
     #[inline(always)]
@@ -232,81 +258,6 @@ impl Input {
     #[inline(always)]
     pub fn set_selected(&mut self, selected: bool) {
         self.flags.set(InputFlags::SELECTED, selected)
-    }
-}
-
-impl<B> Draw<B> for Input
-where
-    B: Backend,
-{
-    type State = ();
-
-    fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        self.visible_width = rect.width;
-
-        let is_disabled = self.flags.contains(InputFlags::DISABLED);
-
-        let block_color = if is_disabled {
-            Some(Color::DarkGray)
-        } else {
-            match (self.is_selected(), self.has_error()) {
-                (true, true) => Some(Color::LightRed),
-                (true, false) => Some(Color::Blue),
-                (false, true) => Some(Color::Red),
-                (false, false) => None,
-            }
-        };
-
-        let mut block = block::with_borders(None);
-
-        if let Some(color) = block_color {
-            block = block.border_style(style::fg(color));
-        }
-
-        let input_pos = match &self.draw_mode {
-            DrawMode::Label(label) => {
-                let layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(1), Constraint::Length(3)].as_ref())
-                    .split(rect);
-
-                let text = if is_disabled {
-                    text::bold_with(*label, |s| s.fg(Color::DarkGray))
-                } else {
-                    text::bold(*label)
-                };
-
-                let widget = Paragraph::new(text).alignment(Alignment::Center);
-                frame.render_widget(widget, layout[0]);
-
-                layout[1]
-            }
-            DrawMode::Blank => rect,
-        };
-
-        let text: Text = match (self.caret.is_empty(), &self.placeholder) {
-            (true, Some(placeholder)) if !self.flags.contains(InputFlags::IGNORE_PLACEHOLDER) => {
-                let slice = &placeholder[self.caret.pos()..];
-                text::with_color(slice, Color::DarkGray).into()
-            }
-            _ => self.visible().into(),
-        };
-
-        let widget = Paragraph::new(text).block(block);
-        frame.render_widget(widget, input_pos);
-
-        self.set_cursor_pos(input_pos, frame);
-    }
-}
-
-pub enum DrawMode {
-    Label(&'static str),
-    Blank,
-}
-
-impl Default for DrawMode {
-    fn default() -> Self {
-        Self::Blank
     }
 }
 
@@ -440,19 +391,10 @@ pub trait ParsedValue {
     fn parsed_value(&self) -> &Self::Value;
 }
 
-macro_rules! impl_draw_for_input {
-    ($struct:ident) => {
-        impl<B> Draw<B> for $struct
-        where
-            B: Backend,
-        {
-            type State = ();
-
-            fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-                self.input_mut().draw(&(), rect, frame)
-            }
-        }
-    };
+pub trait DrawInput: ValidatedInput {
+    fn draw<B: Backend>(&self, rect: Rect, frame: &mut Frame<B>) {
+        self.input().draw(rect, frame)
+    }
 }
 
 pub struct NameInput(Input);
@@ -461,14 +403,14 @@ impl NameInput {
     const LABEL: &'static str = "Name";
 
     pub fn new(flags: InputFlags) -> Self {
-        Self(Input::with_label(flags, Self::LABEL))
+        Self(Input::new(flags, Self::LABEL))
     }
 
     pub fn with_placeholder<S>(flags: InputFlags, name: S) -> Self
     where
         S: Into<String>,
     {
-        let input = Input::with_label_and_placeholder(flags, Self::LABEL, name);
+        let input = Input::with_placeholder(flags, Self::LABEL, name);
         Self(input)
     }
 }
@@ -504,7 +446,7 @@ impl ParsedValue for NameInput {
     }
 }
 
-impl_draw_for_input!(NameInput);
+impl DrawInput for NameInput {}
 
 pub struct IDInput {
     input: Input,
@@ -516,14 +458,14 @@ impl IDInput {
 
     pub fn new(flags: InputFlags) -> Self {
         Self {
-            input: Input::with_label(flags, Self::LABEL),
+            input: Input::new(flags, Self::LABEL),
             id: None,
         }
     }
 
     pub fn with_id(flags: InputFlags, id: SeriesID) -> Self {
         Self {
-            input: Input::with_label_and_text(flags, Self::LABEL, id.to_string()),
+            input: Input::with_placeholder(flags, Self::LABEL, id.to_string()),
             id: Some(id),
         }
     }
@@ -573,7 +515,7 @@ impl ParsedValue for IDInput {
     }
 }
 
-impl_draw_for_input!(IDInput);
+impl DrawInput for IDInput {}
 
 pub struct PathInput {
     input: Input,
@@ -586,7 +528,7 @@ impl PathInput {
 
     pub fn new(flags: InputFlags, config: &Config) -> Self {
         Self {
-            input: Input::with_label(flags, Self::LABEL),
+            input: Input::new(flags, Self::LABEL),
             base_path: config.series_dir.clone(),
             path: None,
         }
@@ -600,7 +542,7 @@ impl PathInput {
         let path_display = path.inner().to_string_lossy();
 
         Self {
-            input: Input::with_label_and_placeholder(flags, Self::LABEL, path_display),
+            input: Input::with_placeholder(flags, Self::LABEL, path_display),
             base_path: config.series_dir.clone(),
             path: None,
         }
@@ -608,7 +550,7 @@ impl PathInput {
 
     pub fn with_path(flags: InputFlags, config: &Config, path: SeriesPath) -> Self {
         Self {
-            input: Input::with_label_and_text(flags, Self::LABEL, format!("{}", path.display())),
+            input: Input::with_text(flags, Self::LABEL, format!("{}", path.display())),
             base_path: config.series_dir.clone(),
             path: Some(path),
         }
@@ -657,7 +599,7 @@ impl ParsedValue for PathInput {
     }
 }
 
-impl_draw_for_input!(PathInput);
+impl DrawInput for PathInput {}
 
 pub struct ParserInput {
     input: Input,
@@ -669,7 +611,7 @@ impl ParserInput {
 
     pub fn new(flags: InputFlags) -> Self {
         Self {
-            input: Input::with_label(flags, Self::LABEL),
+            input: Input::new(flags, Self::LABEL),
             parser: EpisodeParser::default(),
         }
     }
@@ -679,7 +621,7 @@ impl ParserInput {
         S: AsRef<str>,
     {
         Self {
-            input: Input::with_label_and_text(flags, Self::LABEL, pattern),
+            input: Input::with_text(flags, Self::LABEL, pattern),
             parser: EpisodeParser::default(),
         }
     }
@@ -740,4 +682,4 @@ impl ParsedValue for ParserInput {
     }
 }
 
-impl_draw_for_input!(ParserInput);
+impl DrawInput for ParserInput {}

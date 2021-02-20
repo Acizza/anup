@@ -9,10 +9,7 @@ use crate::{
     series::{LoadedSeries, SeriesPath},
     tui::state::ThreadedState,
 };
-use crate::{
-    tui::component::{Component, Draw},
-    util::ArcMutex,
-};
+use crate::{tui::component::Component, util::ArcMutex};
 use crate::{
     tui::widget_util::{block, text},
     util::arc_mutex,
@@ -107,6 +104,16 @@ impl SplitSeriesPanel {
         let widget = Paragraph::new(text).alignment(Alignment::Center);
         frame.render_widget(widget, layout[1]);
     }
+
+    pub fn draw<B: Backend>(&mut self, rect: Rect, frame: &mut Frame<B>) {
+        let mut state = self.state.lock();
+
+        match &mut *state {
+            PanelState::Loading => Self::draw_loading_panel(rect, frame),
+            PanelState::Splitting(split_panel) => split_panel.draw(rect, frame),
+            PanelState::AddingSeries(add_panel, _) => add_panel.draw(rect, frame),
+        }
+    }
 }
 
 impl Component for SplitSeriesPanel {
@@ -146,23 +153,6 @@ impl Component for SplitSeriesPanel {
                     other => other,
                 }
             }
-        }
-    }
-}
-
-impl<B> Draw<B> for SplitSeriesPanel
-where
-    B: Backend,
-{
-    type State = ();
-
-    fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        let mut state = self.state.lock();
-
-        match &mut *state {
-            PanelState::Loading => Self::draw_loading_panel(rect, frame),
-            PanelState::Splitting(split_panel) => split_panel.draw(&(), rect, frame),
-            PanelState::AddingSeries(add_panel, _) => add_panel.draw(&(), rect, frame),
         }
     }
 }

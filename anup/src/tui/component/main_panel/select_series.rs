@@ -1,5 +1,5 @@
 use crate::series::SeriesParams;
-use crate::tui::component::{Component, Draw};
+use crate::tui::component::Component;
 use crate::tui::widget_util::{block, style};
 use crate::tui::Selection;
 use crate::{key::Key, series::info::SeriesInfo};
@@ -28,6 +28,25 @@ impl SelectSeriesPanel {
     pub fn take_params(self) -> SeriesParams {
         self.state.params
     }
+
+    pub fn draw<B: Backend>(&mut self, rect: Rect, frame: &mut Frame<B>) {
+        let names = self
+            .state
+            .series_list
+            .iter()
+            .map(|info| ListItem::new(info.title_preferred.as_ref()))
+            .collect::<Vec<_>>();
+
+        let items = List::new(names)
+            .block(block::with_borders("Select a series from the list"))
+            .style(style::fg(Color::White))
+            .highlight_style(style::italic().fg(Color::Green))
+            .highlight_symbol(">");
+
+        self.list_state.select(Some(self.state.series_list.index()));
+
+        frame.render_stateful_widget(items, rect, &mut self.list_state);
+    }
 }
 
 impl Component for SelectSeriesPanel {
@@ -55,32 +74,6 @@ impl Component for SelectSeriesPanel {
             KeyCode::Esc => SelectSeriesResult::Reset,
             _ => SelectSeriesResult::Ok,
         }
-    }
-}
-
-impl<B> Draw<B> for SelectSeriesPanel
-where
-    B: Backend,
-{
-    type State = ();
-
-    fn draw(&mut self, _: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        let names = self
-            .state
-            .series_list
-            .iter()
-            .map(|info| ListItem::new(info.title_preferred.as_ref()))
-            .collect::<Vec<_>>();
-
-        let items = List::new(names)
-            .block(block::with_borders("Select a series from the list"))
-            .style(style::fg(Color::White))
-            .highlight_style(style::italic().fg(Color::Green))
-            .highlight_symbol(">");
-
-        self.list_state.select(Some(self.state.series_list.index()));
-
-        frame.render_stateful_widget(items, rect, &mut self.list_state);
     }
 }
 

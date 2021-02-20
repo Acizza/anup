@@ -1,5 +1,4 @@
 use super::{component::prompt::log::Log, selection::Selection};
-use crate::series::config::SeriesConfig;
 use crate::series::info::SeriesInfo;
 use crate::series::{LoadedSeries, Series, SeriesData};
 use crate::try_opt_ret;
@@ -7,13 +6,14 @@ use crate::user::Users;
 use crate::{config::Config, util::ArcMutex};
 use crate::{database::Database, series::LastWatched};
 use crate::{file::SerializedFile, key::Key};
+use crate::{series::config::SeriesConfig, Args};
 use anime::local::SortedEpisodes;
 use anime::remote::Remote;
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use crossterm::event::{Event, EventStream};
 use futures::{select, FutureExt, StreamExt};
-use std::{mem, ops::Deref, sync::Arc};
+use std::{borrow::Cow, mem, ops::Deref, sync::Arc};
 use tokio::{
     process::Child,
     signal::unix::{signal, Signal, SignalKind},
@@ -61,6 +61,29 @@ impl UIState {
             remote,
             db,
         })
+    }
+
+    pub fn select_initial_series(&mut self, args: &Args) -> Result<()> {
+        let mut desired_series = args.series.as_ref().map(Cow::Borrowed);
+
+        if desired_series.is_none() {
+            let last_watched = LastWatched::load().context("loading last watched series")?;
+            desired_series = last_watched.take().map(Cow::Owned);
+        }
+
+        let selected = match desired_series {
+            Some(desired) => self
+                .series
+                .iter()
+                .position(|series| series.nickname() == desired.as_ref())
+                .unwrap_or(0),
+            None => 0,
+        };
+
+        self.series.set_selected(selected);
+        self.init_selected_series();
+
+        Ok(())
     }
 
     pub fn add_series<E>(

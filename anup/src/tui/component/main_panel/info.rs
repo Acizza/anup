@@ -1,5 +1,5 @@
+use crate::tui::state::ProgressTime;
 use crate::tui::widget_util::{block, text};
-use crate::tui::{component::Draw, state::ProgressTime};
 use crate::tui::{state::StateEvent, UIState};
 use crate::tui::{state::ThreadedState, widget_util::widget::WrapHelper};
 use crate::util;
@@ -331,22 +331,8 @@ impl InfoPanel {
         let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
         frame.render_widget(widget, rect);
     }
-}
 
-impl Component for InfoPanel {
-    type State = ();
-    type KeyResult = ();
-
-    fn process_key(&mut self, _: crate::key::Key, _: &mut Self::State) -> Self::KeyResult {}
-}
-
-impl<B> Draw<B> for InfoPanel
-where
-    B: Backend,
-{
-    type State = UIState;
-
-    fn draw(&mut self, state: &Self::State, rect: Rect, frame: &mut Frame<B>) {
+    pub fn draw<B: Backend>(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>) {
         let info_block = block::with_borders("Info");
         frame.render_widget(info_block, rect);
 
@@ -363,4 +349,11 @@ where
             None => Self::draw_no_series_found(rect, frame),
         }
     }
+}
+
+impl Component for InfoPanel {
+    type State = ();
+    type KeyResult = ();
+
+    fn process_key(&mut self, _: crate::key::Key, _: &mut Self::State) -> Self::KeyResult {}
 }

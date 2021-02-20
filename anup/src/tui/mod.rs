@@ -7,7 +7,6 @@ use self::{
     selection::Selection,
     state::{InputState, Reactive, ReactiveState, UIEvents, UIState},
 };
-use crate::series::LastWatched;
 use crate::try_opt_r;
 use crate::Args;
 use crate::{key::Key, util::arc_mutex};
@@ -17,8 +16,8 @@ use component::prompt::command::InputResult;
 use component::prompt::COMMAND_KEY;
 use component::prompt::{command::Command, log::LogKind};
 use component::series_list::SeriesList;
+use component::Component;
 use component::{main_panel::MainPanel, prompt::command::CommandPrompt};
-use component::{Component, Draw};
 use crossterm::{event::KeyCode, terminal};
 use state::{ThreadedState, UIErrorKind, UIEvent};
 use std::{io, sync::Arc};
@@ -80,6 +79,10 @@ impl UI {
 
         let mut state = UIState::init(remote).context("UI state init")?;
 
+        state
+            .select_initial_series(args)
+            .context("selecting initial series")?;
+
         if let Some(err) = remote_error {
             let log = &mut state.log;
             log.push_error(&err);
@@ -90,9 +93,7 @@ impl UI {
         let dirty_state_notify = Arc::new(Notify::const_new());
         let threaded_state = arc_mutex(Reactive::new(state, Arc::clone(&dirty_state_notify)));
 
-        let panels = Panels::init(args, &threaded_state)
-            .await
-            .context("panel init")?;
+        let panels = Panels::init(&threaded_state);
 
         Ok(Self {
             events,
@@ -157,26 +158,17 @@ pub enum CycleResult {
 
 struct Panels {
     command_prompt: CommandPrompt,
-    series_list: SeriesList,
     main_panel: MainPanel,
     state: ThreadedState,
 }
 
 impl Panels {
-    async fn init(args: &Args, state: &ThreadedState) -> Result<Panels> {
-        let last_watched = LastWatched::load().context("last watched series")?;
-
-        let series_list = {
-            let mut state = state.lock();
-            SeriesList::init(args, state.get_mut(), &last_watched)
-        };
-
-        Ok(Self {
+    fn init(state: &ThreadedState) -> Self {
+        Self {
             command_prompt: CommandPrompt::new(),
-            series_list,
             main_panel: MainPanel::new(Arc::clone(state)),
             state: Arc::clone(state),
-        })
+        }
     }
 
     async fn process_key(&mut self, key: Key, state: &mut ReactiveState) -> CycleResult {
@@ -220,7 +212,7 @@ impl Panels {
                 KeyCode::Char(COMMAND_KEY) => {
                     state.get_mut().input_state = InputState::EnteringCommand
                 }
-                _ => process_key!(series_list),
+                _ => SeriesList::process_key(key, state.get_mut()),
             },
             InputState::Locked => (),
             InputState::FocusedOnMainPanel => process_key!(main_panel),
@@ -245,7 +237,7 @@ impl Panels {
         CycleResult::Ok
     }
 
-    fn draw(&mut self, state: &mut UIState, terminal: &mut CrosstermTerminal) -> Result<()> {
+    fn draw(&mut self, state: &UIState, terminal: &mut CrosstermTerminal) -> Result<()> {
         terminal
             .draw(|mut frame| {
                 let horiz_splitter = Layout::default()
@@ -253,7 +245,7 @@ impl Panels {
                     .constraints([Constraint::Min(20), Constraint::Percentage(70)].as_ref())
                     .split(frame.size());
 
-                self.series_list.draw(state, horiz_splitter[0], &mut frame);
+                SeriesList::draw(state, horiz_splitter[0], &mut frame);
 
                 // Series info panel vertical splitter
                 let info_panel_splitter = Layout::default()
@@ -266,9 +258,9 @@ impl Panels {
 
                 match state.input_state {
                     InputState::EnteringCommand => {
-                        self.command_prompt.draw(&(), info_panel_splitter[1], frame)
+                        self.command_prompt.draw(info_panel_splitter[1], frame)
                     }
-                    _ => state.log.draw(&(), info_panel_splitter[1], frame),
+                    _ => state.log.draw(info_panel_splitter[1], frame),
                 }
             })
             .map_err(Into::into)

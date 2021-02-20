@@ -5,7 +5,7 @@ mod select_series;
 mod split_series;
 mod user_panel;
 
-use super::{Component, Draw};
+use super::Component;
 use crate::series::info::InfoResult;
 use crate::try_opt_r;
 use crate::tui::state::{InputState, UIState};
@@ -109,6 +109,17 @@ impl MainPanel {
         self.current = self.default_panel();
         state.input_state.reset();
     }
+
+    pub fn draw<B: Backend>(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>) {
+        match &mut self.current {
+            Panel::Info(info) => info.draw(state, rect, frame),
+            Panel::AddSeries(add) => add.draw(rect, frame),
+            Panel::SelectSeries(panel) => panel.draw(rect, frame),
+            Panel::DeleteSeries(panel) => panel.draw(rect, frame),
+            Panel::User(user) => user.draw(state, rect, frame),
+            Panel::SplitSeries(split) => split.draw(rect, frame),
+        }
+    }
 }
 
 impl Component for MainPanel {
@@ -183,24 +194,6 @@ impl Component for MainPanel {
                 }
                 Err(err) => Err(err),
             },
-        }
-    }
-}
-
-impl<B> Draw<B> for MainPanel
-where
-    B: Backend,
-{
-    type State = UIState;
-
-    fn draw(&mut self, state: &Self::State, rect: Rect, frame: &mut Frame<B>) {
-        match &mut self.current {
-            Panel::Info(info) => info.draw(state, rect, frame),
-            Panel::AddSeries(add) => add.draw(&(), rect, frame),
-            Panel::SelectSeries(panel) => panel.draw(&(), rect, frame),
-            Panel::DeleteSeries(panel) => panel.draw(&(), rect, frame),
-            Panel::User(user) => user.draw(state, rect, frame),
-            Panel::SplitSeries(split) => split.draw(&(), rect, frame),
         }
     }
 }
