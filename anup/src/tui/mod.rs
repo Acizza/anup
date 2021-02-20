@@ -1,4 +1,3 @@
-mod backend;
 mod component;
 mod selection;
 mod state;
@@ -14,7 +13,6 @@ use crate::Args;
 use crate::{key::Key, util::arc_mutex};
 use anime::remote::{Remote, ScoreParser};
 use anyhow::{anyhow, Context, Result};
-use backend::UIBackend;
 use component::prompt::command::InputResult;
 use component::prompt::COMMAND_KEY;
 use component::prompt::{command::Command, log::LogKind};
@@ -23,14 +21,18 @@ use component::{main_panel::MainPanel, prompt::command::CommandPrompt};
 use component::{Component, Draw};
 use crossterm::{event::KeyCode, terminal};
 use state::{ThreadedState, UIErrorKind, UIEvent};
-use std::sync::Arc;
+use std::{io, sync::Arc};
 use tokio::sync::Notify;
-use tui::layout::{Constraint, Direction, Layout};
+use tui::{
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout},
+    Terminal,
+};
 
 pub async fn run(args: &Args) -> Result<()> {
-    let backend = UIBackend::init().context("failed to init backend")?;
+    let terminal = init_terminal().context("failed to init backend")?;
 
-    let mut ui = UI::init(&args, backend)
+    let mut ui = UI::init(&args, terminal)
         .await
         .context("failed to init UI")?;
 
@@ -40,16 +42,34 @@ pub async fn run(args: &Args) -> Result<()> {
     result
 }
 
+fn init_terminal() -> Result<CrosstermTerminal> {
+    terminal::enable_raw_mode().context("failed to enable raw mode")?;
+
+    let stdout = io::stdout();
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend).context("terminal creation failed")?;
+
+    terminal.clear().context("failed to clear terminal")?;
+
+    terminal
+        .hide_cursor()
+        .context("failed to hide mouse cursor")?;
+
+    Ok(terminal)
+}
+
+type CrosstermTerminal = Terminal<CrosstermBackend<io::Stdout>>;
+
 struct UI {
     events: UIEvents,
-    backend: UIBackend,
+    terminal: CrosstermTerminal,
     state: ThreadedState,
     dirty_state_notify: Arc<Notify>,
     panels: Panels,
 }
 
 impl UI {
-    async fn init(args: &Args, backend: UIBackend) -> Result<UI> {
+    async fn init(args: &Args, terminal: CrosstermTerminal) -> Result<UI> {
         let (remote, remote_error) = match crate::init_remote(args) {
             Ok(Some(remote)) => (remote, None),
             Ok(None) => (Remote::offline(), None),
@@ -76,7 +96,7 @@ impl UI {
 
         Ok(Self {
             events,
-            backend,
+            terminal,
             state: threaded_state,
             dirty_state_notify,
             panels,
@@ -87,7 +107,7 @@ impl UI {
         {
             let mut state = self.state.lock();
 
-            if let Err(err) = self.panels.draw(state.get_mut(), &mut self.backend) {
+            if let Err(err) = self.panels.draw(state.get_mut(), &mut self.terminal) {
                 return Err(err);
             }
         }
@@ -116,7 +136,7 @@ impl UI {
             UIEvent::StateChange | UIEvent::Resize => CycleResult::Ok,
         };
 
-        if let Err(err) = self.panels.draw(state.get_mut(), &mut self.backend) {
+        if let Err(err) = self.panels.draw(state.get_mut(), &mut self.terminal) {
             return CycleResult::Error(err);
         }
 
@@ -124,7 +144,7 @@ impl UI {
     }
 
     pub fn exit(mut self) -> Result<()> {
-        self.backend.clear().ok();
+        self.terminal.clear().ok();
         terminal::disable_raw_mode().map_err(Into::into)
     }
 }
@@ -225,37 +245,33 @@ impl Panels {
         CycleResult::Ok
     }
 
-    fn draw(&mut self, state: &mut UIState, backend: &mut UIBackend) -> Result<()> {
-        // We need to remove the mutable borrow on self so we can call other mutable methods on it during our draw call.
-        // This *should* be completely safe as none of the methods we need to call can mutate our backend.
-        let term: *mut _ = &mut backend.terminal;
-        let term: &mut _ = unsafe { &mut *term };
+    fn draw(&mut self, state: &mut UIState, terminal: &mut CrosstermTerminal) -> Result<()> {
+        terminal
+            .draw(|mut frame| {
+                let horiz_splitter = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Min(20), Constraint::Percentage(70)].as_ref())
+                    .split(frame.size());
 
-        term.draw(|mut frame| {
-            let horiz_splitter = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Min(20), Constraint::Percentage(70)].as_ref())
-                .split(frame.size());
+                self.series_list.draw(state, horiz_splitter[0], &mut frame);
 
-            self.series_list.draw(state, horiz_splitter[0], &mut frame);
+                // Series info panel vertical splitter
+                let info_panel_splitter = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
+                    .split(horiz_splitter[1]);
 
-            // Series info panel vertical splitter
-            let info_panel_splitter = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
-                .split(horiz_splitter[1]);
+                self.main_panel
+                    .draw(state, info_panel_splitter[0], &mut frame);
 
-            self.main_panel
-                .draw(state, info_panel_splitter[0], &mut frame);
-
-            match state.input_state {
-                InputState::EnteringCommand => {
-                    self.command_prompt.draw(&(), info_panel_splitter[1], frame)
+                match state.input_state {
+                    InputState::EnteringCommand => {
+                        self.command_prompt.draw(&(), info_panel_splitter[1], frame)
+                    }
+                    _ => state.log.draw(&(), info_panel_splitter[1], frame),
                 }
-                _ => state.log.draw(&(), info_panel_splitter[1], frame),
-            }
-        })
-        .map_err(Into::into)
+            })
+            .map_err(Into::into)
     }
 
     fn process_command(command: Command, state: &mut UIState) -> Result<()> {
