@@ -16,6 +16,7 @@ use futures::{select, FutureExt, StreamExt};
 use std::{mem, ops::Deref, sync::Arc};
 use tokio::{
     process::Child,
+    signal::unix::{signal, Signal, SignalKind},
     sync::{broadcast, Notify},
     task,
 };
@@ -279,6 +280,7 @@ impl<T> Deref for Reactive<T> {
 pub enum UIEvent {
     Key(Key),
     StateChange,
+    Resize,
 }
 
 pub enum UIErrorKind {
@@ -290,13 +292,18 @@ pub type UIEventError<T> = std::result::Result<T, UIErrorKind>;
 
 pub struct UIEvents {
     reader: EventStream,
+    resize_event_stream: Signal,
 }
 
 impl UIEvents {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Result<Self> {
+        let resize_event_stream =
+            signal(SignalKind::window_change()).context("SIGWINCH signal capture failed")?;
+
+        Ok(Self {
             reader: EventStream::new(),
-        }
+            resize_event_stream,
+        })
     }
 
     #[allow(clippy::mut_mut)]
@@ -304,10 +311,14 @@ impl UIEvents {
         let state_change = state_change.notified().fuse();
         tokio::pin!(state_change);
 
+        let window_resize = self.resize_event_stream.recv().fuse();
+        tokio::pin!(window_resize);
+
         let mut next_event = self.reader.next().fuse();
 
         select! {
             _ = state_change => Ok(Some(UIEvent::StateChange)),
+            _ = window_resize => Ok(Some(UIEvent::Resize)),
             event = next_event => match event {
                 Some(Ok(Event::Key(key))) => Ok(Some(UIEvent::Key(Key::new(key)))),
                 Some(Ok(_)) => Ok(None),

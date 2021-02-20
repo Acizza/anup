@@ -56,6 +56,8 @@ impl UI {
             Err(err) => (Remote::offline(), Some(err)),
         };
 
+        let events = UIEvents::new().context("UI events init")?;
+
         let mut state = UIState::init(remote).context("UI state init")?;
 
         if let Some(err) = remote_error {
@@ -73,7 +75,7 @@ impl UI {
             .context("panel init")?;
 
         Ok(Self {
-            events: UIEvents::new(),
+            events,
             backend,
             state: threaded_state,
             dirty_state_notify,
@@ -111,14 +113,8 @@ impl UI {
 
         let result = match event {
             UIEvent::Key(key) => self.panels.process_key(key, &mut state).await,
-            UIEvent::StateChange => CycleResult::Ok,
+            UIEvent::StateChange | UIEvent::Resize => CycleResult::Ok,
         };
-
-        match self.backend.update_term_size() {
-            Ok(true) => state.mark_dirty(),
-            Ok(false) => (),
-            Err(err) => return CycleResult::Error(err.into()),
-        }
 
         if let Err(err) = self.panels.draw(state.get_mut(), &mut self.backend) {
             return CycleResult::Error(err);

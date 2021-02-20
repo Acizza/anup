@@ -8,7 +8,7 @@
 
 ### Internal Changes
 
-* The TUI is now rendered semi-reactively instead of once every second. Only key presses and state changes will now trigger a rerender. This reduces the CPU usage massively while the program is idle or while watching an anime episode.
+* The TUI is now rendered semi-reactively instead of once every second. Only key presses, state changes, and window size changes will trigger a rerender. This reduces the CPU usage massively while the program is idle or while watching an anime episode.
 
 * The TUI now operates asynchronously. Components now spawn their own async tasks to respond to events or perform ticks. State changes aren't tied to rerendering yet, though, so there is still a delay before changes are displayed.
 
