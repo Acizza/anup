@@ -1,20 +1,22 @@
 use crate::tui::component::input::Input;
 use crate::tui::component::Component;
-use crate::tui::widget_util::widget::WrapHelper;
 use crate::tui::widget_util::{block, style};
 use crate::tui::UIState;
 use crate::{config::Config, key::Key};
 use anyhow::{anyhow, Result};
 use crossterm::event::KeyCode;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use std::convert::TryFrom;
 use std::result;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::Color;
-use tui::text::{Span, Spans, Text};
-use tui::widgets::Paragraph;
+use tui::text::Span;
 use tui::Frame;
+use tui_utils::{
+    widgets::{Fragment, TextFragments},
+    wrap,
+};
 use unicode_width::UnicodeWidthChar;
 
 /// A prompt to enter commands in that provides suggestions.
@@ -88,8 +90,8 @@ impl CommandPrompt {
 
         frame.render_widget(block, rect);
 
-        let draw_items = Text::from(self.draw_items());
-        let widget = Paragraph::new(draw_items).wrapped();
+        let items = wrap::by_letters(self.draw_items().into_iter(), block_area.width);
+        let widget = TextFragments::new(&items);
 
         frame.render_widget(widget, block_area);
 
@@ -111,17 +113,19 @@ impl CommandPrompt {
     }
 
     /// The items of the `CommandPrompt` in a form ready for drawing.
-    fn draw_items(&self) -> Spans {
-        let mut items = vec![self.buffer.as_str().into()];
+    fn draw_items(&self) -> SmallVec<[Fragment; 2]> {
+        let mut items = smallvec![Fragment::Span(Span::raw(self.buffer.as_str()), true)];
 
         if let Some(hint_cmd) = &self.hint_cmd {
-            items.push(Span::styled(
+            let span = Span::styled(
                 hint_cmd.remaining_name_and_usage(),
                 style::fg(Color::DarkGray),
-            ));
+            );
+
+            items.push(Fragment::Span(span, false));
         }
 
-        items.into()
+        items
     }
 }
 
