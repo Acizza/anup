@@ -1,6 +1,6 @@
 # Changelog
 
-## To Be Released
+## 0.2.0 - February 22nd, 2021
 
 ### Feature Changes
 
