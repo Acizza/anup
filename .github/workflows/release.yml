@@ -58,5 +58,5 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./target/release/anup-linux.zip
-          asset_name: anup-linux-${{ steps.get_version.outputs.version }}.zip
+          asset_name: anup-linux-${{ steps.get_version.outputs.version }}-x86_64.zip
           asset_content_type: application/zip
