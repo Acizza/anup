@@ -1,5 +1,5 @@
 use crate::series::SeriesPath;
-use crate::tui::widget_util::{block, style, text};
+use crate::tui::widget_util::{block, style};
 use crate::{config::Config, key::Key};
 use anime::local::detect::CustomPattern;
 use anime::local::EpisodeParser;
@@ -8,12 +8,11 @@ use bitflags::bitflags;
 use crossterm::event::KeyCode;
 use std::borrow::Cow;
 use std::path::PathBuf;
-use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::text::Text;
-use tui::widgets::Paragraph;
+use tui::{backend::Backend, text::Span};
+use tui_utils::widgets::SimpleText;
 use unicode_segmentation::GraphemeCursor;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -119,13 +118,15 @@ impl Input {
             .split(rect);
 
         let label_widget = {
-            let text = if is_disabled {
-                text::bold_with(self.label, |s| s.fg(Color::DarkGray))
+            let style = if is_disabled {
+                style::bold().fg(Color::DarkGray)
             } else {
-                text::bold(self.label)
+                style::bold()
             };
 
-            Paragraph::new(text).alignment(Alignment::Center)
+            let span = Span::styled(self.label, style);
+
+            SimpleText::new(span).alignment(Alignment::Center)
         };
 
         frame.render_widget(label_widget, layout[0]);
@@ -140,10 +141,10 @@ impl Input {
 
         frame.render_widget(block, layout[1]);
 
-        let text: Text = match (self.caret.is_empty(), &self.placeholder) {
+        let text: Span = match (self.caret.is_empty(), &self.placeholder) {
             (true, Some(placeholder)) if !self.flags.contains(InputFlags::IGNORE_PLACEHOLDER) => {
                 let slice = &placeholder[self.caret.pos()..];
-                text::with_color(slice, Color::DarkGray).into()
+                Span::styled(slice, style::fg(Color::DarkGray))
             }
             _ => {
                 let visible_offset = self.get_visible_offset(content_area.width);
@@ -151,7 +152,7 @@ impl Input {
             }
         };
 
-        let widget = Paragraph::new(text);
+        let widget = SimpleText::new(text);
         frame.render_widget(widget, content_area);
 
         self.set_cursor_pos(content_area, frame);
