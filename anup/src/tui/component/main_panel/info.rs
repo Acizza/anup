@@ -25,7 +25,7 @@ use tui::text::{Span, Text};
 use tui::widgets::Paragraph;
 use tui_utils::{
     grid_pos,
-    widgets::{Fragment, TextFragments},
+    widgets::{Fragment, OverflowMode, SpanOptions, TextFragments},
 };
 use util::ScopedTask;
 
@@ -225,11 +225,13 @@ impl InfoPanel {
 
         // Series title
         {
-            let mut fragments: SmallVec<[Fragment; 2]> =
-                smallvec![Fragment::Span(text::bold(&info.title_preferred), true)];
+            let mut fragments: SmallVec<[Fragment; 2]> = smallvec![Fragment::Span(
+                text::bold(&info.title_preferred),
+                SpanOptions::new().overflow(OverflowMode::Truncate)
+            )];
 
             if entry.needs_sync() {
-                fragments.push(Fragment::Span(text::italic(" [*]"), false));
+                fragments.push(Fragment::span(text::italic(" [*]")));
             }
 
             let title_widget = TextFragments::new(&fragments).alignment(Alignment::Center);
@@ -308,8 +310,8 @@ impl InfoPanel {
             let mins = (progress_remaining_secs as f32 / 60.0).round() as u32;
 
             let fragments = [
-                Fragment::Span(text::bold(mins.to_string()), false),
-                Fragment::Span(text::bold(" Minutes Until Progression"), false),
+                Fragment::span(text::bold(mins.to_string())),
+                Fragment::span(text::bold(" Minutes Until Progression")),
             ];
 
             let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
@@ -323,9 +325,9 @@ impl InfoPanel {
         S: AsRef<str>,
     {
         let fragments = [
-            Fragment::Span(text::bold(header), false),
+            Fragment::span(text::bold(header)),
             Fragment::Line,
-            Fragment::Span(text::italic(value.as_ref()), false),
+            Fragment::span(text::italic(value.as_ref())),
         ];
 
         let widget = TextFragments::new(&fragments).alignment(Alignment::Center);

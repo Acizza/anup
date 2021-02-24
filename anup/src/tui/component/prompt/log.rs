@@ -45,8 +45,8 @@ impl<'a> LogEntry<'a> {
 
     fn as_fragments(&self) -> [Fragment<'a>; 2] {
         [
-            Fragment::Span(self.kind.into(), false),
-            Fragment::Span(self.message.clone(), true),
+            Fragment::span(self.kind),
+            Fragment::span(self.message.clone()),
         ]
     }
 }

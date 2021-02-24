@@ -114,7 +114,7 @@ impl CommandPrompt {
 
     /// The items of the `CommandPrompt` in a form ready for drawing.
     fn draw_items(&self) -> SmallVec<[Fragment; 2]> {
-        let mut items = smallvec![Fragment::Span(Span::raw(self.buffer.as_str()), true)];
+        let mut items = smallvec![Fragment::span(Span::raw(self.buffer.as_str()))];
 
         if let Some(hint_cmd) = &self.hint_cmd {
             let span = Span::styled(
@@ -122,7 +122,7 @@ impl CommandPrompt {
                 style::fg(Color::DarkGray),
             );
 
-            items.push(Fragment::Span(span, false));
+            items.push(Fragment::span(span));
         }
 
         items
