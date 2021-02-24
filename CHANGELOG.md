@@ -1,5 +1,13 @@
 # Changelog
 
+## To Be Released
+
+### Internal Changes
+
+* The add series panel is now rendered with widgets from the tui-utils library. This provides a small performance improvement.
+
+* Inputs are now rendered with widgets from the tui-utils library. This provides a small performance improvement.
+
 ## 0.2.0 - February 22nd, 2021
 
 ### Feature Changes
