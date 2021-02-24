@@ -3,8 +3,7 @@ use crate::tui::component::input::{
     IDInput, Input, InputFlags, NameInput, ParsedValue, ParserInput, PathInput, ValidatedInput,
 };
 use crate::tui::component::Component;
-use crate::tui::widget_util::widget::WrapHelper;
-use crate::tui::widget_util::{block, text};
+use crate::tui::widget_util::{block, style};
 use crate::tui::UIState;
 use crate::{config::Config, key::Key};
 use crate::{file, tui::state::ThreadedState};
@@ -25,11 +24,11 @@ use std::mem;
 use std::time::Instant;
 use std::{borrow::Cow, sync::Arc, time::Duration};
 use tokio::task;
-use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::Paragraph;
+use tui::{backend::Backend, text::Span};
+use tui_utils::widgets::{Fragment, OverflowMode, SimpleText, SpanOptions, TextFragments};
 
 const DURATION_BETWEEN_SERIES_UPDATES: Duration = Duration::from_millis(750);
 
@@ -275,29 +274,34 @@ impl AddSeriesPanel {
     {
         macro_rules! info_label {
             ($label:expr, $value:expr, $rect:expr) => {{
-                let label = concat!($label, "\n");
-                let text = vec![text::bold(label).into(), $value.into()];
+                let fragments = [
+                    Fragment::span(Span::styled($label, style::bold())),
+                    Fragment::Line,
+                    Fragment::Span($value, SpanOptions::new().overflow(OverflowMode::Truncate)),
+                ];
 
-                let widget = Paragraph::new(text).alignment(Alignment::Center);
+                let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
                 frame.render_widget(widget, $rect);
             }};
         }
 
         let (header_text, has_error) =
             match (&panel_state.error, &panel_state.series_builder.params) {
-                (Some(err), Some(_)) | (Some(err), None) => {
-                    (text::bold_with(err.as_ref(), |s| s.fg(Color::Red)), true)
-                }
-                (None, Some(_)) => (text::bold("Detected"), false),
+                (Some(err), Some(_)) | (Some(err), None) => (
+                    Span::styled(err.as_ref(), style::bold().fg(Color::Red)),
+                    true,
+                ),
+                (None, Some(_)) => (Span::styled("Detected", style::bold()), false),
                 (None, None) => (
-                    text::bold_with("Nothing Detected", |s| s.fg(Color::Red)),
+                    Span::styled("Nothing Detected", style::bold().fg(Color::Red)),
                     false,
                 ),
             };
 
-        let header = Paragraph::new(header_text)
-            .wrapped()
-            .alignment(Alignment::Center);
+        let header = SimpleText::new(header_text)
+            .alignment(Alignment::Center)
+            .overflow(OverflowMode::Truncate);
+
         frame.render_widget(header, rect);
 
         let fields = Layout::default()
@@ -314,15 +318,15 @@ impl AddSeriesPanel {
 
         info_label!(
             "Relative Path",
-            text::italic(format!("{}", built.params.path.display())),
+            Span::styled(format!("{}", built.params.path.display()), style::italic()),
             fields[0]
         );
 
         let episodes_text = match &built.episodes {
-            ParsedEpisodes::Parsed(_, range_str) => text::italic(range_str),
-            ParsedEpisodes::NoneFound => text::italic_with("none", |s| s.fg(Color::Yellow)),
+            ParsedEpisodes::Parsed(_, range_str) => Span::styled(range_str, style::italic()),
+            ParsedEpisodes::NoneFound => Span::styled("none", style::italic().fg(Color::Yellow)),
             ParsedEpisodes::NeedsSplitting => {
-                text::italic_with("needs splitting", |s| s.fg(Color::Yellow))
+                Span::styled("needs splitting", style::italic().fg(Color::Yellow))
             }
         };
 
