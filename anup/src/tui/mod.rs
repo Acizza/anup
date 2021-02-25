@@ -5,7 +5,7 @@ mod widget_util;
 
 use self::{
     selection::Selection,
-    state::{InputState, Reactive, ReactiveState, UIEvents, UIState},
+    state::{InputState, Reactive, UIEvents, UIState},
 };
 use crate::key::Key;
 use crate::Args;
@@ -124,13 +124,14 @@ impl UI {
         };
 
         let mut state = self.state.lock();
+        let state = state.get_mut();
 
         let result = match event {
-            UIEvent::Key(key) => self.panels.process_key(key, &mut state).await,
+            UIEvent::Key(key) => self.panels.process_key(key, state).await,
             UIEvent::StateChange | UIEvent::Resize => CycleResult::Ok,
         };
 
-        if let Err(err) = self.panels.draw(state.get_mut(), &mut self.terminal) {
+        if let Err(err) = self.panels.draw(state, &mut self.terminal) {
             return CycleResult::Error(err);
         }
 
@@ -164,13 +165,13 @@ impl Panels {
         }
     }
 
-    async fn process_key(&mut self, key: Key, state: &mut ReactiveState) -> CycleResult {
+    async fn process_key(&mut self, key: Key, state: &mut UIState) -> CycleResult {
         macro_rules! capture {
             ($result:expr) => {
                 match $result {
                     Ok(value) => value,
                     Err(err) => {
-                        state.get_mut().log.push_error(&err);
+                        state.log.push_error(&err);
                         return CycleResult::Ok;
                     }
                 }
@@ -179,7 +180,7 @@ impl Panels {
 
         macro_rules! process_key {
             ($component:ident) => {
-                capture!(self.$component.process_key(key, state.get_mut()))
+                capture!(self.$component.process_key(key, state))
             };
         }
 
@@ -187,30 +188,27 @@ impl Panels {
             InputState::Idle => match *key {
                 KeyCode::Char('q') => return CycleResult::Exit,
                 _ if key == state.config.tui.keys.play_next_episode => {
-                    capture!(state.get_mut().play_next_series_episode(&self.state).await)
+                    capture!(state.play_next_series_episode(&self.state).await)
                 }
                 KeyCode::Char('a') => {
-                    capture!(self.main_panel.switch_to_add_series(state.get_mut()))
+                    capture!(self.main_panel.switch_to_add_series(state))
                 }
                 KeyCode::Char('e') => {
-                    capture!(self.main_panel.switch_to_update_series(state.get_mut()))
+                    capture!(self.main_panel.switch_to_update_series(state))
                 }
                 KeyCode::Char('D') => {
-                    capture!(self.main_panel.switch_to_delete_series(state.get_mut()))
+                    capture!(self.main_panel.switch_to_delete_series(state))
                 }
-                KeyCode::Char('u') => self.main_panel.switch_to_user_panel(state.get_mut()),
+                KeyCode::Char('u') => self.main_panel.switch_to_user_panel(state),
                 KeyCode::Char('s') => {
-                    capture!(self.main_panel.switch_to_split_series(state.get_mut()))
+                    capture!(self.main_panel.switch_to_split_series(state))
                 }
-                KeyCode::Char(COMMAND_KEY) => {
-                    state.get_mut().input_state = InputState::EnteringCommand
-                }
-                _ => SeriesList::process_key(key, state.get_mut()),
+                KeyCode::Char(COMMAND_KEY) => state.input_state = InputState::EnteringCommand,
+                _ => SeriesList::process_key(key, state),
             },
             InputState::Locked => (),
             InputState::FocusedOnMainPanel => process_key!(main_panel),
             InputState::EnteringCommand => {
-                let state = state.get_mut();
                 let result = self.command_prompt.process_key(key, state);
 
                 if !matches!(result, Ok(InputResult::Continue)) {
