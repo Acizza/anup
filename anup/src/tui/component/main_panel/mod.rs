@@ -10,7 +10,7 @@ use crate::series::info::InfoResult;
 use crate::try_opt_r;
 use crate::tui::state::{InputState, UIState};
 use crate::{key::Key, series::config::SeriesConfig};
-use crate::{series::SeriesParams, tui::state::ThreadedState};
+use crate::{series::SeriesParams, tui::state::SharedState};
 use add_series::{AddSeriesPanel, AddSeriesResult};
 use anime::local::SortedEpisodes;
 use anime::remote::RemoteService;
@@ -27,11 +27,11 @@ use user_panel::UserPanel;
 
 pub struct MainPanel {
     current: Panel,
-    state: ThreadedState,
+    state: SharedState,
 }
 
 impl MainPanel {
-    pub fn new(state: ThreadedState) -> Self {
+    pub fn new(state: SharedState) -> Self {
         Self {
             current: Panel::info(&state),
             state,
@@ -43,7 +43,9 @@ impl MainPanel {
     }
 
     pub fn switch_to_add_series(&mut self, state: &mut UIState) -> Result<()> {
-        if state.remote.is_offline() {
+        let remote = state.remote.get_logged_in()?;
+
+        if remote.is_offline() {
             return Err(anyhow!("must be online to add a series"));
         }
 
@@ -71,12 +73,14 @@ impl MainPanel {
     }
 
     pub fn switch_to_user_panel(&mut self, state: &mut UIState) {
-        self.current = Panel::user();
+        self.current = Panel::user(self.state.clone());
         state.input_state = InputState::FocusedOnMainPanel;
     }
 
     pub fn switch_to_split_series(&mut self, state: &mut UIState) -> Result<()> {
-        if state.remote.is_offline() {
+        let remote = state.remote.get_logged_in()?;
+
+        if remote.is_offline() {
             return Err(anyhow!("must be online to split a series"));
         }
 
@@ -135,13 +139,13 @@ impl Component for MainPanel {
                     self.reset(state);
                     Ok(())
                 }
-                Ok(AddSeriesResult::AddSeries(partial)) => {
-                    self.add_partial_series(*partial, state)?;
-                    Ok(())
-                }
+                Ok(AddSeriesResult::AddSeries(partial)) => self.add_partial_series(*partial, state),
                 Ok(AddSeriesResult::UpdateSeries(params)) => {
                     let selected = try_opt_r!(state.series.selected_mut());
-                    selected.update(*params, &state.config, &state.db, &state.remote)?;
+                    let remote = state.remote.get_logged_in()?;
+
+                    selected.update(*params, &state.config, &state.db, remote)?;
+
                     self.reset(state);
                     Ok(())
                 }
@@ -209,19 +213,19 @@ enum Panel {
 
 impl Panel {
     #[inline(always)]
-    fn info(state: &ThreadedState) -> Self {
+    fn info(state: &SharedState) -> Self {
         Self::Info(InfoPanel::new(state))
     }
 
-    fn add_series(state: &UIState, threaded_state: &ThreadedState) -> Result<Self> {
+    fn add_series(state: &UIState, shared_state: &SharedState) -> Result<Self> {
         use add_series::Mode;
-        let panel = AddSeriesPanel::init(state, threaded_state, Mode::AddSeries)?;
+        let panel = AddSeriesPanel::init(state, shared_state, Mode::AddSeries)?;
         Ok(Self::AddSeries(panel.into()))
     }
 
-    fn update_series(state: &UIState, threaded_state: &ThreadedState) -> Result<Self> {
+    fn update_series(state: &UIState, shared_state: &SharedState) -> Result<Self> {
         use add_series::Mode;
-        let panel = AddSeriesPanel::init(state, threaded_state, Mode::UpdateSeries)?;
+        let panel = AddSeriesPanel::init(state, shared_state, Mode::UpdateSeries)?;
         Ok(Self::AddSeries(panel.into()))
     }
 
@@ -234,11 +238,11 @@ impl Panel {
         Self::SelectSeries(SelectSeriesPanel::new(select))
     }
 
-    fn user() -> Self {
-        Self::User(UserPanel::new())
+    fn user(state: SharedState) -> Self {
+        Self::User(UserPanel::new(state))
     }
 
-    fn split_series(state: &ThreadedState) -> Self {
+    fn split_series(state: &SharedState) -> Self {
         let panel = SplitSeriesPanel::new(state);
         Self::SplitSeries(panel)
     }

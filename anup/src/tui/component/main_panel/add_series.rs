@@ -6,7 +6,7 @@ use crate::tui::component::Component;
 use crate::tui::widget_util::{block, style};
 use crate::tui::UIState;
 use crate::{config::Config, key::Key};
-use crate::{file, tui::state::ThreadedState};
+use crate::{file, tui::state::SharedState};
 use crate::{
     series::info::{InfoSelector, SeriesInfo},
     util::ArcMutex,
@@ -111,7 +111,7 @@ impl PanelInputs {
     }
 }
 
-struct SharedState {
+struct SharedPanelState {
     inputs: PanelInputs,
     series_builder: SeriesBuilder,
     last_update: Option<Instant>,
@@ -120,7 +120,7 @@ struct SharedState {
     mode: Mode,
 }
 
-impl SharedState {
+impl SharedPanelState {
     fn current_input(&mut self) -> &mut dyn ValidatedInput {
         self.inputs.index_mut(self.selected_input)
     }
@@ -148,13 +148,13 @@ impl SharedState {
 }
 
 pub struct AddSeriesPanel {
-    state: ArcMutex<SharedState>,
+    state: ArcMutex<SharedPanelState>,
     #[allow(dead_code)]
     update_monitor_task: ScopedTask<()>,
 }
 
 impl AddSeriesPanel {
-    pub fn init(state: &UIState, threaded_state: &ThreadedState, mode: Mode) -> Result<Self> {
+    pub fn init(state: &UIState, shared_state: &SharedState, mode: Mode) -> Result<Self> {
         let (inputs, placeholder_set) = match mode {
             Mode::AddSeries => PanelInputs::init_with_placeholders(&state.config),
             Mode::UpdateSeries => {
@@ -175,7 +175,7 @@ impl AddSeriesPanel {
             series_builder.update(&inputs, state).ok();
         }
 
-        let state = arc_mutex(SharedState {
+        let state = arc_mutex(SharedPanelState {
             inputs,
             series_builder,
             last_update: None,
@@ -184,7 +184,7 @@ impl AddSeriesPanel {
             mode,
         });
 
-        let update_monitor_task = Self::spawn_update_monitor(&state, threaded_state).into();
+        let update_monitor_task = Self::spawn_update_monitor(&state, shared_state).into();
 
         Ok(Self {
             state,
@@ -193,11 +193,11 @@ impl AddSeriesPanel {
     }
 
     fn spawn_update_monitor(
-        panel_state: &ArcMutex<SharedState>,
-        state: &ThreadedState,
+        panel_state: &ArcMutex<SharedPanelState>,
+        state: &SharedState,
     ) -> task::JoinHandle<()> {
         let panel_state = Arc::clone(panel_state);
-        let state = Arc::clone(state);
+        let state = state.clone();
 
         task::spawn(async move {
             loop {
@@ -224,8 +224,11 @@ impl AddSeriesPanel {
         })
     }
 
-    fn draw_add_series_panel<B>(panel_state: &mut SharedState, rect: Rect, frame: &mut Frame<B>)
-    where
+    fn draw_add_series_panel<B>(
+        panel_state: &mut SharedPanelState,
+        rect: Rect,
+        frame: &mut Frame<B>,
+    ) where
         B: Backend,
     {
         let vert_fields = Layout::default()
@@ -268,7 +271,7 @@ impl AddSeriesPanel {
         }
     }
 
-    fn draw_detected_panel<B>(panel_state: &SharedState, rect: Rect, frame: &mut Frame<B>)
+    fn draw_detected_panel<B>(panel_state: &SharedPanelState, rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
     {
@@ -487,6 +490,8 @@ impl SeriesBuilder {
 
         match mode {
             Mode::AddSeries => {
+                let remote = state.remote.get_logged_in()?;
+
                 let info = {
                     let id = inputs.id.parsed_value();
                     let sel = id.map_or_else(
@@ -494,7 +499,7 @@ impl SeriesBuilder {
                         InfoSelector::ID,
                     );
 
-                    SeriesInfo::from_remote(sel, &state.remote)?
+                    SeriesInfo::from_remote(sel, remote)?
                 };
 
                 let partial = PartialSeries::new(info, params, episodes);

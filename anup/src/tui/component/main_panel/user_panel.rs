@@ -6,6 +6,10 @@ use crate::tui::widget_util::{block, style, text, SelectWidgetState, TypedSelect
 use crate::tui::UIState;
 use crate::user::{RemoteType, UserInfo};
 use crate::{file::SerializedFile, key::Key};
+use crate::{
+    remote::{RemoteLogin, RemoteStatus},
+    tui::state::SharedState,
+};
 use anime::remote::anilist::AniList;
 use anime::remote::{AccessToken, Remote, RemoteService};
 use anyhow::{anyhow, Context, Result};
@@ -26,15 +30,17 @@ pub struct UserPanel {
     service_list: ServiceList,
     token_input: Input,
     current_panel: SelectedPanel,
+    state: SharedState,
 }
 
 impl UserPanel {
-    pub fn new() -> Self {
+    pub fn new(state: SharedState) -> Self {
         Self {
             user_table_state: SelectWidgetState::new(),
             service_list: TypedSelectable::new(),
             token_input: Input::new(InputFlags::empty(), "Paste Token"),
             current_panel: SelectedPanel::SelectUser,
+            state,
         }
     }
 
@@ -54,7 +60,7 @@ impl UserPanel {
 
                 let info = UserInfo::new(service, &auth.user.name);
 
-                state.remote = AniList::Authenticated(auth).into();
+                state.remote = RemoteStatus::LoggedIn(AniList::Authenticated(auth).into());
                 state.users.add_and_set_last(info, token);
                 state.users.save().context("failed to save new user")?;
 
@@ -76,8 +82,10 @@ impl UserPanel {
             user.to_owned()
         };
 
-        if user.is_logged_in(&state.remote) {
-            state.remote = Remote::offline();
+        let remote = state.remote.get_logged_in()?;
+
+        if user.is_logged_in(remote) {
+            state.remote = RemoteStatus::LoggedIn(Remote::offline());
         }
 
         state.users.remove(&user);
@@ -93,12 +101,12 @@ impl UserPanel {
 
         match info.service {
             RemoteType::AniList => {
-                use anime::remote::anilist::Auth;
-
-                let auth = Auth::retrieve(token.clone())?;
+                self.state.login_to_remote_async(RemoteLogin::AniList(
+                    info.username.clone(),
+                    token.clone(),
+                ));
 
                 state.users.last_used = Some(info.to_owned());
-                state.remote = AniList::Authenticated(auth).into();
                 state.users.save()?;
             }
         }
@@ -219,8 +227,16 @@ impl UserPanel {
         let key_hints_widget = Paragraph::new(key_hints_text).alignment(Alignment::Center);
         frame.render_widget(key_hints_widget, layout[2]);
 
-        if state.remote.is_offline() {
-            let offline_text = text::with_color("Currently Offline", Color::Yellow);
+        let status_text: Option<Cow<str>> = match &state.remote {
+            RemoteStatus::LoggingIn(username) => Some(format!("Logging In As {}", username).into()),
+            RemoteStatus::LoggedIn(remote) if remote.is_offline() => {
+                Some("Currently Offline".into())
+            }
+            RemoteStatus::LoggedIn(_) => None,
+        };
+
+        if let Some(status_text) = status_text {
+            let offline_text = text::with_color(status_text, Color::Yellow);
 
             let offline_widget = Paragraph::new(offline_text)
                 .alignment(Alignment::Center)
@@ -239,8 +255,14 @@ impl UserPanel {
     ) where
         B: Backend,
     {
+        let remote = state.remote.get_logged_in();
+
         let users = state.users.get().keys().map(|user| {
-            let is_logged_in = user.is_logged_in(&state.remote);
+            let is_logged_in = remote
+                .as_ref()
+                .map(|remote| user.is_logged_in(remote))
+                .unwrap_or(false);
+
             let data = [user.username.as_str(), user.service.as_str()];
 
             let style = if is_logged_in {
@@ -303,7 +325,7 @@ impl Component for UserPanel {
                         Ok(ShouldReset::No)
                     }
                     KeyCode::Char('o') => {
-                        state.remote = Remote::offline();
+                        state.remote = RemoteStatus::LoggedIn(Remote::offline());
                         Ok(ShouldReset::Yes)
                     }
                     _ => Ok(ShouldReset::No),

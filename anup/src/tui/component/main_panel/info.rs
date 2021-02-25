@@ -1,7 +1,8 @@
+use crate::remote::RemoteStatus;
 use crate::tui::state::ProgressTime;
 use crate::tui::widget_util::{block, text};
+use crate::tui::{state::SharedState, widget_util::widget::WrapHelper};
 use crate::tui::{state::StateEvent, UIState};
-use crate::tui::{state::ThreadedState, widget_util::widget::WrapHelper};
 use crate::util;
 use crate::{
     series::{LoadedSeries, Series},
@@ -36,7 +37,7 @@ pub struct InfoPanel {
 }
 
 impl InfoPanel {
-    pub fn new(state: &ThreadedState) -> Self {
+    pub fn new(state: &SharedState) -> Self {
         let progress_remaining_secs = Arc::new(AtomicU32::default());
         let event_monitor_task =
             Self::spawn_episode_event_monitor(state, Arc::clone(&progress_remaining_secs)).into();
@@ -48,10 +49,10 @@ impl InfoPanel {
     }
 
     fn spawn_episode_event_monitor(
-        state: &ThreadedState,
+        state: &SharedState,
         progress_remaining_secs: Arc<AtomicU32>,
     ) -> task::JoinHandle<()> {
-        let state = Arc::clone(state);
+        let state = state.clone();
 
         task::spawn(async move {
             let mut events = {
@@ -66,7 +67,7 @@ impl InfoPanel {
                 #[allow(unused_assignments)]
                 match event {
                     StateEvent::StartedEpisode(progress_time) => {
-                        let state = Arc::clone(&state);
+                        let state = state.clone();
                         let remaining_secs = Arc::clone(&progress_remaining_secs);
 
                         let task =
@@ -88,7 +89,7 @@ impl InfoPanel {
     }
 
     fn spawn_progress_monitor_task(
-        state: ThreadedState,
+        state: SharedState,
         remaining_secs: Arc<AtomicU32>,
         progress_time: ProgressTime,
     ) -> task::JoinHandle<()> {
@@ -278,9 +279,10 @@ impl InfoPanel {
         draw_stat!(1, 0 => "Progress", format!("{}|{}", entry.watched_episodes(), info.episodes));
 
         draw_stat!(1, 1 => "Score", {
-            match entry.score() {
-                Some(score) => state.remote.score_to_str(score as u8),
-                None => "??".into(),
+            match (entry.score(), &state.remote) {
+                (Some(score), RemoteStatus::LoggedIn(remote)) => remote.score_to_str(score as u8),
+                (Some(score), RemoteStatus::LoggingIn(_)) => score.to_string().into(),
+                (None, _) => "??".into(),
             }
         });
 
@@ -312,6 +314,17 @@ impl InfoPanel {
             let fragments = [
                 Fragment::span(text::bold(mins.to_string())),
                 Fragment::span(text::bold(" Minutes Until Progression")),
+            ];
+
+            let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
+            frame.render_widget(widget, layout[2]);
+        } else if let RemoteStatus::LoggingIn(username) = &state.remote {
+            let fragments = [
+                Fragment::span(text::bold("Logging In As ")),
+                Fragment::Span(
+                    text::bold_with(username, |s| s.fg(Color::Blue)),
+                    SpanOptions::new().overflow(OverflowMode::Truncate),
+                ),
             ];
 
             let widget = TextFragments::new(&fragments).alignment(Alignment::Center);

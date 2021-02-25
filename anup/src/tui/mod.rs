@@ -7,19 +7,19 @@ use self::{
     selection::Selection,
     state::{InputState, Reactive, ReactiveState, UIEvents, UIState},
 };
-use crate::try_opt_r;
+use crate::key::Key;
 use crate::Args;
-use crate::{key::Key, util::arc_mutex};
-use anime::remote::{Remote, ScoreParser};
+use crate::{file::SerializedFile, remote::RemoteLogin, try_opt_r, user::Users};
+use anime::remote::ScoreParser;
 use anyhow::{anyhow, Context, Result};
+use component::prompt::command::Command;
 use component::prompt::command::InputResult;
 use component::prompt::COMMAND_KEY;
-use component::prompt::{command::Command, log::LogKind};
 use component::series_list::SeriesList;
 use component::Component;
 use component::{main_panel::MainPanel, prompt::command::CommandPrompt};
 use crossterm::{event::KeyCode, terminal};
-use state::{ThreadedState, UIErrorKind, UIEvent};
+use state::{SharedState, UIErrorKind, UIEvent};
 use std::{io, sync::Arc};
 use tokio::sync::Notify;
 use tui::{
@@ -62,43 +62,36 @@ type CrosstermTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 struct UI {
     events: UIEvents,
     terminal: CrosstermTerminal,
-    state: ThreadedState,
+    state: SharedState,
     dirty_state_notify: Arc<Notify>,
     panels: Panels,
 }
 
 impl UI {
     async fn init(args: &Args, terminal: CrosstermTerminal) -> Result<UI> {
-        let (remote, remote_error) = match crate::init_remote(args) {
-            Ok(Some(remote)) => (remote, None),
-            Ok(None) => (Remote::offline(), None),
-            Err(err) => (Remote::offline(), Some(err)),
-        };
-
         let events = UIEvents::new().context("UI events init")?;
 
-        let mut state = UIState::init(remote).context("UI state init")?;
+        let mut state = UIState::init().context("UI state init")?;
 
         state
             .select_initial_series(args)
             .context("selecting initial series")?;
 
-        if let Some(err) = remote_error {
-            let log = &mut state.log;
-            log.push_error(&err);
-            log.push(LogKind::Context, "enter user management with 'u' and add your account again if a new token is needed");
-            log.push(LogKind::Info, "continuing in offline mode");
-        }
-
         let dirty_state_notify = Arc::new(Notify::const_new());
-        let threaded_state = arc_mutex(Reactive::new(state, Arc::clone(&dirty_state_notify)));
+        let shared_state = SharedState::new(Reactive::new(state, Arc::clone(&dirty_state_notify)));
 
-        let panels = Panels::init(&threaded_state);
+        let panels = Panels::init(&shared_state);
+
+        if !args.offline {
+            if let Some((user, token)) = Users::load_or_create()?.take_last_used_user() {
+                shared_state.login_to_remote_async(RemoteLogin::AniList(user.username, token));
+            }
+        }
 
         Ok(Self {
             events,
             terminal,
-            state: threaded_state,
+            state: shared_state,
             dirty_state_notify,
             panels,
         })
@@ -159,15 +152,15 @@ pub enum CycleResult {
 struct Panels {
     command_prompt: CommandPrompt,
     main_panel: MainPanel,
-    state: ThreadedState,
+    state: SharedState,
 }
 
 impl Panels {
-    fn init(state: &ThreadedState) -> Self {
+    fn init(state: &SharedState) -> Self {
         Self {
             command_prompt: CommandPrompt::new(),
-            main_panel: MainPanel::new(Arc::clone(state)),
-            state: Arc::clone(state),
+            main_panel: MainPanel::new(state.clone()),
+            state: state.clone(),
         }
     }
 
@@ -283,6 +276,7 @@ impl Panels {
                 use component::prompt::command::ProgressDirection;
 
                 let series = try_opt_r!(state.series.valid_selection_mut());
+                let remote = remote.get_logged_in()?;
 
                 match direction {
                     ProgressDirection::Forwards => series.episode_completed(remote, config, db),
@@ -291,6 +285,7 @@ impl Panels {
             }
             cmd @ Command::SyncFromRemote | cmd @ Command::SyncToRemote => {
                 let series = try_opt_r!(state.series.valid_selection_mut());
+                let remote = remote.get_logged_in()?;
 
                 match cmd {
                     Command::SyncFromRemote => series.data.force_sync_from_remote(remote)?,
@@ -303,6 +298,7 @@ impl Panels {
             }
             Command::Score(raw_score) => {
                 let series = try_opt_r!(state.series.valid_selection_mut());
+                let remote = remote.get_logged_in()?;
 
                 let score = match remote.parse_score(&raw_score) {
                     Some(score) if score == 0 => None,
@@ -318,6 +314,7 @@ impl Panels {
             }
             Command::Status(status) => {
                 let series = try_opt_r!(state.series.valid_selection_mut());
+                let remote = remote.get_logged_in()?;
 
                 series.data.entry.set_status(status, config);
                 series.data.entry.sync_to_remote(remote)?;

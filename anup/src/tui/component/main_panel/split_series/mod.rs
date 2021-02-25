@@ -7,7 +7,7 @@ use crate::{series::config::SeriesConfig, tui::component::prompt::log::LogKind};
 use crate::{series::SeriesData, util::ScopedTask};
 use crate::{
     series::{LoadedSeries, SeriesPath},
-    tui::state::ThreadedState,
+    tui::state::SharedState,
 };
 use crate::{tui::component::Component, util::ArcMutex};
 use crate::{
@@ -39,7 +39,7 @@ pub struct SplitSeriesPanel {
 }
 
 impl SplitSeriesPanel {
-    pub fn new(state: &ThreadedState) -> Self {
+    pub fn new(state: &SharedState) -> Self {
         let panel_state = arc_mutex(PanelState::Loading);
         let split_task = Self::spawn_split_series_task(&panel_state, state).into();
 
@@ -51,10 +51,10 @@ impl SplitSeriesPanel {
 
     fn spawn_split_series_task(
         panel_state: &ArcMutex<PanelState>,
-        state: &ThreadedState,
+        state: &SharedState,
     ) -> task::JoinHandle<()> {
         let panel_state = Arc::clone(panel_state);
-        let state = Arc::clone(state);
+        let state = state.clone();
 
         task::spawn(async move {
             let mut state = state.lock();
@@ -72,7 +72,12 @@ impl SplitSeriesPanel {
                 }
             };
 
-            let merged_series = match MergedSeries::resolve(series, &state.remote, &state.config) {
+            let remote = match state.remote.get_logged_in() {
+                Ok(remote) => remote,
+                Err(_) => return,
+            };
+
+            let merged_series = match MergedSeries::resolve(series, remote, &state.config) {
                 Ok(merged) => merged,
                 Err(err) => {
                     state.get_mut().log.push_error(&err);

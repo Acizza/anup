@@ -1,18 +1,22 @@
 use super::{component::prompt::log::Log, selection::Selection};
-use crate::series::info::SeriesInfo;
-use crate::series::{LoadedSeries, Series, SeriesData};
-use crate::try_opt_ret;
 use crate::user::Users;
 use crate::{config::Config, util::ArcMutex};
 use crate::{database::Database, series::LastWatched};
 use crate::{file::SerializedFile, key::Key};
+use crate::{remote::RemoteLogin, series::info::SeriesInfo};
+use crate::{
+    remote::RemoteStatus,
+    series::{LoadedSeries, Series, SeriesData},
+};
 use crate::{series::config::SeriesConfig, Args};
-use anime::local::SortedEpisodes;
-use anime::remote::Remote;
+use crate::{try_opt_ret, util::arc_mutex};
+use anime::remote::{anilist::AniList, Remote};
+use anime::{local::SortedEpisodes, remote::anilist::Auth};
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use crossterm::event::{Event, EventStream};
 use futures::{select, FutureExt, StreamExt};
+use parking_lot::MutexGuard;
 use std::{borrow::Cow, mem, ops::Deref, sync::Arc};
 use tokio::{
     process::Child,
@@ -29,12 +33,12 @@ pub struct UIState {
     pub log: Log<'static>,
     pub config: Config,
     pub users: Users,
-    pub remote: Remote,
+    pub remote: RemoteStatus,
     pub db: Database,
 }
 
 impl UIState {
-    pub fn init(remote: Remote) -> Result<Self> {
+    pub fn init() -> Result<Self> {
         let config = Config::load_or_create().context("failed to load / create config")?;
         let users = Users::load_or_create().context("failed to load / create users")?;
         let db = Database::open().context("failed to open database")?;
@@ -58,7 +62,7 @@ impl UIState {
             log: Log::new(15),
             config,
             users,
-            remote,
+            remote: RemoteStatus::LoggedIn(Remote::offline()),
             db,
         })
     }
@@ -95,7 +99,8 @@ impl UIState {
     where
         E: Into<Option<SortedEpisodes>>,
     {
-        let data = SeriesData::from_remote(config, info, &self.remote)?;
+        let remote = self.remote.get_logged_in()?;
+        let data = SeriesData::from_remote(config, info, remote)?;
 
         let series = match episodes.into() {
             Some(episodes) => LoadedSeries::Complete(Series::with_episodes(data, episodes)),
@@ -152,8 +157,10 @@ impl UIState {
                 .context("setting last watched series")?;
         }
 
+        let remote = state.remote.get_logged_in()?;
+
         series
-            .begin_watching(&state.remote, &state.config, &state.db)
+            .begin_watching(remote, &state.config, &state.db)
             .context("updating series status")?;
 
         let next_ep = series.data.entry.watched_episodes() + 1;
@@ -170,7 +177,7 @@ impl UIState {
     async fn track_episode_finish(
         mut ep_process: Child,
         progress_time: ProgressTime,
-        state: &ThreadedState,
+        state: &SharedState,
     ) -> Result<()> {
         ep_process
             .wait()
@@ -192,12 +199,14 @@ impl UIState {
             return Ok(());
         };
 
+        let remote = state.remote.get_logged_in()?;
+
         series
-            .episode_completed(&state.remote, &state.config, &state.db)
+            .episode_completed(remote, &state.config, &state.db)
             .context("marking episode as completed")
     }
 
-    pub async fn play_next_series_episode(&mut self, threaded_state: &ThreadedState) -> Result<()> {
+    pub async fn play_next_series_episode(&mut self, shared_state: &SharedState) -> Result<()> {
         let (ep_process, progress_time) = Self::start_next_series_episode(self).await?;
 
         self.events
@@ -206,13 +215,12 @@ impl UIState {
 
         self.input_state = InputState::Locked;
 
-        let threaded_state = Arc::clone(&threaded_state);
+        let shared_state = shared_state.clone();
 
         task::spawn(async move {
-            let result =
-                Self::track_episode_finish(ep_process, progress_time, &threaded_state).await;
+            let result = Self::track_episode_finish(ep_process, progress_time, &shared_state).await;
 
-            let mut state = threaded_state.lock();
+            let mut state = shared_state.lock();
             let state = state.get_mut();
 
             if let Err(err) = result {
@@ -228,7 +236,50 @@ impl UIState {
 }
 
 pub type ReactiveState = Reactive<UIState>;
-pub type ThreadedState = ArcMutex<ReactiveState>;
+
+#[derive(Clone)]
+pub struct SharedState(ArcMutex<ReactiveState>);
+
+impl SharedState {
+    pub fn new(state: ReactiveState) -> Self {
+        Self(arc_mutex(state))
+    }
+
+    pub fn login_to_remote_async(&self, login: RemoteLogin) {
+        let shared_state = self.clone();
+
+        task::spawn_blocking(move || match login {
+            RemoteLogin::AniList(username, token) => {
+                {
+                    let mut state = shared_state.lock();
+                    state.get_mut().remote = RemoteStatus::LoggingIn(username);
+                }
+
+                let auth = Auth::retrieve(token);
+                let mut state = shared_state.lock();
+                let state = state.get_mut();
+
+                let remote = match auth {
+                    Ok(auth) => {
+                        let anilist = AniList::Authenticated(auth);
+                        RemoteStatus::LoggedIn(anilist.into())
+                    }
+                    Err(err) => {
+                        state.log.push_error(&err.into());
+                        RemoteStatus::LoggedIn(Remote::offline())
+                    }
+                };
+
+                state.remote = remote;
+            }
+        });
+    }
+
+    #[inline(always)]
+    pub fn lock(&self) -> MutexGuard<'_, ReactiveState> {
+        self.0.lock()
+    }
+}
 
 #[derive(Clone, Copy)]
 pub enum InputState {

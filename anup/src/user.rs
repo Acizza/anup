@@ -105,6 +105,12 @@ impl Users {
         self.users.remove(&last)
     }
 
+    /// Consumes the `Users` struct and returns the last used user.
+    pub fn take_last_used_user(mut self) -> Option<(UserInfo, AccessToken)> {
+        let last = self.last_used?;
+        self.users.remove_entry(&last)
+    }
+
     #[inline(always)]
     pub fn get(&self) -> &UserMap {
         &self.users

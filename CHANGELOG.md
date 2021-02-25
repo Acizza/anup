@@ -2,6 +2,10 @@
 
 ## To Be Released
 
+### Features
+
+* Logins are now performed asynchronously. The info & user panel will show a message describing who is logging in while it's in progress. This allows the TUI to be interactive immediately after launching the program.
+
 ### Internal Changes
 
 * The add series panel is now rendered with widgets from the tui-utils library. This provides a small performance improvement.
