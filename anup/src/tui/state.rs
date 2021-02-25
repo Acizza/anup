@@ -174,38 +174,6 @@ impl UIState {
         Ok((child, progress_time))
     }
 
-    async fn track_episode_finish(
-        mut ep_process: Child,
-        progress_time: ProgressTime,
-        state: &SharedState,
-    ) -> Result<()> {
-        ep_process
-            .wait()
-            .await
-            .context("waiting for episode to finish")?;
-
-        let mut state = state.lock();
-        let state = state.get_mut();
-
-        state.input_state.reset();
-
-        if Utc::now() < progress_time {
-            return Ok(());
-        }
-
-        let series = if let Some(series) = state.series.valid_selection_mut() {
-            series
-        } else {
-            return Ok(());
-        };
-
-        let remote = state.remote.get_logged_in()?;
-
-        series
-            .episode_completed(remote, &state.config, &state.db)
-            .context("marking episode as completed")
-    }
-
     pub async fn play_next_series_episode(&mut self, shared_state: &SharedState) -> Result<()> {
         let (ep_process, progress_time) = Self::start_next_series_episode(self).await?;
 
@@ -218,7 +186,9 @@ impl UIState {
         let shared_state = shared_state.clone();
 
         task::spawn(async move {
-            let result = Self::track_episode_finish(ep_process, progress_time, &shared_state).await;
+            let result = shared_state
+                .track_episode_finish(ep_process, progress_time)
+                .await;
 
             let mut state = shared_state.lock();
             let state = state.get_mut();
@@ -273,6 +243,38 @@ impl SharedState {
                 state.remote = remote;
             }
         });
+    }
+
+    async fn track_episode_finish(
+        &self,
+        mut ep_process: Child,
+        progress_time: ProgressTime,
+    ) -> Result<()> {
+        ep_process
+            .wait()
+            .await
+            .context("waiting for episode to finish")?;
+
+        let mut state = self.lock();
+        let state = state.get_mut();
+
+        state.input_state.reset();
+
+        if Utc::now() < progress_time {
+            return Ok(());
+        }
+
+        let series = if let Some(series) = state.series.valid_selection_mut() {
+            series
+        } else {
+            return Ok(());
+        };
+
+        let remote = state.remote.get_logged_in()?;
+
+        series
+            .episode_completed(remote, &state.config, &state.db)
+            .context("marking episode as completed")
     }
 
     #[inline(always)]
