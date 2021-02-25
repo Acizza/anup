@@ -305,31 +305,7 @@ impl InfoPanel {
         draw_stat!(2, 1 => "Finish Date", format_date(entry.end_date()));
         draw_stat!(2, 2 => "Rewatched", entry.times_rewatched().to_string());
 
-        let progress_remaining_secs = self.progress_remaining_secs.load(Ordering::SeqCst);
-
-        // Watch time needed indicator at bottom
-        if progress_remaining_secs > 0 {
-            let mins = (progress_remaining_secs as f32 / 60.0).round() as u32;
-
-            let fragments = [
-                Fragment::span(text::bold(mins.to_string())),
-                Fragment::span(text::bold(" Minutes Until Progression")),
-            ];
-
-            let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
-            frame.render_widget(widget, layout[2]);
-        } else if let RemoteStatus::LoggingIn(username) = &state.remote {
-            let fragments = [
-                Fragment::span(text::bold("Logging In As ")),
-                Fragment::Span(
-                    text::bold_with(username, |s| s.fg(Color::Blue)),
-                    SpanOptions::new().overflow(OverflowMode::Truncate),
-                ),
-            ];
-
-            let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
-            frame.render_widget(widget, layout[2]);
-        }
+        self.draw_status_text(state, layout[2], frame);
     }
 
     fn draw_stat<B, S>(header: &str, value: S, rect: Rect, frame: &mut Frame<B>)
@@ -345,6 +321,36 @@ impl InfoPanel {
 
         let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
         frame.render_widget(widget, rect);
+    }
+
+    fn draw_status_text<B: Backend>(&self, state: &UIState, rect: Rect, frame: &mut Frame<B>) {
+        let progress_remaining_secs = self.progress_remaining_secs.load(Ordering::SeqCst);
+
+        // Remaining time until progression
+        if progress_remaining_secs > 0 {
+            let mins = (progress_remaining_secs as f32 / 60.0).round() as u32;
+
+            let fragments = [
+                Fragment::span(text::bold(mins.to_string())),
+                Fragment::span(text::bold(" Minutes Until Progression")),
+            ];
+
+            let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
+            frame.render_widget(widget, rect);
+        }
+        // Login message
+        else if let RemoteStatus::LoggingIn(username) = &state.remote {
+            let fragments = [
+                Fragment::span(text::bold("Logging In As ")),
+                Fragment::Span(
+                    text::bold_with(username, |s| s.fg(Color::Blue)),
+                    SpanOptions::new().overflow(OverflowMode::Truncate),
+                ),
+            ];
+
+            let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
+            frame.render_widget(widget, rect);
+        }
     }
 
     pub fn draw<B: Backend>(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>) {
