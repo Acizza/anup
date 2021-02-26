@@ -96,6 +96,11 @@ impl PanelInputs {
     }
 
     #[inline(always)]
+    pub fn all(&self) -> [&dyn ValidatedInput; Self::TOTAL] {
+        [&self.name, &self.id, &self.path, &self.parser]
+    }
+
+    #[inline(always)]
     pub fn all_mut(&mut self) -> [&mut dyn ValidatedInput; Self::TOTAL] {
         [
             &mut self.name,
@@ -224,11 +229,8 @@ impl AddSeriesPanel {
         })
     }
 
-    fn draw_add_series_panel<B>(
-        panel_state: &mut SharedPanelState,
-        rect: Rect,
-        frame: &mut Frame<B>,
-    ) where
+    fn draw_inputs<B>(panel_state: &SharedPanelState, rect: Rect, frame: &mut Frame<B>)
+    where
         B: Backend,
     {
         let vert_fields = Layout::default()
@@ -246,7 +248,7 @@ impl AddSeriesPanel {
                 ]
                 .as_ref(),
             )
-            .vertical_margin(2)
+            .vertical_margin(1)
             .split(rect);
 
         let horiz_fields = Layout::default()
@@ -260,14 +262,14 @@ impl AddSeriesPanel {
             .into_iter()
             .chain(horiz_fields_bottom.into_iter());
 
-        for (input, pos) in panel_state.inputs.all_mut().iter_mut().zip(field_positions) {
+        for (input, pos) in panel_state.inputs.all().iter().zip(field_positions) {
             let layout = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(100)].as_ref())
                 .horizontal_margin(3)
                 .split(pos);
 
-            input.input_mut().draw(layout[0], frame);
+            input.input().draw(layout[0], frame);
         }
     }
 
@@ -301,17 +303,28 @@ impl AddSeriesPanel {
                 ),
             };
 
+        let vert_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                // Header
+                Constraint::Length(1),
+                // Spacer
+                Constraint::Length(1),
+                // Fields
+                Constraint::Length(2),
+            ])
+            .split(rect);
+
         let header = SimpleText::new(header_text)
             .alignment(Alignment::Center)
             .overflow(OverflowMode::Truncate);
 
-        frame.render_widget(header, rect);
+        frame.render_widget(header, vert_layout[0]);
 
         let fields = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-            .vertical_margin(2)
-            .split(rect);
+            .split(vert_layout[2]);
 
         if has_error {
             return;
@@ -337,23 +350,25 @@ impl AddSeriesPanel {
     }
 
     pub fn draw<B: Backend>(&mut self, rect: Rect, frame: &mut Frame<B>) {
-        let split = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(7), Constraint::Length(6)].as_ref())
-            .horizontal_margin(2)
-            .split(rect);
-
-        let mut panel_state = self.state.lock();
+        let panel_state = self.state.lock();
 
         let title = match panel_state.mode {
             Mode::AddSeries => "Add Series",
             Mode::UpdateSeries => "Update Selected Series",
         };
 
-        let outline = block::with_borders(title);
-        frame.render_widget(outline, rect);
+        let block = block::with_borders(title);
+        let block_area = block.inner(rect);
 
-        Self::draw_add_series_panel(&mut panel_state, split[0], frame);
+        frame.render_widget(block, rect);
+
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(11), Constraint::Length(5)].as_ref())
+            .horizontal_margin(2)
+            .split(block_area);
+
+        Self::draw_inputs(&panel_state, split[0], frame);
         Self::draw_detected_panel(&panel_state, split[1], frame);
     }
 }
