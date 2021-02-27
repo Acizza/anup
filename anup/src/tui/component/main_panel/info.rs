@@ -1,7 +1,7 @@
 use crate::remote::RemoteStatus;
 use crate::tui::state::ProgressTime;
+use crate::tui::state::SharedState;
 use crate::tui::widget_util::{block, text};
-use crate::tui::{state::SharedState, widget_util::widget::WrapHelper};
 use crate::tui::{state::StateEvent, UIState};
 use crate::util;
 use crate::{
@@ -22,11 +22,11 @@ use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::text::{Span, Text};
-use tui::widgets::Paragraph;
+use tui::text::Span;
 use tui_utils::{
     grid_pos,
-    widgets::{Fragment, OverflowMode, SpanOptions, TextFragments},
+    widgets::{Fragment, OverflowMode, SimpleText, SpanOptions, TextFragments},
+    wrap,
 };
 use util::ScopedTask;
 
@@ -126,65 +126,102 @@ impl InfoPanel {
         })
     }
 
-    fn text_display_layout(rect: Rect) -> Vec<Rect> {
-        Layout::default()
+    fn header_body_layout(rect: Rect) -> (Rect, Rect) {
+        let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(2), Constraint::Percentage(100)])
             .margin(2)
-            .split(rect)
+            .split(rect);
+
+        (layout[0], layout[1])
     }
 
-    fn draw_text_panel<'a, B, T>(header: Span, body: T, rect: Rect, frame: &mut Frame<B>)
-    where
+    fn draw_text_panel<'a, B>(
+        header: Span,
+        body: &[Fragment],
+        header_pos: Rect,
+        body_pos: Rect,
+        frame: &mut Frame<B>,
+    ) where
         B: Backend,
-        T: Into<Text<'a>>,
     {
-        let layout = Self::text_display_layout(rect);
+        let header_widget = SimpleText::new(header)
+            .alignment(Alignment::Center)
+            .overflow(OverflowMode::Truncate);
 
-        let header_widget = Paragraph::new(header).alignment(Alignment::Center);
-        frame.render_widget(header_widget, layout[0]);
+        frame.render_widget(header_widget, header_pos);
 
-        let body_widget = Paragraph::new(body).alignment(Alignment::Center).wrapped();
-        frame.render_widget(body_widget, layout[1]);
+        let body_widget = TextFragments::new(body).alignment(Alignment::Center);
+        frame.render_widget(body_widget, body_pos);
     }
 
     fn draw_no_users_info<B>(rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
     {
-        let body = vec![
-            "Add an account by pressing 'u' to open".into(),
-            "user management and then by pressing tab".into(),
-            "to switch to the add user panel.".into(),
-            "".into(),
-            "Then open the auth URL in your browser".into(),
-            "by pressing Ctrl + O, and follow its instructions.".into(),
-            "Once you have a token, paste it in with either".into(),
-            "Ctrl + Shift + V or Ctrl + V.".into(),
-            "".into(),
-            "More detailed instructions here:".into(),
-            "https://github.com/Acizza/anup#adding-an-account".into(),
+        let span = |text| {
+            Fragment::Span(
+                Span::raw(text),
+                SpanOptions::new().overflow(OverflowMode::Truncate),
+            )
+        };
+
+        let body = [
+            span("Add an account by pressing 'u' to open"),
+            Fragment::Line,
+            span("user management and then by pressing tab"),
+            Fragment::Line,
+            span("to switch to the add user panel."),
+            Fragment::Line,
+            Fragment::Line,
+            span("Then open the auth URL in your browser"),
+            Fragment::Line,
+            span("by pressing Ctrl + O, and follow its instructions."),
+            Fragment::Line,
+            Fragment::Line,
+            span("Once you have a token, paste it in with either"),
+            Fragment::Line,
+            span("Ctrl + Shift + V or Ctrl + V."),
+            Fragment::Line,
+            Fragment::Line,
+            span("More detailed instructions here:"),
+            Fragment::Line,
+            span("https://github.com/Acizza/anup#adding-an-account"),
         ];
 
-        Self::draw_text_panel(text::bold("No Accounts Added"), body, rect, frame);
+        let (hpos, bpos) = Self::header_body_layout(rect);
+        Self::draw_text_panel(text::bold("No Accounts Added"), &body, hpos, bpos, frame);
     }
 
     fn draw_no_series_found<B>(rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
     {
-        let body = vec![
-            "Add one by pressing the 'a' key.".into(),
-            "".into(),
-            "The opened panel will require you to specify".into(),
-            "a name for the series you want to add.".into(),
-            "".into(),
-            "For automatic detection, the name should be".into(),
-            "similar to the name of the folder the series".into(),
-            "is in on disk.".into(),
+        let span = |text| {
+            Fragment::Span(
+                Span::raw(text),
+                SpanOptions::new().overflow(OverflowMode::Truncate),
+            )
+        };
+
+        let body = [
+            span("Add one by pressing the 'a' key."),
+            Fragment::Line,
+            Fragment::Line,
+            span("The opened panel will require you to specify"),
+            Fragment::Line,
+            span("a name for the series you want to add."),
+            Fragment::Line,
+            Fragment::Line,
+            span("For automatic detection, the name should be"),
+            Fragment::Line,
+            span("similar to the name of the folder the series"),
+            Fragment::Line,
+            span("is in on disk."),
         ];
 
-        Self::draw_text_panel(text::bold("No Series Found"), body, rect, frame);
+        let (hpos, bpos) = Self::header_body_layout(rect);
+        Self::draw_text_panel(text::bold("No Series Found"), &body, hpos, bpos, frame);
     }
 
     fn draw_series_error<B, E>(err: E, rect: Rect, frame: &mut Frame<B>)
@@ -193,9 +230,16 @@ impl InfoPanel {
         E: fmt::Display,
     {
         let header = text::bold_with("Error Loading Series", |s| s.fg(Color::Red));
-        let body = text::with_color(err.to_string(), Color::Red);
 
-        Self::draw_text_panel(header, body, rect, frame);
+        let body = [Fragment::Span(
+            text::with_color(err.to_string(), Color::Red),
+            SpanOptions::new().overflow(OverflowMode::Truncate),
+        )];
+
+        let (hpos, bpos) = Self::header_body_layout(rect);
+        let wrapped = wrap::by_letters(body.iter().cloned(), bpos.width);
+
+        Self::draw_text_panel(header, &wrapped, hpos, bpos, frame);
     }
 
     #[allow(clippy::too_many_lines)]
