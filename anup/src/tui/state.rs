@@ -1,4 +1,4 @@
-use super::{component::prompt::log::Log, selection::Selection};
+use super::component::prompt::log::Log;
 use crate::user::Users;
 use crate::{config::Config, util::ArcMutex};
 use crate::{database::Database, series::LastWatched};
@@ -17,16 +17,48 @@ use chrono::{DateTime, Utc};
 use crossterm::event::{Event, EventStream};
 use futures::{select, FutureExt, StreamExt};
 use parking_lot::MutexGuard;
-use std::{borrow::Cow, mem, ops::Deref, sync::Arc};
+use std::{
+    borrow::Cow,
+    mem,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 use tokio::{
     process::Child,
     signal::unix::{signal, Signal, SignalKind},
     sync::{broadcast, Notify},
     task,
 };
+use tui_utils::list::WrappedSelection;
+
+pub struct WrappedSeriesSelection(WrappedSelection<Vec<LoadedSeries>, LoadedSeries>);
+
+impl WrappedSeriesSelection {
+    fn new(series: Vec<LoadedSeries>) -> Self {
+        Self(WrappedSelection::new(series))
+    }
+
+    pub fn get_valid_sel_series_mut(&mut self) -> Option<&mut Series> {
+        self.selected_mut().and_then(LoadedSeries::complete_mut)
+    }
+}
+
+impl Deref for WrappedSeriesSelection {
+    type Target = WrappedSelection<Vec<LoadedSeries>, LoadedSeries>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for WrappedSeriesSelection {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 pub struct UIState {
-    pub series: Selection<LoadedSeries>,
+    pub series: WrappedSeriesSelection,
     pub last_watched: LastWatched,
     pub input_state: InputState,
     pub events: broadcast::Sender<StateEvent>,
@@ -55,7 +87,7 @@ impl UIState {
         let (events_tx, _) = broadcast::channel(8);
 
         Ok(Self {
-            series: Selection::new(series),
+            series: WrappedSeriesSelection::new(series),
             last_watched,
             input_state: InputState::default(),
             events: events_tx,
@@ -130,11 +162,14 @@ impl UIState {
     }
 
     pub fn delete_selected_series(&mut self) -> Result<LoadedSeries> {
-        let series = match self.series.remove_selected() {
-            Some(series) => series,
-            None => return Err(anyhow!("must select series to delete")),
-        };
+        if !self.series.is_valid_index() {
+            return Err(anyhow!("must select series to delete"));
+        }
 
+        let index = self.series.index();
+        let series = self.series.items_mut().remove(index);
+
+        self.series.update_bounds();
         // Since we changed our selected series, we need to make sure the new one is initialized
         self.init_selected_series();
 
@@ -142,40 +177,39 @@ impl UIState {
         Ok(series)
     }
 
-    async fn start_next_series_episode(state: &mut UIState) -> Result<(Child, ProgressTime)> {
-        let series = match state.series.valid_selection_mut() {
+    async fn start_next_series_episode(&mut self) -> Result<(Child, ProgressTime)> {
+        let series = match self.series.get_valid_sel_series_mut() {
             Some(series) => series,
             None => return Err(anyhow!("no series selected")),
         };
 
-        let is_diff_series = state.last_watched.set(&series.data.config.nickname);
+        let is_diff_series = self.last_watched.set(&series.data.config.nickname);
 
         if is_diff_series {
-            state
-                .last_watched
+            self.last_watched
                 .save()
                 .context("setting last watched series")?;
         }
 
-        let remote = state.remote.get_logged_in()?;
+        let remote = self.remote.get_logged_in()?;
 
         series
-            .begin_watching(remote, &state.config, &state.db)
+            .begin_watching(remote, &self.config, &self.db)
             .context("updating series status")?;
 
         let next_ep = series.data.entry.watched_episodes() + 1;
 
         let child = series
-            .play_episode(next_ep as u32, &state.config)
+            .play_episode(next_ep as u32, &self.config)
             .context("playing episode")?;
 
-        let progress_time = series.data.next_watch_progress_time(&state.config);
+        let progress_time = series.data.next_watch_progress_time(&self.config);
 
         Ok((child, progress_time))
     }
 
     pub async fn play_next_series_episode(&mut self, shared_state: &SharedState) -> Result<()> {
-        let (ep_process, progress_time) = Self::start_next_series_episode(self).await?;
+        let (ep_process, progress_time) = self.start_next_series_episode().await?;
 
         self.events
             .send(StateEvent::StartedEpisode(progress_time))
@@ -264,7 +298,7 @@ impl SharedState {
             return Ok(());
         }
 
-        let series = if let Some(series) = state.series.valid_selection_mut() {
+        let series = if let Some(series) = state.series.get_valid_sel_series_mut() {
             series
         } else {
             return Ok(());

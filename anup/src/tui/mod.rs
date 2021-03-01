@@ -1,12 +1,8 @@
 mod component;
-mod selection;
 mod state;
 mod widget_util;
 
-use self::{
-    selection::Selection,
-    state::{InputState, Reactive, UIEvents, UIState},
-};
+use self::state::{InputState, Reactive, UIEvents, UIState};
 use crate::key::Key;
 use crate::Args;
 use crate::{file::SerializedFile, remote::RemoteLogin, try_opt_r, user::Users};
@@ -264,7 +260,7 @@ impl Panels {
 
         match command {
             Command::PlayerArgs(args) => {
-                let series = try_opt_r!(state.series.valid_selection_mut());
+                let series = try_opt_r!(state.series.get_valid_sel_series_mut());
 
                 series.data.config.player_args = args.into();
                 series.save(db)?;
@@ -273,7 +269,7 @@ impl Panels {
             Command::Progress(direction) => {
                 use component::prompt::command::ProgressDirection;
 
-                let series = try_opt_r!(state.series.valid_selection_mut());
+                let series = try_opt_r!(state.series.get_valid_sel_series_mut());
                 let remote = remote.get_logged_in()?;
 
                 match direction {
@@ -282,7 +278,7 @@ impl Panels {
                 }
             }
             cmd @ Command::SyncFromRemote | cmd @ Command::SyncToRemote => {
-                let series = try_opt_r!(state.series.valid_selection_mut());
+                let series = try_opt_r!(state.series.get_valid_sel_series_mut());
                 let remote = remote.get_logged_in()?;
 
                 match cmd {
@@ -295,7 +291,7 @@ impl Panels {
                 Ok(())
             }
             Command::Score(raw_score) => {
-                let series = try_opt_r!(state.series.valid_selection_mut());
+                let series = try_opt_r!(state.series.get_valid_sel_series_mut());
                 let remote = remote.get_logged_in()?;
 
                 let score = match remote.parse_score(&raw_score) {
@@ -311,7 +307,7 @@ impl Panels {
                 Ok(())
             }
             Command::Status(status) => {
-                let series = try_opt_r!(state.series.valid_selection_mut());
+                let series = try_opt_r!(state.series.get_valid_sel_series_mut());
                 let remote = remote.get_logged_in()?;
 
                 series.data.entry.set_status(status, config);

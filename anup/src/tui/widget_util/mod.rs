@@ -4,14 +4,11 @@ pub mod style;
 pub mod text;
 pub mod widget;
 
-use super::selection::WrappingIndex;
-use crate::user::RemoteType;
 use crate::{key::Key, try_opt_ret};
 use crossterm::event::KeyCode;
-use std::borrow::Cow;
-use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use tui::widgets::{ListState, TableState};
+use tui_utils::list::WrappingIndex;
 
 /// A widget that can be selected / indexed.
 pub trait SelectableWidget {
@@ -105,67 +102,6 @@ where
     T: SelectableWidget + Default,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-/// A data structure that can exposed as an array of items.
-///
-/// This is used in conjunction with `TypedSelectable`.
-pub trait TypedListData: Sized {
-    fn items<'a>() -> &'a [Self];
-    fn item_str<'a>(item: &Self) -> Cow<'a, str>;
-
-    fn len() -> usize {
-        Self::items().len()
-    }
-}
-
-impl TypedListData for RemoteType {
-    fn items<'a>() -> &'a [Self] {
-        Self::all()
-    }
-
-    fn item_str<'a>(item: &Self) -> Cow<'a, str> {
-        item.as_str().into()
-    }
-}
-
-/// A selectable widget that can be indexed as a type `T`.
-pub struct TypedSelectable<T, S>(SelectWidgetState<S>, PhantomData<T>)
-where
-    T: TypedListData + Copy,
-    S: SelectableWidget + Default;
-
-impl<'a, T, S> TypedSelectable<T, S>
-where
-    T: TypedListData + Copy + 'a,
-    S: SelectableWidget + Default,
-{
-    #[inline(always)]
-    pub fn new() -> Self {
-        Self(SelectWidgetState::new(), PhantomData)
-    }
-
-    /// Scrolls the currently selected entry based off of `key`.
-    #[inline(always)]
-    pub fn update_selected(&mut self, key: Key) {
-        self.0.update_selected(key, T::len());
-    }
-
-    /// Returns all of `T`'s items as an iterator of strings.
-    pub fn item_data() -> impl Iterator<Item = Cow<'a, str>> {
-        T::items().iter().map(|item| T::item_str(item))
-    }
-
-    /// Returns the currently selected entry as `T`.
-    pub fn selected(&self) -> Option<T> {
-        let index = self.0.selected()?;
-        T::items().get(index).copied()
-    }
-
-    #[inline(always)]
-    pub fn state_mut(&mut self) -> &mut S {
         &mut self.0
     }
 }

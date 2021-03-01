@@ -1,8 +1,7 @@
 use super::{Component, ShouldReset};
 use crate::try_opt_r;
 use crate::tui::component::input::{Input, InputFlags};
-use crate::tui::widget_util::widget::WrapHelper;
-use crate::tui::widget_util::{block, style, text, SelectWidgetState, TypedSelectable};
+use crate::tui::widget_util::{block, style, text, SelectWidgetState};
 use crate::tui::UIState;
 use crate::user::{RemoteType, UserInfo};
 use crate::{file::SerializedFile, key::Key};
@@ -14,20 +13,21 @@ use anime::remote::anilist::AniList;
 use anime::remote::{AccessToken, Remote, RemoteService};
 use anyhow::{anyhow, Context, Result};
 use crossterm::event::KeyCode;
-use std::borrow::Cow;
 use std::process::Command;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::text::{Span, Text};
-use tui::widgets::{List, ListItem, ListState, Paragraph, Row, Table, TableState};
+use tui::text::Span;
+use tui::widgets::{Row, Table, TableState};
 use tui::{backend::Backend, style::Style};
-
-type ServiceList = TypedSelectable<RemoteType, ListState>;
+use tui_utils::{
+    list::{EnumListItems, SelectableEnum},
+    widgets::{Fragment, SimpleList, SimpleText, TextFragments},
+};
 
 pub struct UserPanel {
     user_table_state: SelectWidgetState<TableState>,
-    service_list: ServiceList,
+    selected_service: SelectableEnum<RemoteType>,
     token_input: Input,
     current_panel: SelectedPanel,
     state: SharedState,
@@ -37,7 +37,7 @@ impl UserPanel {
     pub fn new(state: SharedState) -> Self {
         Self {
             user_table_state: SelectWidgetState::new(),
-            service_list: TypedSelectable::new(),
+            selected_service: SelectableEnum::new(),
             token_input: Input::new(InputFlags::empty(), "Paste Token"),
             current_panel: SelectedPanel::SelectUser,
             state,
@@ -53,8 +53,8 @@ impl UserPanel {
             return Ok(());
         }
 
-        match self.service_list.selected() {
-            Some(service @ RemoteType::AniList) => {
+        match self.selected_service.selected() {
+            service @ RemoteType::AniList => {
                 let token = AccessToken::encode(token_text);
                 let auth = Auth::retrieve(token.clone()).context("failed to get new user auth")?;
 
@@ -67,7 +67,6 @@ impl UserPanel {
                 self.token_input.clear();
                 Ok(())
             }
-            None => Ok(()),
         }
     }
 
@@ -115,7 +114,7 @@ impl UserPanel {
     }
 
     fn open_auth_url(&self) -> Result<()> {
-        let url = match try_opt_r!(self.service_list.selected()) {
+        let url = match self.selected_service.selected() {
             RemoteType::AniList => anime::remote::anilist::auth_url(crate::ANILIST_CLIENT_ID),
         };
 
@@ -166,30 +165,32 @@ impl UserPanel {
         self.token_input.set_selected(is_panel_selected);
         self.token_input.draw(vert_split[0], frame);
 
-        let services_text = ServiceList::item_data()
-            .map(Cow::into_owned)
-            .map(Span::from)
-            .map(ListItem::new)
-            .collect::<Vec<_>>();
+        let services_block = block::selectable("Service", is_panel_selected);
+        let services_block_area = services_block.inner(vert_split[2]);
 
-        let services_widget = List::new(services_text)
-            .block(block::selectable("Service", is_panel_selected))
-            .highlight_style(style::list_selector(is_panel_selected))
-            .highlight_symbol(">");
+        frame.render_widget(services_block, vert_split[2]);
 
-        frame.render_stateful_widget(
-            services_widget,
-            vert_split[2],
-            self.service_list.state_mut(),
-        );
+        let services = RemoteType::items()
+            .iter()
+            .copied()
+            .map(RemoteType::as_str)
+            .map(Span::raw);
 
-        let hint_text = Text::from(vec![
-            text::hint("Ctrl + O").into(),
-            text::hint("-").into(),
-            text::hint("Open auth URL").into(),
-        ]);
+        let services_widget = SimpleList::new(services)
+            .highlight_symbol(Span::styled(">", style::list_selector(is_panel_selected)))
+            .select(Some(self.selected_service.index() as u16));
 
-        let hint_widget = Paragraph::new(hint_text).alignment(Alignment::Center);
+        frame.render_widget(services_widget, services_block_area);
+
+        let hint_fragments = [
+            Fragment::span(text::hint("Ctrl + O")),
+            Fragment::Line,
+            Fragment::span(text::hint("-")),
+            Fragment::Line,
+            Fragment::span(text::hint("Open auth URL")),
+        ];
+
+        let hint_widget = TextFragments::new(&hint_fragments).alignment(Alignment::Center);
         frame.render_widget(hint_widget, vert_split[4]);
     }
 
@@ -199,8 +200,10 @@ impl UserPanel {
     {
         let is_panel_selected = self.current_panel == SelectedPanel::SelectUser;
 
-        let outline = block::selectable(None, is_panel_selected);
-        frame.render_widget(outline, rect);
+        let block = block::selectable(None, is_panel_selected);
+        let block_area = block.inner(rect);
+
+        frame.render_widget(block, rect);
 
         let layout = Layout::default()
             .direction(Direction::Vertical)
@@ -214,35 +217,41 @@ impl UserPanel {
                 .as_ref(),
             )
             .horizontal_margin(1)
-            .split(rect);
+            .split(block_area);
 
         self.draw_users_table(is_panel_selected, state, layout[0], frame);
 
-        let key_hints_text = vec![
-            text::hint("O - Go offline").into(),
-            text::hint("D - Remove account").into(),
-            text::hint("Enter - Login as selected").into(),
+        let key_hints_fragments = [
+            Fragment::span(text::hint("O - Go offline")),
+            Fragment::Line,
+            Fragment::span(text::hint("D - Remove account")),
+            Fragment::Line,
+            Fragment::span(text::hint("Enter - Login as selected")),
         ];
 
-        let key_hints_widget = Paragraph::new(key_hints_text).alignment(Alignment::Center);
+        let key_hints_widget =
+            TextFragments::new(&key_hints_fragments).alignment(Alignment::Center);
+
         frame.render_widget(key_hints_widget, layout[2]);
 
-        let status_text: Option<Cow<str>> = match &state.remote {
-            RemoteStatus::LoggingIn(username) => Some(format!("Logging In As {}", username).into()),
-            RemoteStatus::LoggedIn(remote) if remote.is_offline() => {
-                Some("Currently Offline".into())
+        let yellow_text = |value| text::with_color(value, Color::Yellow);
+
+        match &state.remote {
+            RemoteStatus::LoggingIn(username) => {
+                let fragments = [
+                    Fragment::span(yellow_text("Logging In As ")),
+                    Fragment::span(yellow_text(&username)),
+                ];
+
+                let widget = TextFragments::new(&fragments).alignment(Alignment::Center);
+                frame.render_widget(widget, layout[3]);
             }
-            RemoteStatus::LoggedIn(_) => None,
-        };
-
-        if let Some(status_text) = status_text {
-            let offline_text = text::with_color(status_text, Color::Yellow);
-
-            let offline_widget = Paragraph::new(offline_text)
-                .alignment(Alignment::Center)
-                .wrapped();
-
-            frame.render_widget(offline_widget, layout[3]);
+            RemoteStatus::LoggedIn(remote) if remote.is_offline() => {
+                let widget =
+                    SimpleText::new(yellow_text("Currently Offline")).alignment(Alignment::Center);
+                frame.render_widget(widget, layout[3]);
+            }
+            RemoteStatus::LoggedIn(_) => (),
         }
     }
 
@@ -332,7 +341,12 @@ impl Component for UserPanel {
                 },
                 SelectedPanel::AddUser => match *key {
                     KeyCode::Up | KeyCode::Down => {
-                        self.service_list.update_selected(key);
+                        match *key {
+                            KeyCode::Up => self.selected_service.decrement(),
+                            KeyCode::Down => self.selected_service.increment(),
+                            _ => unreachable!(),
+                        }
+
                         Ok(ShouldReset::No)
                     }
                     KeyCode::Char('o') if key.ctrl_pressed() => {

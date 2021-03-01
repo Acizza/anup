@@ -2,6 +2,7 @@ use crate::file::{FileFormat, SaveDir, SerializedFile};
 use anime::remote::{AccessToken, Remote};
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tui_utils::list::EnumListItems;
 
 /// Represents all (non-offline) remote types from the anime library.
 ///
@@ -21,10 +22,10 @@ impl RemoteType {
             Self::AniList => "AniList",
         }
     }
+}
 
-    /// Returns all `RemoteType` variants.
-    #[inline(always)]
-    pub fn all() -> &'static [Self] {
+impl EnumListItems for RemoteType {
+    fn items<'a>() -> &'a [Self] {
         &[Self::AniList]
     }
 }

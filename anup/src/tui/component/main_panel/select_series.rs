@@ -1,7 +1,6 @@
 use crate::series::SeriesParams;
 use crate::tui::component::Component;
 use crate::tui::widget_util::{block, style};
-use crate::tui::Selection;
 use crate::{key::Key, series::info::SeriesInfo};
 use crossterm::event::KeyCode;
 use tui::backend::Backend;
@@ -9,6 +8,7 @@ use tui::layout::Rect;
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::widgets::{List, ListItem, ListState};
+use tui_utils::list::WrappedSelection;
 
 pub struct SelectSeriesPanel {
     list_state: ListState,
@@ -64,10 +64,12 @@ impl Component for SelectSeriesPanel {
                 SelectSeriesResult::Ok
             }
             KeyCode::Enter => {
-                let info = match self.state.series_list.swap_remove_selected() {
-                    Some(info) => info,
-                    None => return SelectSeriesResult::Reset,
-                };
+                if !self.state.series_list.is_valid_index() {
+                    return SelectSeriesResult::Reset;
+                }
+
+                let selected = self.state.series_list.index();
+                let info = self.state.series_list.swap_remove(selected);
 
                 SelectSeriesResult::AddSeries(info)
             }
@@ -78,17 +80,14 @@ impl Component for SelectSeriesPanel {
 }
 
 pub struct SelectState {
-    pub series_list: Selection<SeriesInfo>,
+    pub series_list: WrappedSelection<Vec<SeriesInfo>, SeriesInfo>,
     pub params: SeriesParams,
 }
 
 impl SelectState {
-    pub fn new<I>(series_list: I, params: SeriesParams) -> Self
-    where
-        I: Into<Selection<SeriesInfo>>,
-    {
+    pub fn new(series_list: Vec<SeriesInfo>, params: SeriesParams) -> Self {
         Self {
-            series_list: series_list.into(),
+            series_list: WrappedSelection::new(series_list),
             params,
         }
     }
