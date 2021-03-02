@@ -136,7 +136,7 @@ impl InfoPanel {
         (layout[0], layout[1])
     }
 
-    fn draw_text_panel<'a, B>(
+    fn draw_text_panel<B>(
         header: Span,
         body: &[Fragment],
         header_pos: Rect,
@@ -189,8 +189,8 @@ impl InfoPanel {
             span("https://github.com/Acizza/anup#adding-an-account"),
         ];
 
-        let (hpos, bpos) = Self::header_body_layout(rect);
-        Self::draw_text_panel(text::bold("No Accounts Added"), &body, hpos, bpos, frame);
+        let (h_pos, b_pos) = Self::header_body_layout(rect);
+        Self::draw_text_panel(text::bold("No Accounts Added"), &body, h_pos, b_pos, frame);
     }
 
     fn draw_no_series_found<B>(rect: Rect, frame: &mut Frame<B>)
@@ -220,8 +220,8 @@ impl InfoPanel {
             span("is in on disk."),
         ];
 
-        let (hpos, bpos) = Self::header_body_layout(rect);
-        Self::draw_text_panel(text::bold("No Series Found"), &body, hpos, bpos, frame);
+        let (h_pos, b_pos) = Self::header_body_layout(rect);
+        Self::draw_text_panel(text::bold("No Series Found"), &body, h_pos, b_pos, frame);
     }
 
     fn draw_series_error<B, E>(err: E, rect: Rect, frame: &mut Frame<B>)
@@ -236,10 +236,10 @@ impl InfoPanel {
             SpanOptions::new().overflow(OverflowMode::Truncate),
         )];
 
-        let (hpos, bpos) = Self::header_body_layout(rect);
-        let wrapped = wrap::by_letters(body.iter().cloned(), bpos.width);
+        let (h_pos, b_pos) = Self::header_body_layout(rect);
+        let wrapped = wrap::by_letters(body.iter().cloned(), b_pos.width);
 
-        Self::draw_text_panel(header, &wrapped, hpos, bpos, frame);
+        Self::draw_text_panel(header, &wrapped, h_pos, b_pos, frame);
     }
 
     #[allow(clippy::too_many_lines)]
