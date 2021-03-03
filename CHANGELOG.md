@@ -6,11 +6,17 @@
 
 * Logins are now performed asynchronously. The info & user panel will show a message describing who is logging in while it's in progress. This allows the TUI to be interactive immediately after launching the program.
 
+### Fixes
+
+* Fixed various overflow issues in the add series panel.
+
 ### Internal Changes
 
-* The add series panel is now rendered with widgets from the tui-utils library. This provides a small performance improvement.
-
-* Inputs are now rendered with widgets from the tui-utils library. This provides a small performance improvement.
+* The following components are now rendered partially or fully with widgets from the tui-utils library to provide a small performance improvement:
+    * The add series panel (fully)
+    * The user management panel (partially)
+    * The main info panel (fully)
+    * Input widget (fully)
 
 ## 0.2.0 - February 22nd, 2021
 
