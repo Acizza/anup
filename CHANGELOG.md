@@ -14,8 +14,9 @@
 
 * The following components are now rendered partially or fully with widgets from the tui-utils library to provide a small performance improvement:
     * The add series panel (fully)
-    * The user management panel (partially)
     * The main info panel (fully)
+    * The delete series panel (fully)
+    * The user management panel (partially)
     * Input widget (fully)
 
 ## 0.2.0 - February 22nd, 2021

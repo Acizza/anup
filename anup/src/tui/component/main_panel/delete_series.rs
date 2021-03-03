@@ -5,11 +5,14 @@ use crate::{key::Key, tui::component::Component};
 use anyhow::{anyhow, Context, Result};
 use crossterm::event::KeyCode;
 use std::fs;
-use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::Paragraph;
+use tui::{backend::Backend, text::Span};
+use tui_utils::{
+    widgets::{Fragment, OverflowMode, SimpleText, SpanOptions, TextFragments},
+    wrap,
+};
 
 pub struct DeleteSeriesPanel {
     remove_files: RemoveFiles,
@@ -45,33 +48,46 @@ impl DeleteSeriesPanel {
         Ok(())
     }
 
-    fn draw_series_removal_warning<B: Backend>(&self, rect: Rect, frame: &mut Frame<B>) {
-        let text = text::bold_with(&self.removal_warning_text, |s| s.fg(Color::Red));
-        let widget = Paragraph::new(text).alignment(Alignment::Center);
-        frame.render_widget(widget, rect);
-    }
-
     fn draw_remove_files_warning<B: Backend>(
         &self,
         path_rect: Rect,
         status_rect: Rect,
         frame: &mut Frame<B>,
     ) {
-        let path_text = vec![
-            text::bold("Series Path:\n").into(),
-            text::italic(&self.series_path_text).into(),
+        let path_fragments = [
+            Fragment::span(text::bold("Series Path:")),
+            Fragment::Line,
+            Fragment::Span(
+                text::italic(&self.series_path_text),
+                SpanOptions::new().overflow(OverflowMode::Truncate),
+            ),
         ];
 
-        let path_widget = Paragraph::new(path_text).alignment(Alignment::Center);
+        // TODO: use std::array::IntoIter in Rust 1.51.0
+        let wrapped_path_frags = wrap::by_letters(path_fragments.iter().cloned(), path_rect.width);
+        let path_widget = TextFragments::new(&wrapped_path_frags).alignment(Alignment::Center);
+
         frame.render_widget(path_widget, path_rect);
 
-        let status = match self.remove_files {
+        let delete_status_text = match self.remove_files {
             RemoveFiles::Yes => text::bold_with("will be deleted.", |s| s.fg(Color::Red)),
             RemoveFiles::No => text::bold("will not be deleted."),
         };
 
-        let status_text = vec!["The series path on disk ".into(), status.into()];
-        let status_widget = Paragraph::new(status_text).alignment(Alignment::Center);
+        let full_status_frags = {
+            let frags = [
+                Fragment::span(Span::raw("The series path on disk ")),
+                Fragment::Span(
+                    delete_status_text,
+                    SpanOptions::new().overflow(OverflowMode::Truncate),
+                ),
+            ];
+
+            // TODO: use std::array::IntoIter in Rust 1.51.0
+            wrap::by_letters(frags.iter().cloned(), status_rect.width)
+        };
+
+        let status_widget = TextFragments::new(&full_status_frags).alignment(Alignment::Center);
         frame.render_widget(status_widget, status_rect);
     }
 
@@ -83,15 +99,15 @@ impl DeleteSeriesPanel {
 
         let horiz_layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Length(50)])
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(spacer_layout[1]);
 
         let hint_text = text::hint("D - Toggle path deletion");
-        let hint_widget = Paragraph::new(hint_text).alignment(Alignment::Center);
+        let hint_widget = SimpleText::new(hint_text).alignment(Alignment::Center);
         frame.render_widget(hint_widget, horiz_layout[0]);
 
         let hint_text = text::hint("Enter - Confirm");
-        let hint_widget = Paragraph::new(hint_text).alignment(Alignment::Center);
+        let hint_widget = SimpleText::new(hint_text).alignment(Alignment::Center);
         frame.render_widget(hint_widget, horiz_layout[1]);
     }
 
@@ -111,7 +127,13 @@ impl DeleteSeriesPanel {
             .vertical_margin(2)
             .split(rect);
 
-        self.draw_series_removal_warning(vert_fields[0], frame);
+        let warning_text = text::bold_with(&self.removal_warning_text, |s| s.fg(Color::Red));
+        let warning_widget = SimpleText::new(warning_text)
+            .alignment(Alignment::Center)
+            .overflow(OverflowMode::Truncate);
+
+        frame.render_widget(warning_widget, vert_fields[0]);
+
         self.draw_remove_files_warning(vert_fields[1], vert_fields[2], frame);
         Self::draw_hints(vert_fields[3], frame);
     }
