@@ -1,6 +1,6 @@
 # Changelog
 
-## To Be Released
+## 0.3.0 - March 5th, 2021
 
 ### Features
 
