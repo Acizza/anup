@@ -2,7 +2,6 @@ pub mod block;
 pub mod color;
 pub mod style;
 pub mod text;
-pub mod widget;
 
 use crate::{key::Key, try_opt_ret};
 use crossterm::event::KeyCode;

@@ -16,7 +16,7 @@ use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::Paragraph;
+use tui_utils::widgets::{OverflowMode, SimpleText};
 
 pub struct AddPanel {
     name_input: NameInput,
@@ -58,7 +58,10 @@ impl AddPanel {
             .split(rect);
 
         let title_text = text::bold(&data.info.title.preferred);
-        let title_widget = Paragraph::new(title_text).alignment(Alignment::Center);
+        let title_widget = SimpleText::new(title_text)
+            .alignment(Alignment::Center)
+            .overflow(OverflowMode::Truncate);
+
         frame.render_widget(title_widget, vert_split[0]);
 
         let name_layout = Layout::default()
@@ -77,7 +80,10 @@ impl AddPanel {
 
         if let Some(error) = self.name_input.error() {
             let error_text = text::bold_with(error, |s| s.fg(Color::Red));
-            let error_widget = Paragraph::new(error_text).alignment(Alignment::Center);
+            let error_widget = SimpleText::new(error_text)
+                .alignment(Alignment::Center)
+                .overflow(OverflowMode::Truncate);
+
             frame.render_widget(error_widget, vert_split[3]);
         }
     }

@@ -17,6 +17,7 @@
     * The main info panel (fully)
     * The delete series panel (fully)
     * The user management panel (partially)
+    * The split series panel (partially)
     * Input widget (fully)
 
 ## 0.2.0 - February 22nd, 2021
