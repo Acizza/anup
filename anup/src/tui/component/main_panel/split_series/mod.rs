@@ -28,9 +28,9 @@ use std::{borrow::Cow, sync::Arc};
 use std::{fs, io};
 use tokio::task;
 use tui::backend::Backend;
-use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use tui::layout::{Alignment, Direction, Rect};
 use tui::terminal::Frame;
-use tui::widgets::Paragraph;
+use tui_utils::{layout::SimpleLayout, widgets::SimpleText};
 
 pub struct SplitSeriesPanel {
     state: ArcMutex<PanelState>,
@@ -99,15 +99,14 @@ impl SplitSeriesPanel {
         let outline = block::with_borders("Split Series");
         frame.render_widget(outline, rect);
 
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+        let layout = SimpleLayout::new(Direction::Vertical)
             .margin(1)
-            .split(rect);
+            .split_evenly(rect);
 
         let text = text::bold("Loading..");
-        let widget = Paragraph::new(text).alignment(Alignment::Center);
-        frame.render_widget(widget, layout[1]);
+        let widget = SimpleText::new(text).alignment(Alignment::Center);
+
+        frame.render_widget(widget, layout.right);
     }
 
     pub fn draw<B: Backend>(&mut self, rect: Rect, frame: &mut Frame<B>) {

@@ -1,6 +1,7 @@
 use super::PartialSeries;
 use crate::tui::component::input::{
-    IDInput, Input, InputFlags, NameInput, ParsedValue, ParserInput, PathInput, ValidatedInput,
+    DrawInput, IDInput, Input, InputFlags, NameInput, ParsedValue, ParserInput, PathInput,
+    ValidatedInput,
 };
 use crate::tui::component::Component;
 use crate::tui::widget_util::{block, style};
@@ -28,7 +29,10 @@ use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::{backend::Backend, text::Span};
-use tui_utils::widgets::{Fragment, OverflowMode, SimpleText, SpanOptions, TextFragments};
+use tui_utils::{
+    layout::{RectExt, SimpleLayout},
+    widgets::{Fragment, OverflowMode, SimpleText, SpanOptions, TextFragments},
+};
 
 const DURATION_BETWEEN_SERIES_UPDATES: Duration = Duration::from_millis(750);
 
@@ -93,11 +97,6 @@ impl PanelInputs {
             path: PathInput::with_path(InputFlags::empty(), config, series.path().to_owned()),
             parser: ParserInput::with_text(InputFlags::empty(), parser_pattern),
         }
-    }
-
-    #[inline(always)]
-    pub fn all(&self) -> [&dyn ValidatedInput; Self::TOTAL] {
-        [&self.name, &self.id, &self.path, &self.parser]
     }
 
     #[inline(always)]
@@ -233,44 +232,24 @@ impl AddSeriesPanel {
     where
         B: Backend,
     {
-        let vert_fields = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(
-                [
-                    // Field
-                    Input::DRAW_WITH_LABEL_CONSTRAINT,
-                    // Spacer
-                    Constraint::Length(1),
-                    // Field
-                    Input::DRAW_WITH_LABEL_CONSTRAINT,
-                    // Remaining space
-                    Constraint::Percentage(100),
-                ]
-                .as_ref(),
-            )
+        const HORIZ_PADDING: u16 = 2;
+
+        let quadrants = SimpleLayout::default()
             .vertical_margin(1)
-            .split(rect);
+            .split_quadrants(rect);
 
-        let horiz_fields = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref());
+        let pad = |quadrant: Rect| {
+            quadrant
+                .pad_horiz(HORIZ_PADDING)
+                .lines_from_top(Input::DRAW_LINES_REQUIRED)
+        };
 
-        let horiz_fields_top = horiz_fields.split(vert_fields[0]);
-        let horiz_fields_bottom = horiz_fields.split(vert_fields[2]);
+        let inputs = &panel_state.inputs;
 
-        let field_positions = horiz_fields_top
-            .into_iter()
-            .chain(horiz_fields_bottom.into_iter());
-
-        for (input, pos) in panel_state.inputs.all().iter().zip(field_positions) {
-            let layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(100)].as_ref())
-                .horizontal_margin(3)
-                .split(pos);
-
-            input.input().draw(layout[0], frame);
-        }
+        inputs.name.draw(pad(quadrants.top_left), frame);
+        inputs.id.draw(pad(quadrants.top_right), frame);
+        inputs.path.draw(pad(quadrants.bottom_left), frame);
+        inputs.parser.draw(pad(quadrants.bottom_right), frame);
     }
 
     fn draw_detected_panel<B>(panel_state: &SharedPanelState, rect: Rect, frame: &mut Frame<B>)
@@ -321,10 +300,7 @@ impl AddSeriesPanel {
 
         frame.render_widget(header, vert_layout[0]);
 
-        let fields = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-            .split(vert_layout[2]);
+        let fields = SimpleLayout::new(Direction::Horizontal).split_evenly(vert_layout[2]);
 
         if has_error {
             return;
@@ -335,7 +311,7 @@ impl AddSeriesPanel {
         info_label!(
             "Relative Path",
             Span::styled(format!("{}", built.params.path.display()), style::italic()),
-            fields[0]
+            fields.left
         );
 
         let episodes_text = match &built.episodes {
@@ -346,7 +322,7 @@ impl AddSeriesPanel {
             }
         };
 
-        info_label!("Found Episodes", episodes_text, fields[1]);
+        info_label!("Found Episodes", episodes_text, fields.right);
     }
 
     pub fn draw<B: Backend>(&mut self, rect: Rect, frame: &mut Frame<B>) {

@@ -978,8 +978,8 @@ dependencies = [
 
 [[package]]
 name = "tui-utils"
-version = "0.6.0"
-source = "git+https://github.com/Acizza/tui-utils?rev=0.6.0#e020aef8bf79c23cb834574747e946be50cffc4f"
+version = "0.7.0"
+source = "git+https://github.com/Acizza/tui-utils?rev=0.7.0#3a466abd4ecac4d688eea3d08d6b4e2449e298f2"
 dependencies = [
  "smallvec",
  "tui",

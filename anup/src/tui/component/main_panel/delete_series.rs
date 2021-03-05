@@ -5,11 +5,12 @@ use crate::{key::Key, tui::component::Component};
 use anyhow::{anyhow, Context, Result};
 use crossterm::event::KeyCode;
 use std::fs;
-use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use tui::layout::{Alignment, Direction, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::{backend::Backend, text::Span};
 use tui_utils::{
+    layout::{RectExt, SimpleLayout},
     widgets::{Fragment, OverflowMode, SimpleText, SpanOptions, TextFragments},
     wrap,
 };
@@ -92,50 +93,43 @@ impl DeleteSeriesPanel {
     }
 
     fn draw_hints<B: Backend>(rect: Rect, frame: &mut Frame<B>) {
-        let spacer_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(1)])
-            .split(rect);
-
-        let horiz_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(spacer_layout[1]);
+        let horiz_layout =
+            SimpleLayout::new(Direction::Horizontal).split_evenly(rect.lines_from_bottom(1));
 
         let hint_text = text::hint("D - Toggle path deletion");
         let hint_widget = SimpleText::new(hint_text).alignment(Alignment::Center);
-        frame.render_widget(hint_widget, horiz_layout[0]);
+        frame.render_widget(hint_widget, horiz_layout.left);
 
         let hint_text = text::hint("Enter - Confirm");
         let hint_widget = SimpleText::new(hint_text).alignment(Alignment::Center);
-        frame.render_widget(hint_widget, horiz_layout[1]);
+        frame.render_widget(hint_widget, horiz_layout.right);
     }
 
     pub fn draw<B: Backend>(&mut self, rect: Rect, frame: &mut Frame<B>) {
-        let outline = block::with_borders("Delete Series");
-        frame.render_widget(outline, rect);
+        let block = block::with_borders("Delete Series");
+        let block_area = block.inner(rect);
 
-        let vert_fields = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Ratio(1, 4),
-                Constraint::Ratio(1, 4),
-                Constraint::Ratio(1, 4),
-                Constraint::Ratio(1, 4),
-            ])
+        frame.render_widget(block, rect);
+
+        let vert_fields = SimpleLayout::new(Direction::Vertical)
             .horizontal_margin(2)
-            .vertical_margin(2)
-            .split(rect);
+            .vertical_margin(1)
+            .split_quarters(block_area);
 
         let warning_text = text::bold_with(&self.removal_warning_text, |s| s.fg(Color::Red));
         let warning_widget = SimpleText::new(warning_text)
             .alignment(Alignment::Center)
             .overflow(OverflowMode::Truncate);
 
-        frame.render_widget(warning_widget, vert_fields[0]);
+        frame.render_widget(warning_widget, vert_fields.first);
 
-        self.draw_remove_files_warning(vert_fields[1], vert_fields[2], frame);
-        Self::draw_hints(vert_fields[3], frame);
+        // Center of third vertical field
+        let status_pos = SimpleLayout::new(Direction::Vertical)
+            .split_evenly(vert_fields.third)
+            .right;
+
+        self.draw_remove_files_warning(vert_fields.second, status_pos, frame);
+        Self::draw_hints(vert_fields.fourth, frame);
     }
 }
 

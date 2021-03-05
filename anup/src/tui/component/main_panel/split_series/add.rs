@@ -47,7 +47,7 @@ impl AddPanel {
             .constraints(
                 [
                     Constraint::Ratio(1, 3),
-                    Input::DRAW_WITH_LABEL_CONSTRAINT,
+                    Constraint::Length(Input::DRAW_LINES_REQUIRED),
                     Constraint::Min(1),
                     Constraint::Length(1),
                 ]

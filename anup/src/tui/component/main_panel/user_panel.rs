@@ -146,7 +146,7 @@ impl UserPanel {
             .constraints(
                 [
                     // Token input
-                    Input::DRAW_WITH_LABEL_CONSTRAINT,
+                    Constraint::Length(Input::DRAW_LINES_REQUIRED),
                     // Spacer
                     Constraint::Length(1),
                     // Service selection

@@ -10,7 +10,8 @@ use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::{Paragraph, Row, Table, TableState};
+use tui::widgets::{Row, Table, TableState};
+use tui_utils::{layout::SimpleLayout, widgets::SimpleText};
 
 #[derive(Default)]
 pub struct SplitPanel {
@@ -73,23 +74,13 @@ impl SplitPanel {
 
         self.draw_merged_series_table(vert_split[0], frame);
 
-        let hint_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-            .split(vert_split[1]);
+        let hint_layout = SimpleLayout::new(Direction::Horizontal).split_evenly(vert_split[1]);
 
-        macro_rules! hint_text {
-            ($($hint:expr => $pos:expr),+) => {$({
-                let text = text::hint($hint);
+        let hint = SimpleText::new(text::hint("S - Split All")).alignment(Alignment::Center);
+        frame.render_widget(hint, hint_layout.left);
 
-                let widget = Paragraph::new(text)
-                    .alignment(Alignment::Center);
-
-                frame.render_widget(widget, hint_layout[$pos]);
-            })+};
-        }
-
-        hint_text!("S - Split All" => 0, "Enter - Add Series" => 1);
+        let hint = SimpleText::new(text::hint("Enter - Add Series")).alignment(Alignment::Center);
+        frame.render_widget(hint, hint_layout.right);
     }
 }
 

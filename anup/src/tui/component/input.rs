@@ -39,7 +39,7 @@ pub struct Input {
 }
 
 impl Input {
-    pub const DRAW_WITH_LABEL_CONSTRAINT: Constraint = Constraint::Length(4);
+    pub const DRAW_LINES_REQUIRED: u16 = 4;
 
     fn with_caret(
         flags: InputFlags,
