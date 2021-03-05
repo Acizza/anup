@@ -12,7 +12,7 @@ use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::{backend::Backend, text::Span};
-use tui_utils::widgets::SimpleText;
+use tui_utils::widgets::{OverflowMode, SimpleText};
 use unicode_segmentation::GraphemeCursor;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -152,7 +152,7 @@ impl Input {
             }
         };
 
-        let widget = SimpleText::new(text);
+        let widget = SimpleText::new(text).overflow(OverflowMode::Truncate);
         frame.render_widget(widget, content_area);
 
         self.set_cursor_pos(content_area, frame);
