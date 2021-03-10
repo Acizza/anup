@@ -24,7 +24,7 @@ use tui::style::Color;
 use tui::terminal::Frame;
 use tui::text::Span;
 use tui_utils::{
-    grid_pos,
+    layout::RectExt,
     widgets::{Fragment, OverflowMode, SimpleText, SpanOptions, TextFragments},
     wrap,
 };
@@ -289,15 +289,12 @@ impl InfoPanel {
             ($x_column:expr, $y_column:expr => $header:expr, $value:expr) => {{
                 let content = layout[1];
 
-                let pos = grid_pos(
-                    Rect {
-                        x: $x_column,
-                        y: $y_column,
-                        width: content.width / 3,
-                        height: content.height / 3,
-                    },
-                    content,
-                );
+                let pos = content.grid_pos(Rect {
+                    x: $x_column,
+                    y: $y_column,
+                    width: content.width / 3,
+                    height: content.height / 3,
+                });
 
                 Self::draw_stat($header, $value, pos, frame);
             }};
