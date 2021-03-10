@@ -2,6 +2,11 @@
 
 ## To Be Released
 
+### Breaking Changes
+
+* Database migrations from June 15h, 2020 have been removed. If you have a series database from before that date and have not ran the program since then, you can either delete it or run the last stable version first to upgrade it.
+  The series database is located at `~/.local/share/anup/data.db`.
+
 ### Internal Changes
 
 * Nearly the entire TUI now uses `SimpleLayout` from the `tui-utils` library to create layouts for rendering. This provides a small performance improvement.

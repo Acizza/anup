@@ -4,7 +4,7 @@ use diesel::connection::SimpleConnection;
 use diesel::deserialize::{self, FromSql};
 use diesel::prelude::*;
 use diesel::serialize::{self, Output, ToSql};
-use diesel::sql_types::{Integer, Nullable, Text};
+use diesel::sql_types::{Nullable, Text};
 use smallvec::SmallVec;
 use std::io::Write;
 use std::ops::Deref;
@@ -55,21 +55,8 @@ impl Database {
         conn.batch_execute(include_str!("../sql/pragmas.sql"))
             .context("executing pragmas")?;
 
-        let db_version = Self::user_version(&conn).context("getting user version")?;
-
         conn.batch_execute(include_str!("../sql/schema.sql"))
             .context("executing schema")?;
-
-        // Migrations for June 15th, 2020
-        if db_version == 0 {
-            conn.batch_execute(include_str!("../sql/migrations/rename_episode_matcher.sql"))
-                .ok();
-
-            conn.batch_execute(include_str!(
-                "../sql/migrations/delete_series_info_sequels.sql"
-            ))
-            .ok();
-        }
 
         Ok(Self(conn))
     }
@@ -83,18 +70,6 @@ impl Database {
     #[inline(always)]
     pub fn conn(&self) -> &SqliteConnection {
         &self.0
-    }
-
-    fn user_version(conn: &SqliteConnection) -> diesel::QueryResult<i32> {
-        #[derive(QueryableByName)]
-        struct UserVersion {
-            #[sql_type = "Integer"]
-            user_version: i32,
-        }
-
-        diesel::sql_query("PRAGMA user_version")
-            .get_result::<UserVersion>(conn)
-            .map(|ver| ver.user_version)
     }
 }
 
