@@ -18,11 +18,8 @@ use crossterm::{event::KeyCode, terminal};
 use state::{SharedState, UIErrorKind, UIEvent};
 use std::{io, sync::Arc};
 use tokio::sync::Notify;
-use tui::{
-    backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
-    Terminal,
-};
+use tui::{backend::CrosstermBackend, layout::Direction, Terminal};
+use tui_utils::layout::{BasicConstraint, SimpleLayout};
 
 pub async fn run(args: &Args) -> Result<()> {
     let terminal = init_terminal().context("failed to init backend")?;
@@ -227,18 +224,24 @@ impl Panels {
     fn draw(&mut self, state: &UIState, terminal: &mut CrosstermTerminal) -> Result<()> {
         terminal
             .draw(|mut frame| {
-                let horiz_splitter = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([Constraint::Min(20), Constraint::Percentage(70)].as_ref())
-                    .split(frame.size());
+                let horiz_splitter = SimpleLayout::new(Direction::Horizontal).split(
+                    frame.size(),
+                    &[
+                        BasicConstraint::MinLenGrowthPcnt(20, 30),
+                        BasicConstraint::Percentage(70),
+                    ],
+                );
 
                 SeriesList::draw(state, horiz_splitter[0], &mut frame);
 
                 // Series info panel vertical splitter
-                let info_panel_splitter = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
-                    .split(horiz_splitter[1]);
+                let info_panel_splitter = SimpleLayout::new(Direction::Vertical).split(
+                    horiz_splitter[1],
+                    &[
+                        BasicConstraint::Percentage(80),
+                        BasicConstraint::Percentage(20),
+                    ],
+                );
 
                 self.main_panel
                     .draw(state, info_panel_splitter[0], &mut frame);

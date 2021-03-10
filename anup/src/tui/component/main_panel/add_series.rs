@@ -25,12 +25,12 @@ use std::mem;
 use std::time::Instant;
 use std::{borrow::Cow, sync::Arc, time::Duration};
 use tokio::task;
-use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use tui::layout::{Alignment, Direction, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::{backend::Backend, text::Span};
 use tui_utils::{
-    layout::{RectExt, SimpleLayout},
+    layout::{BasicConstraint, RectExt, SimpleLayout},
     widgets::{Fragment, OverflowMode, SimpleText, SpanOptions, TextFragments},
 };
 
@@ -282,17 +282,17 @@ impl AddSeriesPanel {
                 ),
             };
 
-        let vert_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
+        let vert_layout = SimpleLayout::new(Direction::Vertical).split(
+            rect,
+            &[
                 // Header
-                Constraint::Length(1),
+                BasicConstraint::Length(1),
                 // Spacer
-                Constraint::Length(1),
+                BasicConstraint::Length(1),
                 // Fields
-                Constraint::Length(2),
-            ])
-            .split(rect);
+                BasicConstraint::Length(2),
+            ],
+        );
 
         let header = SimpleText::new(header_text)
             .alignment(Alignment::Center)
@@ -338,11 +338,15 @@ impl AddSeriesPanel {
 
         frame.render_widget(block, rect);
 
-        let split = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(11), Constraint::Length(5)].as_ref())
+        let split = SimpleLayout::new(Direction::Vertical)
             .horizontal_margin(2)
-            .split(block_area);
+            .split(
+                block_area,
+                &[
+                    BasicConstraint::MinLenRemaining(11, 5),
+                    BasicConstraint::Length(5),
+                ],
+            );
 
         Self::draw_inputs(&panel_state, split[0], frame);
         Self::draw_detected_panel(&panel_state, split[1], frame);

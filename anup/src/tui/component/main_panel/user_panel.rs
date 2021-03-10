@@ -14,13 +14,14 @@ use anime::remote::{AccessToken, Remote, RemoteService};
 use anyhow::{anyhow, Context, Result};
 use crossterm::event::KeyCode;
 use std::process::Command;
-use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use tui::layout::{Alignment, Constraint, Direction, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::text::Span;
 use tui::widgets::{Row, Table, TableState};
 use tui::{backend::Backend, style::Style};
 use tui_utils::{
+    layout::{BasicConstraint, SimpleLayout},
     list::{EnumListItems, SelectableEnum},
     widgets::{Fragment, SimpleList, SimpleText, TextFragments},
 };
@@ -138,29 +139,29 @@ impl UserPanel {
     {
         let is_panel_selected = self.current_panel == SelectedPanel::AddUser;
 
-        let outline = block::selectable("Add User", is_panel_selected);
-        frame.render_widget(outline, rect);
+        let block = block::selectable("Add User", is_panel_selected);
+        let block_area = block.inner(rect);
 
-        let vert_split = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(
-                [
+        frame.render_widget(block, rect);
+
+        let vert_split = SimpleLayout::new(Direction::Vertical)
+            .horizontal_margin(2)
+            .vertical_margin(1)
+            .split(
+                block_area,
+                &[
                     // Token input
-                    Constraint::Length(Input::DRAW_LINES_REQUIRED),
+                    BasicConstraint::Length(Input::DRAW_LINES_REQUIRED),
                     // Spacer
-                    Constraint::Length(1),
+                    BasicConstraint::Length(1),
                     // Service selection
-                    Constraint::Min(4),
+                    BasicConstraint::MinLenRemaining(4, 4),
                     // Spacer
-                    Constraint::Length(1),
+                    BasicConstraint::Length(1),
                     // Hint text
-                    Constraint::Length(3),
-                ]
-                .as_ref(),
-            )
-            .vertical_margin(2)
-            .horizontal_margin(4)
-            .split(rect);
+                    BasicConstraint::Length(3),
+                ],
+            );
 
         self.token_input.set_selected(is_panel_selected);
         self.token_input.draw(vert_split[0], frame);
@@ -205,19 +206,21 @@ impl UserPanel {
 
         frame.render_widget(block, rect);
 
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(
-                [
-                    Constraint::Min(10),
-                    Constraint::Length(1),
-                    Constraint::Length(4),
-                    Constraint::Length(2),
-                ]
-                .as_ref(),
-            )
+        let layout = SimpleLayout::new(Direction::Vertical)
             .horizontal_margin(1)
-            .split(block_area);
+            .split(
+                block_area,
+                &[
+                    // User table
+                    BasicConstraint::MinLenRemaining(10, 8),
+                    // Spacer
+                    BasicConstraint::Length(1),
+                    // Hints
+                    BasicConstraint::Length(5),
+                    // Status Text
+                    BasicConstraint::Length(2),
+                ],
+            );
 
         self.draw_users_table(is_panel_selected, state, layout[0], frame);
 
@@ -296,10 +299,13 @@ impl UserPanel {
     }
 
     pub fn draw<B: Backend>(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>) {
-        let horiz_split = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)].as_ref())
-            .split(rect);
+        let horiz_split = SimpleLayout::new(Direction::Horizontal).split(
+            rect,
+            &[
+                BasicConstraint::Percentage(60),
+                BasicConstraint::Percentage(40),
+            ],
+        );
 
         self.draw_user_selection_panel(state, horiz_split[0], frame);
         self.draw_add_user_panel(horiz_split[1], frame);

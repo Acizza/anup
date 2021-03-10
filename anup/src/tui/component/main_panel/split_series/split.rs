@@ -7,11 +7,14 @@ use anime::remote::SeriesInfo as RemoteInfo;
 use anyhow::Result;
 use crossterm::event::KeyCode;
 use tui::backend::Backend;
-use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use tui::layout::{Alignment, Constraint, Direction, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::widgets::{Row, Table, TableState};
-use tui_utils::{layout::SimpleLayout, widgets::SimpleText};
+use tui_utils::{
+    layout::{BasicConstraint, SimpleLayout},
+    widgets::SimpleText,
+};
 
 #[derive(Default)]
 pub struct SplitPanel {
@@ -63,14 +66,18 @@ impl SplitPanel {
     }
 
     pub fn draw<B: Backend>(&mut self, rect: Rect, frame: &mut Frame<B>) {
-        let outline = block::with_borders(None);
-        frame.render_widget(outline, rect);
+        let block = block::with_borders(None);
+        let block_area = block.inner(rect);
 
-        let vert_split = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(4), Constraint::Length(2)].as_ref())
-            .horizontal_margin(1)
-            .split(rect);
+        frame.render_widget(block, rect);
+
+        let vert_split = SimpleLayout::new(Direction::Vertical).split(
+            block_area,
+            &[
+                BasicConstraint::MinLenRemaining(4, 2),
+                BasicConstraint::Length(2),
+            ],
+        );
 
         self.draw_merged_series_table(vert_split[0], frame);
 

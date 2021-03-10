@@ -1,5 +1,11 @@
 # Changelog
 
+## To Be Released
+
+### Internal Changes
+
+* Nearly the entire TUI now uses `SimpleLayout` from the `tui-utils` library to create layouts for rendering. This provides a small performance improvement.
+
 ## 0.3.0 - March 5th, 2021
 
 ### Features

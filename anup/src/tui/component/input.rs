@@ -8,11 +8,14 @@ use bitflags::bitflags;
 use crossterm::event::KeyCode;
 use std::borrow::Cow;
 use std::path::PathBuf;
-use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use tui::layout::{Alignment, Direction, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::{backend::Backend, text::Span};
-use tui_utils::widgets::{OverflowMode, SimpleText};
+use tui_utils::{
+    layout::{BasicConstraint, SimpleLayout},
+    widgets::{OverflowMode, SimpleText},
+};
 use unicode_segmentation::GraphemeCursor;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -112,10 +115,10 @@ impl Input {
             }
         };
 
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Length(3)].as_ref())
-            .split(rect);
+        let layout = SimpleLayout::new(Direction::Vertical).split(
+            rect,
+            &[BasicConstraint::Length(1), BasicConstraint::Length(3)],
+        );
 
         let label_widget = {
             let style = if is_disabled {

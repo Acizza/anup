@@ -13,10 +13,13 @@ use anime::remote::SeriesInfo as RemoteInfo;
 use anyhow::Result;
 use crossterm::event::KeyCode;
 use tui::backend::Backend;
-use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use tui::layout::{Alignment, Direction, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui_utils::widgets::{OverflowMode, SimpleText};
+use tui_utils::{
+    layout::{BasicConstraint, SimpleLayout},
+    widgets::{OverflowMode, SimpleText},
+};
 
 pub struct AddPanel {
     name_input: NameInput,
@@ -39,23 +42,27 @@ impl AddPanel {
     pub fn draw<B: Backend>(&mut self, rect: Rect, frame: &mut Frame<B>) {
         let data = try_opt_ret!(&self.data);
 
-        let outline = block::with_borders("Enter Name For Series");
-        frame.render_widget(outline, rect);
+        let block = block::with_borders("Enter Name For Series");
+        let block_area = block.inner(rect);
 
-        let vert_split = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(
-                [
-                    Constraint::Ratio(1, 3),
-                    Constraint::Length(Input::DRAW_LINES_REQUIRED),
-                    Constraint::Min(1),
-                    Constraint::Length(1),
-                ]
-                .as_ref(),
-            )
-            .horizontal_margin(2)
-            .vertical_margin(3)
-            .split(rect);
+        frame.render_widget(block, rect);
+
+        let vert_split = SimpleLayout::new(Direction::Vertical)
+            .horizontal_margin(1)
+            .vertical_margin(2)
+            .split(
+                block_area,
+                &[
+                    // Title
+                    BasicConstraint::Percentage(33),
+                    // Series name input
+                    BasicConstraint::Length(Input::DRAW_LINES_REQUIRED),
+                    // Spacer
+                    BasicConstraint::MinLenRemaining(1, 1),
+                    // Error
+                    BasicConstraint::Length(1),
+                ],
+            );
 
         let title_text = text::bold(&data.info.title.preferred);
         let title_widget = SimpleText::new(title_text)
@@ -64,17 +71,14 @@ impl AddPanel {
 
         frame.render_widget(title_widget, vert_split[0]);
 
-        let name_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(
-                [
-                    Constraint::Percentage(20),
-                    Constraint::Percentage(60),
-                    Constraint::Percentage(20),
-                ]
-                .as_ref(),
-            )
-            .split(vert_split[1]);
+        let name_layout = SimpleLayout::new(Direction::Horizontal).split(
+            vert_split[1],
+            &[
+                BasicConstraint::Percentage(20),
+                BasicConstraint::Percentage(60),
+                BasicConstraint::Percentage(20),
+            ],
+        );
 
         self.name_input.draw(name_layout[1], frame);
 

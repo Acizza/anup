@@ -17,14 +17,14 @@ use std::{
     time::Duration,
 };
 use std::{fmt, sync::atomic::AtomicU32};
-use tokio::{task, time};
+use tokio::task;
 use tui::backend::Backend;
-use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use tui::layout::{Alignment, Direction, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::text::Span;
 use tui_utils::{
-    layout::RectExt,
+    layout::{BasicConstraint, RectExt, SimpleLayout},
     widgets::{Fragment, OverflowMode, SimpleText, SpanOptions, TextFragments},
     wrap,
 };
@@ -121,17 +121,16 @@ impl InfoPanel {
                     state.lock().mark_dirty();
                 }
 
-                time::sleep(Duration::from_secs(60)).await;
+                tokio::time::sleep(Duration::from_secs(60)).await;
             }
         })
     }
 
     fn header_body_layout(rect: Rect) -> (Rect, Rect) {
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(2), Constraint::Percentage(100)])
-            .margin(2)
-            .split(rect);
+        let layout = SimpleLayout::new(Direction::Vertical).margin(2).split(
+            rect,
+            &[BasicConstraint::Length(2), BasicConstraint::Percentage(100)],
+        );
 
         (layout[0], layout[1])
     }
@@ -252,18 +251,14 @@ impl InfoPanel {
     ) where
         B: Backend,
     {
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(
-                [
-                    Constraint::Length(4),
-                    Constraint::Percentage(70),
-                    Constraint::Length(4),
-                ]
-                .as_ref(),
-            )
-            .margin(2)
-            .split(rect);
+        let layout = SimpleLayout::new(Direction::Vertical).margin(2).split(
+            rect,
+            &[
+                BasicConstraint::Length(4),
+                BasicConstraint::Percentage(70),
+                BasicConstraint::Length(4),
+            ],
+        );
 
         let info = &series.data.info;
         let entry = &series.data.entry;
