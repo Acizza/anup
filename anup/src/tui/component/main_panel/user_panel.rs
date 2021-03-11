@@ -1,7 +1,7 @@
 use super::{Component, ShouldReset};
 use crate::try_opt_r;
 use crate::tui::component::input::{Input, InputFlags};
-use crate::tui::widget_util::{block, style, text, SelectWidgetState};
+use crate::tui::widget_util::{block, style, text};
 use crate::tui::UIState;
 use crate::user::{RemoteType, UserInfo};
 use crate::{file::SerializedFile, key::Key};
@@ -14,20 +14,19 @@ use anime::remote::{AccessToken, Remote, RemoteService};
 use anyhow::{anyhow, Context, Result};
 use crossterm::event::KeyCode;
 use std::process::Command;
-use tui::layout::{Alignment, Constraint, Direction, Rect};
+use tui::layout::{Alignment, Direction, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::text::Span;
-use tui::widgets::{Row, Table, TableState};
 use tui::{backend::Backend, style::Style};
 use tui_utils::{
     layout::{BasicConstraint, SimpleLayout},
-    list::{EnumListItems, SelectableEnum},
-    widgets::{Fragment, SimpleList, SimpleText, TextFragments},
+    list::{EnumListItems, SelectableEnum, WrappingIndex},
+    widgets::{Fragment, SimpleList, SimpleTable, SimpleText, TextFragments},
 };
 
 pub struct UserPanel {
-    user_table_state: SelectWidgetState<TableState>,
+    selected_user: WrappingIndex,
     selected_service: SelectableEnum<RemoteType>,
     token_input: Input,
     current_panel: SelectedPanel,
@@ -37,7 +36,7 @@ pub struct UserPanel {
 impl UserPanel {
     pub fn new(state: SharedState) -> Self {
         Self {
-            user_table_state: SelectWidgetState::new(),
+            selected_user: WrappingIndex::new(0),
             selected_service: SelectableEnum::new(),
             token_input: Input::new(InputFlags::empty(), "Paste Token"),
             current_panel: SelectedPanel::SelectUser,
@@ -72,7 +71,7 @@ impl UserPanel {
     }
 
     fn selected_user<'a>(&'a self, state: &'a UIState) -> Option<(&'a UserInfo, &'a AccessToken)> {
-        let index = self.user_table_state.selected()?;
+        let index = self.selected_user.get();
         state.users.get().iter().nth(index)
     }
 
@@ -91,7 +90,7 @@ impl UserPanel {
         state.users.remove(&user);
 
         // Since our user table has been changed, we should make sure our selected user is still valid
-        self.user_table_state.validate_selected(state.users.len());
+        self.selected_user.update_bounds(state.users.len());
 
         state.users.save()
     }
@@ -195,7 +194,7 @@ impl UserPanel {
         frame.render_widget(hint_widget, vert_split[4]);
     }
 
-    fn draw_user_selection_panel<B>(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>)
+    fn draw_user_selection_panel<B>(&self, state: &UIState, rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
     {
@@ -206,21 +205,19 @@ impl UserPanel {
 
         frame.render_widget(block, rect);
 
-        let layout = SimpleLayout::new(Direction::Vertical)
-            .horizontal_margin(1)
-            .split(
-                block_area,
-                &[
-                    // User table
-                    BasicConstraint::MinLenRemaining(10, 8),
-                    // Spacer
-                    BasicConstraint::Length(1),
-                    // Hints
-                    BasicConstraint::Length(5),
-                    // Status Text
-                    BasicConstraint::Length(2),
-                ],
-            );
+        let layout = SimpleLayout::new(Direction::Vertical).split(
+            block_area,
+            &[
+                // User table
+                BasicConstraint::MinLenRemaining(5, 8),
+                // Spacer
+                BasicConstraint::Length(1),
+                // Hints
+                BasicConstraint::Length(5),
+                // Status Text
+                BasicConstraint::Length(2),
+            ],
+        );
 
         self.draw_users_table(is_panel_selected, state, layout[0], frame);
 
@@ -259,7 +256,7 @@ impl UserPanel {
     }
 
     fn draw_users_table<B>(
-        &mut self,
+        &self,
         is_selected: bool,
         state: &UIState,
         rect: Rect,
@@ -275,27 +272,31 @@ impl UserPanel {
                 .map(|remote| user.is_logged_in(remote))
                 .unwrap_or(false);
 
-            let data = [user.username.as_str(), user.service.as_str()];
-
             let style = if is_logged_in {
                 style::fg(Color::Blue)
             } else {
                 Style::default()
             };
 
-            Row::new(data.to_vec()).style(style)
+            [
+                Span::styled(user.username.as_str(), style),
+                Span::styled(user.service.as_str(), style),
+            ]
         });
 
-        let header = Row::new(vec!["Username", "Service"]);
+        let header = [Span::raw("Username"), Span::raw("Service")];
 
-        let users_widget = Table::new(users)
-            .header(header)
-            .widths([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-            .highlight_symbol(">")
-            .highlight_style(style::list_selector(is_selected))
-            .column_spacing(4);
+        let layout = [
+            BasicConstraint::Percentage(50),
+            BasicConstraint::Percentage(50),
+        ];
 
-        frame.render_stateful_widget(users_widget, rect, &mut self.user_table_state);
+        let users_widget = SimpleTable::new(users, &layout)
+            .header(&header)
+            .highlight_symbol(Span::styled(">", style::list_selector(is_selected)))
+            .select(Some(self.selected_user.get() as u16));
+
+        frame.render_widget(users_widget, rect);
     }
 
     pub fn draw<B: Backend>(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>) {
@@ -326,8 +327,11 @@ impl Component for UserPanel {
             _ => match self.current_panel {
                 SelectedPanel::SelectUser => match *key {
                     KeyCode::Up | KeyCode::Down => {
-                        self.user_table_state
-                            .update_selected(key, state.users.len());
+                        match *key {
+                            KeyCode::Up => self.selected_user.decrement(state.users.len()),
+                            KeyCode::Down => self.selected_user.increment(state.users.len()),
+                            _ => unreachable!(),
+                        }
 
                         Ok(ShouldReset::No)
                     }

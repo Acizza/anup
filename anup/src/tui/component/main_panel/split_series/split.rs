@@ -1,24 +1,24 @@
 use super::MergedSeries;
 use crate::tui::component::Component;
-use crate::tui::widget_util::{block, color, style, text, SelectWidgetState};
+use crate::tui::widget_util::{block, color, style, text};
 use crate::tui::UIState;
 use crate::{key::Key, series::SeriesPath};
 use anime::remote::SeriesInfo as RemoteInfo;
 use anyhow::Result;
 use crossterm::event::KeyCode;
-use tui::backend::Backend;
-use tui::layout::{Alignment, Constraint, Direction, Rect};
+use tui::layout::{Alignment, Direction, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::{Row, Table, TableState};
+use tui::{backend::Backend, text::Span};
 use tui_utils::{
     layout::{BasicConstraint, SimpleLayout},
-    widgets::SimpleText,
+    list::WrappingIndex,
+    widgets::{SimpleTable, SimpleText},
 };
 
 #[derive(Default)]
 pub struct SplitPanel {
-    split_table: SelectWidgetState<TableState>,
+    selected_series: WrappingIndex,
     merged_series: Vec<MergedSeries>,
     has_split_series: bool,
 }
@@ -26,50 +26,69 @@ pub struct SplitPanel {
 impl SplitPanel {
     pub(super) fn new(merged_series: Vec<MergedSeries>) -> Self {
         Self {
-            split_table: SelectWidgetState::unselected(),
+            selected_series: WrappingIndex::new(0),
             merged_series,
             has_split_series: false,
         }
     }
 
-    fn draw_merged_series_table<B>(&mut self, rect: Rect, frame: &mut Frame<B>)
+    fn draw_merged_series_table<B>(&self, rect: Rect, frame: &mut Frame<B>)
     where
         B: Backend,
     {
         let row_color = color::either(self.has_split_series, Color::Blue, Color::Yellow);
 
-        let rows = self.merged_series.iter().map(|merged| {
-            let (rows, color) = match merged {
-                &MergedSeries::Failed(cat) => (vec![cat.into(), "Failed.."], Color::Red),
-                MergedSeries::Resolved(series) => (
-                    vec![
-                        series.info.kind.into(),
-                        series.info.title.preferred.as_str(),
-                    ],
-                    row_color,
-                ),
-            };
+        let rows = self.merged_series.iter().map(|merged| match merged {
+            &MergedSeries::Failed(kind) => {
+                let kind: &'static str = kind.into();
 
-            Row::new(rows).style(style::fg(color))
+                [
+                    text::with_color(kind, Color::Red),
+                    text::with_color("Failed..", Color::Red),
+                ]
+            }
+            MergedSeries::Resolved(series) => {
+                let kind: &'static str = series.info.kind.into();
+
+                [
+                    text::with_color(kind, row_color),
+                    text::with_color(series.info.title.preferred.as_str(), row_color),
+                ]
+            }
         });
 
-        let header = Row::new(vec!["Type", "Series"]);
+        let header = [Span::raw("Type"), Span::raw("Series")];
+        let layout = [BasicConstraint::Length(8), BasicConstraint::Percentage(100)];
 
-        let table = Table::new(rows)
-            .header(header)
-            .widths([Constraint::Length(8), Constraint::Percentage(100)].as_ref())
-            .highlight_symbol(">")
-            .highlight_style(style::list_selector(self.has_split_series))
-            .column_spacing(2);
+        let table = SimpleTable::new(rows, &layout)
+            .header(&header)
+            .highlight_symbol(Span::styled(
+                ">",
+                style::list_selector(self.has_split_series),
+            ));
 
-        frame.render_stateful_widget(table, rect, &mut self.split_table);
+        frame.render_widget(table, rect);
     }
 
-    pub fn draw<B: Backend>(&mut self, rect: Rect, frame: &mut Frame<B>) {
-        let block = block::with_borders(None);
-        let block_area = block.inner(rect);
+    fn draw_no_series_msg<B: Backend>(area: Rect, frame: &mut Frame<B>) {
+        let center = SimpleLayout::new(Direction::Vertical)
+            .split_evenly(area)
+            .right;
 
-        frame.render_widget(block, rect);
+        let msg = SimpleText::new(text::bold("No Series To Split")).alignment(Alignment::Center);
+        frame.render_widget(msg, center);
+    }
+
+    pub fn draw<B: Backend>(&mut self, area: Rect, frame: &mut Frame<B>) {
+        let block = block::with_borders(None);
+        let block_area = block.inner(area);
+
+        frame.render_widget(block, area);
+
+        if self.merged_series.is_empty() {
+            Self::draw_no_series_msg(area, frame);
+            return;
+        }
 
         let vert_split = SimpleLayout::new(Direction::Vertical).split(
             block_area,
@@ -102,7 +121,7 @@ impl Component for SplitPanel {
                 MergedSeries::split_all(&self.merged_series, &state.config)?;
 
                 self.has_split_series = true;
-                self.split_table.select(Some(0));
+                *self.selected_series.get_mut() = 0;
 
                 Ok(SplitResult::Ok)
             }
@@ -111,10 +130,8 @@ impl Component for SplitPanel {
                     return Ok(SplitResult::Ok);
                 }
 
-                let selected = self
-                    .split_table
-                    .selected()
-                    .and_then(|idx| self.merged_series.get(idx));
+                let selected_idx = self.selected_series.get();
+                let selected = self.merged_series.get(selected_idx);
 
                 let series = match selected {
                     Some(MergedSeries::Resolved(series)) => series,
@@ -127,9 +144,14 @@ impl Component for SplitPanel {
                 ))
             }
             _ => {
-                if self.has_split_series {
-                    self.split_table
-                        .update_selected(key, self.merged_series.len());
+                if !self.has_split_series {
+                    return Ok(SplitResult::Ok);
+                }
+
+                match *key {
+                    KeyCode::Up => self.selected_series.decrement(self.merged_series.len()),
+                    KeyCode::Down => self.selected_series.increment(self.merged_series.len()),
+                    _ => (),
                 }
 
                 Ok(SplitResult::Ok)
