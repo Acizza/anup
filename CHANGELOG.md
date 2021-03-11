@@ -4,12 +4,14 @@
 
 ### Breaking Changes
 
+* The config file now uses the [RON](https://github.com/ron-rs/ron) file format instead of TOML. This reduces both the compile time and size of release binaries, and is a cleaner format overall compared to TOML. Old config files will have to be manually migrated to the new one at `~/.config/anup/config.ron`.
+
 * Database migrations from June 15h, 2020 have been removed. If you have a series database from before that date and have not ran the program since then, you can either delete it or run the last stable version first to upgrade it.
   The series database is located at `~/.local/share/anup/data.db`.
 
 ### Internal Changes
 
-* Nearly the entire TUI now uses `SimpleLayout` from the `tui-utils` library to create layouts for rendering. This provides a small performance improvement.
+* The entire TUI now only uses widgets and layouts from the `tui-utils` library. This reduces the size of release binaries and provides a small performance improvement during rendering.
 
 ## 0.3.0 - March 5th, 2021
 
