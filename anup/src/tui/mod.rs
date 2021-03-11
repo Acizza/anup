@@ -21,32 +21,11 @@ use tui::{backend::CrosstermBackend, layout::Direction, Terminal};
 use tui_utils::layout::{BasicConstraint, SimpleLayout};
 
 pub async fn run(args: &Args) -> Result<()> {
-    let terminal = init_terminal().context("failed to init backend")?;
-
-    let mut ui = UI::init(&args, terminal)
-        .await
-        .context("failed to init UI")?;
-
+    let mut ui = UI::init(&args).context("failed to init UI")?;
     let result = ui.run().await;
+
     ui.exit()?;
-
     result
-}
-
-fn init_terminal() -> Result<CrosstermTerminal> {
-    terminal::enable_raw_mode().context("failed to enable raw mode")?;
-
-    let stdout = io::stdout();
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend).context("terminal creation failed")?;
-
-    terminal.clear().context("failed to clear terminal")?;
-
-    terminal
-        .hide_cursor()
-        .context("failed to hide mouse cursor")?;
-
-    Ok(terminal)
 }
 
 type CrosstermTerminal = Terminal<CrosstermBackend<io::Stdout>>;
@@ -60,7 +39,7 @@ struct UI {
 }
 
 impl UI {
-    async fn init(args: &Args, terminal: CrosstermTerminal) -> Result<UI> {
+    fn init(args: &Args) -> Result<UI> {
         let events = UIEvents::new().context("UI events init")?;
 
         let mut state = UIState::init().context("UI state init")?;
@@ -80,6 +59,8 @@ impl UI {
             }
         }
 
+        let terminal = Self::init_terminal().context("initializing terminal")?;
+
         Ok(Self {
             events,
             terminal,
@@ -87,6 +68,22 @@ impl UI {
             dirty_state_notify,
             panels,
         })
+    }
+
+    fn init_terminal() -> Result<CrosstermTerminal> {
+        terminal::enable_raw_mode().context("failed to enable raw mode")?;
+
+        let stdout = io::stdout();
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend).context("terminal creation failed")?;
+
+        terminal.clear().context("failed to clear terminal")?;
+
+        terminal
+            .hide_cursor()
+            .context("failed to hide mouse cursor")?;
+
+        Ok(terminal)
     }
 
     async fn run(&mut self) -> Result<()> {
