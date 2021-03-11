@@ -1,6 +1,5 @@
 use super::ShouldReset;
 use crate::tui::state::UIState;
-use crate::tui::widget_util::{block, text};
 use crate::{key::Key, tui::component::Component};
 use anyhow::{anyhow, Context, Result};
 use crossterm::event::KeyCode;
@@ -10,6 +9,7 @@ use tui::style::Color;
 use tui::terminal::Frame;
 use tui::{backend::Backend, text::Span};
 use tui_utils::{
+    helpers::{block, text},
     layout::{RectExt, SimpleLayout},
     widgets::{Fragment, OverflowMode, SimpleText, SpanOptions, TextFragments},
     wrap,

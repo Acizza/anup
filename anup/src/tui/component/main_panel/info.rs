@@ -1,7 +1,6 @@
 use crate::remote::RemoteStatus;
 use crate::tui::state::ProgressTime;
 use crate::tui::state::SharedState;
-use crate::tui::widget_util::{block, text};
 use crate::tui::{state::StateEvent, UIState};
 use crate::util;
 use crate::{
@@ -24,6 +23,7 @@ use tui::style::Color;
 use tui::terminal::Frame;
 use tui::text::Span;
 use tui_utils::{
+    helpers::{block, text},
     layout::{BasicConstraint, RectExt, SimpleLayout},
     widgets::{Fragment, OverflowMode, SimpleText, SpanOptions, TextFragments},
     wrap,

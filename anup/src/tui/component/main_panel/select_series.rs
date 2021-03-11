@@ -1,13 +1,16 @@
+use crate::series::SeriesParams;
 use crate::tui::component::Component;
-use crate::tui::widget_util::block;
 use crate::{key::Key, series::info::SeriesInfo};
-use crate::{series::SeriesParams, tui::widget_util::text};
 use crossterm::event::KeyCode;
 use tui::layout::Rect;
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::{backend::Backend, text::Span};
-use tui_utils::{list::WrappedSelection, widgets::SimpleList};
+use tui_utils::{
+    helpers::{block, text},
+    list::WrappedSelection,
+    widgets::SimpleList,
+};
 
 pub struct SelectSeriesPanel {
     state: SelectState,

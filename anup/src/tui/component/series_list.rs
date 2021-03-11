@@ -1,5 +1,4 @@
 use crate::tui::state::{InputState, UIState};
-use crate::tui::widget_util::{block, style, text};
 use crate::{key::Key, series::LoadedSeries};
 use anime::remote::Status;
 use crossterm::event::KeyCode;
@@ -8,7 +7,10 @@ use tui::layout::Rect;
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui::text::Span;
-use tui_utils::widgets::SimpleList;
+use tui_utils::{
+    helpers::{block, style, text},
+    widgets::SimpleList,
+};
 
 pub struct SeriesList;
 

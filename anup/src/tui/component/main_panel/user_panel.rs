@@ -1,7 +1,6 @@
 use super::{Component, ShouldReset};
 use crate::try_opt_r;
 use crate::tui::component::input::{Input, InputFlags};
-use crate::tui::widget_util::{block, style, text};
 use crate::tui::UIState;
 use crate::user::{RemoteType, UserInfo};
 use crate::{file::SerializedFile, key::Key};
@@ -20,6 +19,7 @@ use tui::terminal::Frame;
 use tui::text::Span;
 use tui::{backend::Backend, style::Style};
 use tui_utils::{
+    helpers::{block, style, text},
     layout::{BasicConstraint, SimpleLayout},
     list::{EnumListItems, SelectableEnum, WrappingIndex},
     widgets::{Fragment, SimpleList, SimpleTable, SimpleText, TextFragments},

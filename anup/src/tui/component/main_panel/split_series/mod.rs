@@ -2,6 +2,7 @@ mod add;
 mod split;
 
 use crate::tui::UIState;
+use crate::util::arc_mutex;
 use crate::{config::Config, key::Key};
 use crate::{series::config::SeriesConfig, tui::component::prompt::log::LogKind};
 use crate::{series::SeriesData, util::ScopedTask};
@@ -10,10 +11,6 @@ use crate::{
     tui::state::SharedState,
 };
 use crate::{tui::component::Component, util::ArcMutex};
-use crate::{
-    tui::widget_util::{block, text},
-    util::arc_mutex,
-};
 use add::AddPanel;
 use anime::local::{CategorizedEpisodes, SortedEpisodes};
 use anime::remote::{Remote, RemoteService, SeriesInfo as RemoteInfo};
@@ -30,7 +27,11 @@ use tokio::task;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Direction, Rect};
 use tui::terminal::Frame;
-use tui_utils::{layout::SimpleLayout, widgets::SimpleText};
+use tui_utils::{
+    helpers::{block, text},
+    layout::SimpleLayout,
+    widgets::SimpleText,
+};
 
 pub struct SplitSeriesPanel {
     state: ArcMutex<PanelState>,

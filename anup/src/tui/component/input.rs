@@ -1,5 +1,4 @@
 use crate::series::SeriesPath;
-use crate::tui::widget_util::{block, style};
 use crate::{config::Config, key::Key};
 use anime::local::detect::CustomPattern;
 use anime::local::EpisodeParser;
@@ -13,6 +12,7 @@ use tui::style::Color;
 use tui::terminal::Frame;
 use tui::{backend::Backend, text::Span};
 use tui_utils::{
+    helpers::{block, style},
     layout::{BasicConstraint, SimpleLayout},
     widgets::{OverflowMode, SimpleText},
 };

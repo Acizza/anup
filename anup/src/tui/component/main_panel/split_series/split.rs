@@ -1,6 +1,5 @@
 use super::MergedSeries;
 use crate::tui::component::Component;
-use crate::tui::widget_util::{block, color, style, text};
 use crate::tui::UIState;
 use crate::{key::Key, series::SeriesPath};
 use anime::remote::SeriesInfo as RemoteInfo;
@@ -11,6 +10,7 @@ use tui::style::Color;
 use tui::terminal::Frame;
 use tui::{backend::Backend, text::Span};
 use tui_utils::{
+    helpers::{block, color, style, text},
     layout::{BasicConstraint, SimpleLayout},
     list::WrappingIndex,
     widgets::{SimpleTable, SimpleText},

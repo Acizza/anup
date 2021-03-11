@@ -1,6 +1,5 @@
 use crate::tui::component::input::Input;
 use crate::tui::component::Component;
-use crate::tui::widget_util::{block, style};
 use crate::tui::UIState;
 use crate::{config::Config, key::Key};
 use anyhow::{anyhow, Result};
@@ -14,6 +13,7 @@ use tui::style::Color;
 use tui::text::Span;
 use tui::Frame;
 use tui_utils::{
+    helpers::{block, style},
     widgets::{Fragment, TextFragments},
     wrap,
 };

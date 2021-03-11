@@ -4,7 +4,6 @@ use crate::tui::component::input::{
     ValidatedInput,
 };
 use crate::tui::component::Component;
-use crate::tui::widget_util::{block, style};
 use crate::tui::UIState;
 use crate::{config::Config, key::Key};
 use crate::{file, tui::state::SharedState};
@@ -25,11 +24,12 @@ use std::mem;
 use std::time::Instant;
 use std::{borrow::Cow, sync::Arc, time::Duration};
 use tokio::task;
+use tui::backend::Backend;
 use tui::layout::{Alignment, Direction, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::{backend::Backend, text::Span};
 use tui_utils::{
+    helpers::{block, text},
     layout::{BasicConstraint, RectExt, SimpleLayout},
     widgets::{Fragment, OverflowMode, SimpleText, SpanOptions, TextFragments},
 };
@@ -259,7 +259,7 @@ impl AddSeriesPanel {
         macro_rules! info_label {
             ($label:expr, $value:expr, $rect:expr) => {{
                 let fragments = [
-                    Fragment::span(Span::styled($label, style::bold())),
+                    Fragment::span(text::bold($label)),
                     Fragment::Line,
                     Fragment::Span($value, SpanOptions::new().overflow(OverflowMode::Truncate)),
                 ];
@@ -271,13 +271,12 @@ impl AddSeriesPanel {
 
         let (header_text, has_error) =
             match (&panel_state.error, &panel_state.series_builder.params) {
-                (Some(err), Some(_)) | (Some(err), None) => (
-                    Span::styled(err.as_ref(), style::bold().fg(Color::Red)),
-                    true,
-                ),
-                (None, Some(_)) => (Span::styled("Detected", style::bold()), false),
+                (Some(err), Some(_)) | (Some(err), None) => {
+                    (text::bold_with(err.as_ref(), |s| s.fg(Color::Red)), true)
+                }
+                (None, Some(_)) => (text::bold("Detected"), false),
                 (None, None) => (
-                    Span::styled("Nothing Detected", style::bold().fg(Color::Red)),
+                    text::bold_with("Nothing Detected", |s| s.fg(Color::Red)),
                     false,
                 ),
             };
@@ -310,15 +309,15 @@ impl AddSeriesPanel {
 
         info_label!(
             "Relative Path",
-            Span::styled(format!("{}", built.params.path.display()), style::italic()),
+            text::italic(format!("{}", built.params.path.display())),
             fields.left
         );
 
         let episodes_text = match &built.episodes {
-            ParsedEpisodes::Parsed(_, range_str) => Span::styled(range_str, style::italic()),
-            ParsedEpisodes::NoneFound => Span::styled("none", style::italic().fg(Color::Yellow)),
+            ParsedEpisodes::Parsed(_, range_str) => text::italic(range_str),
+            ParsedEpisodes::NoneFound => text::italic_with("none", |s| s.fg(Color::Yellow)),
             ParsedEpisodes::NeedsSplitting => {
-                Span::styled("needs splitting", style::italic().fg(Color::Yellow))
+                text::italic_with("needs splitting", |s| s.fg(Color::Yellow))
             }
         };
 

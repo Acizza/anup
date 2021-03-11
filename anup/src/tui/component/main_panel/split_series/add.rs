@@ -5,7 +5,6 @@ use crate::tui::component::input::{
     DrawInput, Input, InputFlags, NameInput, ParsedValue, ValidatedInput,
 };
 use crate::tui::component::Component;
-use crate::tui::widget_util::{block, text};
 use crate::tui::UIState;
 use crate::{key::Key, series::config::SeriesConfig};
 use anime::local::EpisodeParser;
@@ -17,6 +16,7 @@ use tui::layout::{Alignment, Direction, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
 use tui_utils::{
+    helpers::{block, text},
     layout::{BasicConstraint, SimpleLayout},
     widgets::{OverflowMode, SimpleText},
 };

@@ -1,14 +1,16 @@
 use std::collections::VecDeque;
 
-use crate::tui::widget_util::block;
-use crate::tui::widget_util::style;
 use anyhow::Error;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::Color;
 use tui::text::Span;
 use tui::Frame;
-use tui_utils::{widgets::Fragment, wrap};
+use tui_utils::{
+    helpers::{block, style},
+    widgets::Fragment,
+    wrap,
+};
 
 #[derive(Copy, Clone)]
 pub enum LogKind {
