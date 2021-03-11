@@ -1,27 +1,22 @@
-use crate::series::SeriesParams;
 use crate::tui::component::Component;
-use crate::tui::widget_util::{block, style};
+use crate::tui::widget_util::block;
 use crate::{key::Key, series::info::SeriesInfo};
+use crate::{series::SeriesParams, tui::widget_util::text};
 use crossterm::event::KeyCode;
-use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::Color;
 use tui::terminal::Frame;
-use tui::widgets::{List, ListItem, ListState};
-use tui_utils::list::WrappedSelection;
+use tui::{backend::Backend, text::Span};
+use tui_utils::{list::WrappedSelection, widgets::SimpleList};
 
 pub struct SelectSeriesPanel {
-    list_state: ListState,
     state: SelectState,
 }
 
 impl SelectSeriesPanel {
     #[inline(always)]
     pub fn new(state: SelectState) -> Self {
-        Self {
-            list_state: ListState::default(),
-            state,
-        }
+        Self { state }
     }
 
     #[inline(always)]
@@ -30,22 +25,22 @@ impl SelectSeriesPanel {
     }
 
     pub fn draw<B: Backend>(&mut self, rect: Rect, frame: &mut Frame<B>) {
+        let block = block::with_borders("Select a series from the list");
+        let block_area = block.inner(rect);
+
+        frame.render_widget(block, rect);
+
         let names = self
             .state
             .series_list
             .iter()
-            .map(|info| ListItem::new(info.title_preferred.as_ref()))
-            .collect::<Vec<_>>();
+            .map(|info| Span::raw(info.title_preferred.as_str()));
 
-        let items = List::new(names)
-            .block(block::with_borders("Select a series from the list"))
-            .style(style::fg(Color::White))
-            .highlight_style(style::italic().fg(Color::Green))
-            .highlight_symbol(">");
+        let items = SimpleList::new(names)
+            .highlight_symbol(text::italic_with(">", |s| s.fg(Color::Green)))
+            .select(Some(self.state.series_list.index() as u16));
 
-        self.list_state.select(Some(self.state.series_list.index()));
-
-        frame.render_stateful_widget(items, rect, &mut self.list_state);
+        frame.render_widget(items, block_area);
     }
 }
 
