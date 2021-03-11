@@ -7,7 +7,6 @@ This is a [TUI](https://en.wikipedia.org/wiki/Text-based_user_interface) applica
 
 Current features include:
 * Automatic series detection (including specials, OVA's, and ONA's)
-* Easy playing of unwatched episodes
 * TUI interface to view, play, and modify all series added to the program
 * Offline mode
 * Multi-user support
@@ -46,7 +45,7 @@ Once the dependencies are installed, you can build the project simply by running
 
 # Usage
 
-By default, the program will look for anime in `~/anime/` and play episodes with `mpv`. To change these, run the program once to generate the config file and change the `series_dir` and `player` fields in `~/.config/anup/config.toml`, respectively.
+By default, the program will look for anime in `~/anime/` and play episodes with `mpv`. To change these, run the program once to generate the config file and change the `series_dir` and `player` fields in `~/.config/anup/config.ron`, respectively.
 
 Ideally, you should run the program in an 80x24 terminal, but the program will scale properly for larger sizes. Anything smaller than 80x24 may cause some items to cut off.
 
@@ -117,7 +116,7 @@ Note that each example above can be detected by the default detector.
 
 Once at least one series has been added, you can play the next episode of one by selecting the series with the up and down arrow keys and pressing enter. This will play the episode with the player set in your config file.
 
-Once you start playing an episode, you should see a timer counting down in the `Info` panel. This represents the time needed until the episode will be considered watched. You can change how much of an episode you need to watch by modifying the `percent_watched_to_progress` field in the `[episode]` section of your config file. This field can be set to `0.0` if you do not wish to use this feature.
+Once you start playing an episode, you should see a timer counting down in the `Info` panel. This represents the time needed until the episode will be considered watched. You can change how much of an episode you need to watch by modifying the `percent_watched_to_progress` field in your config file. This field can be set to `0.0` if you do not wish to use this feature.
 
 If you do not see a timer when you start playing an episode and have not touched the `percent_watched_to_progress` field in your config, make sure that the video player / script used to launch your video player does **not** exit immediately after starting to play something. You will need to set `percent_watched_to_progress` to `0.0` if there is no way to bypass that behavior, as episodes will never be counted as watched otherwise.
 
