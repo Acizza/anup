@@ -1,6 +1,7 @@
 use crate::err;
 use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
+use ron::ser::PrettyConfig;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs::{self, DirEntry, File};
@@ -46,15 +47,15 @@ pub trait SerializedFile: DeserializeOwned + Serialize + Default {
 
 #[derive(Copy, Clone)]
 pub enum FileFormat {
-    Toml,
-    Bincode,
+    Config,
+    Binary,
 }
 
 impl FileFormat {
     pub fn extension(self) -> &'static str {
         match self {
-            Self::Toml => "toml",
-            Self::Bincode => "bin",
+            Self::Config => "ron",
+            Self::Binary => "bin",
         }
     }
 
@@ -66,11 +67,11 @@ impl FileFormat {
         let path = path.as_ref();
 
         match self {
-            Self::Toml => {
+            Self::Config => {
                 let contents = fs::read_to_string(&path).context("reading file")?;
-                toml::from_str(&contents).context("decoding TOML")
+                ron::from_str(&contents).context("decoding TOML")
             }
-            Self::Bincode => {
+            Self::Binary => {
                 let file = File::open(path).context("opening file")?;
                 bincode::deserialize_from(file).context("decoding bincode")
             }
@@ -85,13 +86,17 @@ impl FileFormat {
         let path = path.as_ref();
 
         match self {
-            Self::Toml => {
-                let serialized = toml::to_string_pretty(data).context("encoding TOML")?;
+            Self::Config => {
+                let config = PrettyConfig::default().with_decimal_floats(true);
+
+                let serialized =
+                    ron::ser::to_string_pretty(data, config).context("encoding config file")?;
+
                 fs::write(&path, serialized).context("writing file")
             }
-            Self::Bincode => {
+            Self::Binary => {
                 let mut file = File::create(path).context("creating / opening file")?;
-                bincode::serialize_into(&mut file, data).context("encoding bincode")
+                bincode::serialize_into(&mut file, data).context("encoding binary file")
             }
         }
     }

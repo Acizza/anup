@@ -133,7 +133,7 @@ impl SerializedFile for Users {
     }
 
     fn format() -> FileFormat {
-        FileFormat::Bincode
+        FileFormat::Binary
     }
 }
 

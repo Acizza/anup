@@ -57,7 +57,7 @@ impl SerializedFile for Config {
     }
 
     fn format() -> FileFormat {
-        FileFormat::Toml
+        FileFormat::Config
     }
 }
 
