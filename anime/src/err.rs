@@ -25,7 +25,7 @@ pub enum Error {
     #[error("failed to parse episode: {filename}")]
     EpisodeParseFailed { filename: String },
 
-    #[error("found different episode titles:\n\texpecting: {expecting}\n\tfound: {found}")]
+    #[error("found different episode titles:\nexpecting: {expecting}\nfound: {found}")]
     MultipleTitles { expecting: String, found: String },
 
     #[error("need existing series info to use offline backend")]
