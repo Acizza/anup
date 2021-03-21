@@ -1,6 +1,6 @@
 # Changelog
 
-## To Be Released
+## 0.4.0 - March 21st, 2021
 
 ### Breaking Changes
 
