@@ -4,10 +4,14 @@
 
 ### Breaking Changes
 
-* The config file now uses the [RON](https://github.com/ron-rs/ron) file format instead of TOML. This reduces both the compile time and size of release binaries, and is a cleaner format overall compared to TOML. Old config files will have to be manually migrated to the new one at `~/.config/anup/config.ron`.
+* The config file now uses the [RON](https://github.com/ron-rs/ron) file format instead of TOML. This reduces both the compile time and size of release binaries, and is a cleaner format overall compared to TOML. Old config files will have to be manually migrated to the new one at `~/.config/anup/config.ron`. The RON specification can be found [here](https://github.com/ron-rs/ron/wiki/Specification).
 
 * Database migrations from June 15h, 2020 have been removed. If you have a series database from before that date and have not ran the program since then, you can either delete it or run the last stable version first to upgrade it.
   The series database is located at `~/.local/share/anup/data.db`.
+
+### Fixes
+
+* Errors during initialization of the TUI will no longer screw up the terminal.
 
 ### Internal Changes
 
