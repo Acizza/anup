@@ -15,7 +15,7 @@
 
 ### Internal Changes
 
-* The entire TUI now only uses widgets and layouts from the `tui-utils` library. This reduces the size of release binaries and provides a small performance improvement during rendering.
+* The entire TUI now only uses widgets and layouts from the [tui-utils](https://github.com/Acizza/tui-utils) library (except for borders). This reduces the size of release binaries and provides a small performance improvement during rendering.
 
 ## 0.3.0 - March 5th, 2021
 
