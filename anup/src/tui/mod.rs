@@ -15,7 +15,11 @@ use component::Component;
 use component::{main_panel::MainPanel, prompt::command::CommandPrompt};
 use crossterm::{event::KeyCode, terminal};
 use state::{SharedState, UIErrorKind, UIEvent};
-use std::{io, sync::Arc};
+use std::{
+    io,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 use tokio::sync::Notify;
 use tui::{backend::CrosstermBackend, layout::Direction, Terminal};
 use tui_utils::layout::{BasicConstraint, SimpleLayout};
@@ -27,8 +31,6 @@ pub async fn run(args: &Args) -> Result<()> {
     ui.exit()?;
     result
 }
-
-type CrosstermTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 
 struct UI {
     events: UIEvents,
@@ -59,7 +61,7 @@ impl UI {
             }
         }
 
-        let terminal = Self::init_terminal().context("initializing terminal")?;
+        let terminal = CrosstermTerminal::safe_init().context("initializing terminal")?;
 
         Ok(Self {
             events,
@@ -68,22 +70,6 @@ impl UI {
             dirty_state_notify,
             panels,
         })
-    }
-
-    fn init_terminal() -> Result<CrosstermTerminal> {
-        terminal::enable_raw_mode().context("failed to enable raw mode")?;
-
-        let stdout = io::stdout();
-        let backend = CrosstermBackend::new(stdout);
-        let mut terminal = Terminal::new(backend).context("terminal creation failed")?;
-
-        terminal.clear().context("failed to clear terminal")?;
-
-        terminal
-            .hide_cursor()
-            .context("failed to hide mouse cursor")?;
-
-        Ok(terminal)
     }
 
     async fn run(&mut self) -> Result<()> {
@@ -316,5 +302,56 @@ impl Panels {
                 Ok(())
             }
         }
+    }
+}
+
+struct CrosstermTerminal(Terminal<CrosstermBackend<io::Stdout>>);
+
+impl CrosstermTerminal {
+    /// Initialize a new Crossterm terminal.
+    ///
+    /// This function should always be used instead of [`Self::unsafe_init`], as it will clean up the terminal should an error occur.
+    fn safe_init() -> Result<Self> {
+        match Self::unsafe_init() {
+            result @ Ok(_) => result,
+            result @ Err(_) => {
+                terminal::disable_raw_mode().ok();
+                result
+            }
+        }
+    }
+
+    /// Initialize a new Crossterm terminal.
+    ///
+    /// This function enables the terminal's raw mode. If this function returns an error, then the user's terminal may behave oddly
+    /// unless `terminal::disable_raw_mode` is called. [`Self::safe_init`] should be used instead as it will disable raw mode automatically.
+    fn unsafe_init() -> Result<Self> {
+        terminal::enable_raw_mode().context("failed to enable raw mode")?;
+
+        let stdout = io::stdout();
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend).context("terminal creation failed")?;
+
+        terminal.clear().context("failed to clear terminal")?;
+
+        terminal
+            .hide_cursor()
+            .context("failed to hide mouse cursor")?;
+
+        Ok(Self(terminal))
+    }
+}
+
+impl Deref for CrosstermTerminal {
+    type Target = Terminal<CrosstermBackend<io::Stdout>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for CrosstermTerminal {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
