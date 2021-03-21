@@ -106,10 +106,14 @@ impl<'a> Log<'a> {
 
         frame.render_widget(block, rect);
 
-        let items = self.items.iter().map(|item| {
-            // TODO: avoid clone of fragments by using std::array::IntoIter in Rust 1.51.0
-            wrap::by_letters(item.as_fragments().iter().cloned(), block_area.width)
-        });
+        let items = self
+            .items
+            .iter()
+            .map(|item| {
+                // TODO: avoid clone of fragments by using std::array::IntoIter in Rust 1.51.0
+                wrap::by_newlines(item.as_fragments().iter().cloned())
+            })
+            .map(|fragments| wrap::by_letters(fragments, block_area.width));
 
         let log = tui_utils::widgets::Log::new(items);
 
