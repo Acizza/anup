@@ -418,11 +418,10 @@ impl UIEvents {
 
     #[allow(clippy::mut_mut)]
     pub async fn next(&mut self, state_change: &Notify) -> UIEventError<Option<UIEvent>> {
-        let state_change = state_change.notified().fuse();
-        tokio::pin!(state_change);
-
-        let window_resize = self.resize_event_stream.recv().fuse();
-        tokio::pin!(window_resize);
+        tokio::pin! {
+            let state_change = state_change.notified().fuse();
+            let window_resize = self.resize_event_stream.recv().fuse();
+        }
 
         let mut next_event = self.reader.next().fuse();
 

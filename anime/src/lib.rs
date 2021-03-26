@@ -7,6 +7,7 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::map_err_ignore)]
+#![allow(clippy::upper_case_acronyms)]
 
 #[cfg(feature = "diesel-support")]
 #[macro_use]
