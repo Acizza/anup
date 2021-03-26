@@ -14,7 +14,6 @@ use tui_utils::{
 
 #[derive(Copy, Clone)]
 pub enum LogKind {
-    Info,
     Error,
     Context,
 }
@@ -22,7 +21,6 @@ pub enum LogKind {
 impl<'a> Into<Span<'a>> for LogKind {
     fn into(self) -> Span<'a> {
         match self {
-            Self::Info => Span::styled("info: ", style::fg(Color::Green)),
             Self::Error => Span::styled("error: ", style::fg(Color::Red)),
             Self::Context => Span::styled("^ ", style::fg(Color::Yellow)),
         }
