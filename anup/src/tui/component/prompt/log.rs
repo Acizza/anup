@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{array::IntoIter, collections::VecDeque};
 
 use anyhow::Error;
 use tui::backend::Backend;
@@ -107,10 +107,9 @@ impl<'a> Log<'a> {
         let items = self
             .items
             .iter()
-            .map(|item| {
-                // TODO: avoid clone of fragments by using std::array::IntoIter in Rust 1.51.0
-                wrap::by_newlines(item.as_fragments().iter().cloned())
-            })
+            .map(LogEntry::as_fragments)
+            .map(IntoIter::new)
+            .map(wrap::by_newlines)
             .map(|fragments| wrap::by_letters(fragments, block_area.width));
 
         let log = tui_utils::widgets::Log::new(items);
