@@ -11,6 +11,7 @@ use anime::remote::{ScoreParser, SeriesDate};
 use chrono::Utc;
 use smallvec::{smallvec, SmallVec};
 use std::{
+    array::IntoIter,
     borrow::Cow,
     sync::{atomic::Ordering, Arc},
     time::Duration,
