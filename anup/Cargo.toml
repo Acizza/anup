@@ -43,7 +43,7 @@ version = "0.4"
 default-features = false
 
 [dependencies.tokio]
-version = "1.5"
+version = "1.6"
 features = [ "rt", "signal", "process", "time", "sync", "parking_lot" ]
 
 [dependencies.tui]
