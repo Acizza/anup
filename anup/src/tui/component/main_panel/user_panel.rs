@@ -148,7 +148,7 @@ impl UserPanel {
             .vertical_margin(1)
             .split(
                 block_area,
-                &[
+                [
                     // Token input
                     BasicConstraint::Length(Input::DRAW_LINES_REQUIRED),
                     // Spacer
@@ -207,7 +207,7 @@ impl UserPanel {
 
         let layout = SimpleLayout::new(Direction::Vertical).split(
             block_area,
-            &[
+            [
                 // User table
                 BasicConstraint::MinLenRemaining(5, 8),
                 // Spacer
@@ -291,7 +291,7 @@ impl UserPanel {
             BasicConstraint::Percentage(50),
         ];
 
-        let users_widget = SimpleTable::new(users, &layout)
+        let users_widget = SimpleTable::new(users, layout)
             .header(&header)
             .highlight_symbol(Span::styled(">", style::list_selector(is_selected)))
             .select(Some(self.selected_user.get() as u16));
@@ -302,7 +302,7 @@ impl UserPanel {
     pub fn draw<B: Backend>(&mut self, state: &UIState, rect: Rect, frame: &mut Frame<B>) {
         let horiz_split = SimpleLayout::new(Direction::Horizontal).split(
             rect,
-            &[
+            [
                 BasicConstraint::Percentage(60),
                 BasicConstraint::Percentage(40),
             ],

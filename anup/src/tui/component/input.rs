@@ -117,7 +117,7 @@ impl Input {
 
         let layout = SimpleLayout::new(Direction::Vertical).split(
             rect,
-            &[BasicConstraint::Length(1), BasicConstraint::Length(3)],
+            [BasicConstraint::Length(1), BasicConstraint::Length(3)],
         );
 
         let label_widget = {

@@ -283,7 +283,7 @@ impl AddSeriesPanel {
 
         let vert_layout = SimpleLayout::new(Direction::Vertical).split(
             rect,
-            &[
+            [
                 // Header
                 BasicConstraint::Length(1),
                 // Spacer
@@ -341,7 +341,7 @@ impl AddSeriesPanel {
             .horizontal_margin(2)
             .split(
                 block_area,
-                &[
+                [
                     BasicConstraint::MinLenRemaining(11, 5),
                     BasicConstraint::Length(5),
                 ],

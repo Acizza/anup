@@ -130,7 +130,7 @@ impl InfoPanel {
     fn header_body_layout(rect: Rect) -> (Rect, Rect) {
         let layout = SimpleLayout::new(Direction::Vertical).margin(2).split(
             rect,
-            &[BasicConstraint::Length(2), BasicConstraint::Percentage(100)],
+            [BasicConstraint::Length(2), BasicConstraint::Percentage(100)],
         );
 
         (layout[0], layout[1])
@@ -254,7 +254,7 @@ impl InfoPanel {
     {
         let layout = SimpleLayout::new(Direction::Vertical).margin(2).split(
             rect,
-            &[
+            [
                 BasicConstraint::Length(4),
                 BasicConstraint::Percentage(70),
                 BasicConstraint::Length(4),
