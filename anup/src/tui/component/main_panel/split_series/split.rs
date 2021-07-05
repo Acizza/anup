@@ -60,7 +60,7 @@ impl SplitPanel {
         let header = [Span::raw("Type"), Span::raw("Series")];
         let layout = [BasicConstraint::Length(8), BasicConstraint::Percentage(100)];
 
-        let table = SimpleTable::new(rows, &layout)
+        let table = SimpleTable::new(rows, layout)
             .header(&header)
             .highlight_symbol(Span::styled(
                 ">",
@@ -92,7 +92,7 @@ impl SplitPanel {
 
         let vert_split = SimpleLayout::new(Direction::Vertical).split(
             block_area,
-            &[
+            [
                 BasicConstraint::MinLenRemaining(4, 2),
                 BasicConstraint::Length(2),
             ],

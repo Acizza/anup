@@ -52,7 +52,7 @@ impl AddPanel {
             .vertical_margin(2)
             .split(
                 block_area,
-                &[
+                [
                     // Title
                     BasicConstraint::Percentage(33),
                     // Series name input
@@ -73,7 +73,7 @@ impl AddPanel {
 
         let name_layout = SimpleLayout::new(Direction::Horizontal).split(
             vert_split[1],
-            &[
+            [
                 BasicConstraint::Percentage(20),
                 BasicConstraint::Percentage(60),
                 BasicConstraint::Percentage(20),

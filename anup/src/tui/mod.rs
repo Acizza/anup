@@ -204,38 +204,38 @@ impl Panels {
     }
 
     fn draw(&mut self, state: &UIState, terminal: &mut CrosstermTerminal) -> Result<()> {
-        terminal
-            .draw(|mut frame| {
-                let horiz_splitter = SimpleLayout::new(Direction::Horizontal).split(
-                    frame.size(),
-                    &[
-                        BasicConstraint::MinLenGrowthPcnt(20, 30),
-                        BasicConstraint::Percentage(70),
-                    ],
-                );
+        terminal.draw(|mut frame| {
+            let horiz_splitter = SimpleLayout::new(Direction::Horizontal).split(
+                frame.size(),
+                [
+                    BasicConstraint::MinLenGrowthPcnt(20, 30),
+                    BasicConstraint::Percentage(70),
+                ],
+            );
 
-                SeriesList::draw(state, horiz_splitter[0], &mut frame);
+            SeriesList::draw(state, horiz_splitter[0], &mut frame);
 
-                // Series info panel vertical splitter
-                let info_panel_splitter = SimpleLayout::new(Direction::Vertical).split(
-                    horiz_splitter[1],
-                    &[
-                        BasicConstraint::Percentage(80),
-                        BasicConstraint::Percentage(20),
-                    ],
-                );
+            // Series info panel vertical splitter
+            let info_panel_splitter = SimpleLayout::new(Direction::Vertical).split(
+                horiz_splitter[1],
+                [
+                    BasicConstraint::Percentage(80),
+                    BasicConstraint::Percentage(20),
+                ],
+            );
 
-                self.main_panel
-                    .draw(state, info_panel_splitter[0], &mut frame);
+            self.main_panel
+                .draw(state, info_panel_splitter[0], &mut frame);
 
-                match state.input_state {
-                    InputState::EnteringCommand => {
-                        self.command_prompt.draw(info_panel_splitter[1], frame)
-                    }
-                    _ => state.log.draw(info_panel_splitter[1], frame),
+            match state.input_state {
+                InputState::EnteringCommand => {
+                    self.command_prompt.draw(info_panel_splitter[1], frame)
                 }
-            })
-            .map_err(Into::into)
+                _ => state.log.draw(info_panel_splitter[1], frame),
+            }
+        })?;
+
+        Ok(())
     }
 
     fn process_command(command: Command, state: &mut UIState) -> Result<()> {
