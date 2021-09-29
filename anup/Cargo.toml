@@ -18,7 +18,7 @@ parking_lot = "0.11"
 ron = "0.6"
 serde = "1.0"
 serde_derive = "1.0"
-smallvec = "1.4"
+smallvec = "1.7"
 strsim = "0.10"
 thiserror = "1.0"
 tui-utils = { git = "https://github.com/Acizza/tui-utils", rev = "0.11.0" }
