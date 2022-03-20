@@ -11,7 +11,6 @@ use anime::remote::{ScoreParser, SeriesDate};
 use chrono::Utc;
 use smallvec::{smallvec, SmallVec};
 use std::{
-    array::IntoIter,
     borrow::Cow,
     sync::{atomic::Ordering, Arc},
     time::Duration,
@@ -237,7 +236,7 @@ impl InfoPanel {
         )];
 
         let (h_pos, b_pos) = Self::header_body_layout(rect);
-        let wrapped = wrap::by_letters(IntoIter::new(body), b_pos.width);
+        let wrapped = wrap::by_letters(body, b_pos.width);
 
         Self::draw_text_panel(header, &wrapped, h_pos, b_pos, frame);
     }

@@ -3,7 +3,7 @@ use crate::tui::state::UIState;
 use crate::{key::Key, tui::component::Component};
 use anyhow::{anyhow, Context, Result};
 use crossterm::event::KeyCode;
-use std::{array::IntoIter, fs};
+use std::fs;
 use tui::layout::{Alignment, Direction, Rect};
 use tui::style::Color;
 use tui::terminal::Frame;
@@ -64,7 +64,7 @@ impl DeleteSeriesPanel {
             ),
         ];
 
-        let wrapped_path_frags = wrap::by_letters(IntoIter::new(path_fragments), path_rect.width);
+        let wrapped_path_frags = wrap::by_letters(path_fragments, path_rect.width);
         let path_widget = TextFragments::new(&wrapped_path_frags).alignment(Alignment::Center);
 
         frame.render_widget(path_widget, path_rect);
@@ -83,7 +83,7 @@ impl DeleteSeriesPanel {
                 ),
             ];
 
-            wrap::by_letters(IntoIter::new(frags), status_rect.width)
+            wrap::by_letters(frags, status_rect.width)
         };
 
         let status_widget = TextFragments::new(&full_status_frags).alignment(Alignment::Center);

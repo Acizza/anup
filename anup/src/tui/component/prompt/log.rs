@@ -1,4 +1,4 @@
-use std::{array::IntoIter, collections::VecDeque};
+use std::collections::VecDeque;
 
 use anyhow::Error;
 use tui::backend::Backend;
@@ -108,7 +108,6 @@ impl<'a> Log<'a> {
             .items
             .iter()
             .map(LogEntry::as_fragments)
-            .map(IntoIter::new)
             .map(wrap::by_newlines)
             .map(|fragments| wrap::by_letters(fragments, block_area.width));
 

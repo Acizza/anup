@@ -397,8 +397,6 @@ impl TryFrom<&str> for ProgressDirection {
 
 #[cfg(test)]
 mod tests {
-    use std::array::IntoIter;
-
     use super::*;
     use smallvec::smallvec;
 
@@ -412,7 +410,7 @@ mod tests {
             let keys = name
                 .chars()
                 .map(|c| KeyCode::Char(c))
-                .chain(IntoIter::new([KeyCode::Enter]));
+                .chain([KeyCode::Enter]);
 
             for key in keys {
                 let key = Key::from_code(key);
