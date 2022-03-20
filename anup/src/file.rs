@@ -87,7 +87,7 @@ impl FileFormat {
 
         match self {
             Self::Config => {
-                let config = PrettyConfig::default().with_decimal_floats(true);
+                let config = PrettyConfig::default().decimal_floats(true);
 
                 let serialized =
                     ron::ser::to_string_pretty(data, config).context("encoding config file")?;
