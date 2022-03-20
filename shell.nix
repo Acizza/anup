@@ -7,7 +7,7 @@ let
     overlays = [ rustOverlay ];
   };
 
-  rust = pkgs.rust-bin.stable.latest.rust.override {
+  rust = pkgs.rust-bin.stable.latest.default.override {
     extensions = [ "rust-src" ];
   };
 in pkgs.mkShell {
