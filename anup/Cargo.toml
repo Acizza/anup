@@ -30,7 +30,7 @@ path = "../anime"
 features = [ "diesel-support", "chrono-support" ]
 
 [dependencies.crossterm]
-version = "0.22"
+version = "0.23"
 features = [ "event-stream", "serde" ]
 
 [dependencies.diesel]
