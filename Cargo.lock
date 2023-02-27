@@ -30,7 +30,7 @@ dependencies = [
  "bincode",
  "bitflags",
  "chrono",
- "crossterm 0.22.1",
+ "crossterm 0.26.1",
  "diesel",
  "dirs-next",
  "futures",
@@ -196,16 +196,16 @@ dependencies = [
 
 [[package]]
 name = "crossterm"
-version = "0.22.1"
+version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c85525306c4291d1b73ce93c8acf9c339f9b213aef6c1d85c3830cbf1c16325c"
+checksum = "a84cda67535339806297f1b331d6dd6320470d2a0fe65381e79ee9e156dd3d13"
 dependencies = [
  "bitflags",
  "crossterm_winapi 0.9.0",
  "futures-core",
  "libc",
- "mio 0.7.14",
- "parking_lot 0.11.2",
+ "mio 0.8.2",
+ "parking_lot 0.12.0",
  "serde",
  "signal-hook 0.3.13",
  "signal-hook-mio",
@@ -824,12 +824,12 @@ dependencies = [
 
 [[package]]
 name = "signal-hook-mio"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29fd5867f1c4f2c5be079aee7a2adf1152ebb04a4bc4d341f504b7dece607ed4"
+checksum = "29ad2e15f37ec9a6cc544097b78a1ec90001e9f71b81338ca39f430adaca99af"
 dependencies = [
  "libc",
- "mio 0.7.14",
+ "mio 0.8.2",
  "signal-hook 0.3.13",
 ]
 
